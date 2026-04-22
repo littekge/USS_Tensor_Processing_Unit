@@ -1,7 +1,0 @@
-
-State Machine - |Pop_Count_Test|state
-Name state.S_DONE state.S_COUNT state.S_LOAD state.S_IDLE 
-state.S_IDLE 0 0 0 0 
-state.S_LOAD 0 0 1 1 
-state.S_COUNT 0 1 0 1 
-state.S_DONE 1 0 0 1 
