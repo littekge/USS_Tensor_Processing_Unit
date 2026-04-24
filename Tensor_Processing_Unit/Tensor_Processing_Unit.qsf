@@ -63,3 +63,4 @@ set_global_assignment -name POWER_BOARD_THERMAL_MODEL "NONE (CONSERVATIVE)"
 set_global_assignment -name VERILOG_FILE Tensor_Processing_Unit.v
 set_global_assignment -name QIP_FILE TPU_MEMORY/TPU_DPRAM.qip
 set_global_assignment -name VERILOG_FILE TPU_SPI_INTERFACE/SPI_Interface.v
+set_global_assignment -name QIP_FILE TPU_SPI_INTERFACE/SPI_INPUT_BUFFER/SPI_Input_buffer.qip
