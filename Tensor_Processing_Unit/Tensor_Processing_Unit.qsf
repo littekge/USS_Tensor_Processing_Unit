@@ -58,18 +58,8 @@ set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_
 set_global_assignment -name PARTITION_NETLIST_TYPE SOURCE -section_id Top
 set_global_assignment -name PARTITION_FITTER_PRESERVATION_LEVEL PLACEMENT_AND_ROUTING -section_id Top
 set_global_assignment -name PARTITION_COLOR 16764057 -section_id Top
-set_global_assignment -name VERILOG_FILE TPU_VGA_DEBUG/VGA_CONTROLLER/ascii_rom/Char_ROM_bb.v
-set_global_assignment -name VERILOG_FILE TPU_VGA_DEBUG/VGA_CONTROLLER/ascii_rom/Char_ROM.v
-set_global_assignment -name QIP_FILE TPU_VGA_DEBUG/VGA_CONTROLLER/ascii_rom/Char_ROM.qip
-set_global_assignment -name VERILOG_FILE TPU_VGA_DEBUG/VGA_CONTROLLER/ascii_master/ascii_master_bb.v
-set_global_assignment -name VERILOG_FILE TPU_VGA_DEBUG/VGA_CONTROLLER/ascii_master/ascii_master.v
-set_global_assignment -name QIP_FILE TPU_VGA_DEBUG/VGA_CONTROLLER/ascii_master/ascii_master.qip
-set_global_assignment -name VERILOG_FILE TPU_VGA_DEBUG/VGA_CONTROLLER/vga_driver.v
-set_global_assignment -name VERILOG_FILE TPU_VGA_DEBUG/VGA_CONTROLLER/vga_controller.v
-set_global_assignment -name VERILOG_FILE TPU_VGA_DEBUG/VGA_CONTROLLER/clock_divider.v
-set_global_assignment -name VERILOG_FILE TPU_VGA_DEBUG/VGA_CONTROLLER/ascii_master_controller.v
-set_global_assignment -name VERILOG_FILE TPU_VGA_DEBUG/debug.v
-set_global_assignment -name VERILOG_FILE Tensor_Processing_Unit.v
-set_global_assignment -name QIP_FILE TPU_MEMORY/TPU_DPRAM.qip
 set_global_assignment -name POWER_PRESET_COOLING_SOLUTION "23 MM HEAT SINK WITH 200 LFPM AIRFLOW"
 set_global_assignment -name POWER_BOARD_THERMAL_MODEL "NONE (CONSERVATIVE)"
+set_global_assignment -name VERILOG_FILE Tensor_Processing_Unit.v
+set_global_assignment -name QIP_FILE TPU_MEMORY/TPU_DPRAM.qip
+set_global_assignment -name VERILOG_FILE TPU_SPI_INTERFACE/SPI_Interface.v
