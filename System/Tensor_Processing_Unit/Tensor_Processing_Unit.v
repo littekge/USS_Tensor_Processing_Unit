@@ -92,7 +92,25 @@ wire clk, rst;
 assign clk = CLOCK_50;
 assign rst = KEY[0];
 
-
+SPI_Interface SPI_int(
+	//clock and reset
+   .clk(clk),
+   .rst(rst),
+	
+	//buffer interfacing signals
+	i_rdreq(),
+	i_sclr(),
+	o_empty(),
+	o_full(),
+	o_q(),
+	o_usedw(),
+	
+	//SPI Signals
+	i_SPI_Clk(),
+	o_SPI_MISO(),
+	i_SPI_MOSI(),
+	i_SPI_SS()
+);
 
 
 
