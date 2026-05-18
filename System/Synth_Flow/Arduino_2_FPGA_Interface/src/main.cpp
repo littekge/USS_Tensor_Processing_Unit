@@ -2,7 +2,7 @@
 #include <SPI.h>
 
 constexpr unsigned long SERIAL_BAUD_RATE = 115200;
-constexpr uint32_t SPI_CLOCK_HZ = 8000000UL;
+constexpr uint32_t SPI_CLOCK_HZ = 125000UL;
 constexpr uint8_t FPGA_CS_PIN = SS;
 constexpr size_t BUFFER_SIZE = 256;
 constexpr size_t CHUNK_SIZE = 32;
@@ -108,7 +108,7 @@ bool serialToSpi() {
 //#define DEBUG_SERIAL
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(SERIAL_BAUD_RATE);
   pinMode(FPGA_CS_PIN, OUTPUT);
   digitalWrite(FPGA_CS_PIN, HIGH);
   SPI.begin();
