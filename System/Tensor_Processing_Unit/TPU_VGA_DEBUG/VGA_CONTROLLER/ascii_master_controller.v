@@ -4,7 +4,7 @@
  * Date: 5/19/2026
  * 
  * This module is an interface between a RAM that stores ASCII characters and 
- * color values and a VGA controller.
+ * color values and a VGA controller. Characters are arraneged in a 60x80 grid.
  */
 module ascii_master_controller (
 
@@ -23,15 +23,14 @@ module ascii_master_controller (
 	output wire	vga_clk,
 	output wire	vga_hs,
 	output wire	vga_vs,
-	output wire	vga_sync,
+	output wire	vga_sync
 
 	// ---------- DEBUG ---------- //
-	input [9:0]SW,
-	input [3:0]KEY,
-	output [9:0]LEDR
+	//input [9:0]SW,
+	//input [3:0]KEY,
+	//output [9:0]LEDR
 	// ---------- END DEBUG ---------- //
 );
-
 
 
 // ---------- CODE ---------- //
@@ -54,12 +53,12 @@ vga_controller controller(
 	.vga_clk(vga_clk),
 	.vga_hs(vga_hs),
 	.vga_vs(vga_vs),
-	.vga_sync(vga_sync),
+	.vga_sync(vga_sync)
 	
 	/* ---------- DEBUG ---------- */
-	.SW(SW[9:0]),
-	.KEY(KEY[3:0]),
-	.LEDR(LEDR[9:0])
+	//.SW(SW[9:0]),
+	//.KEY(KEY[3:0]),
+	//.LEDR(LEDR[9:0])
 	/* ---------- END DEBUG ---------- */
 );
 

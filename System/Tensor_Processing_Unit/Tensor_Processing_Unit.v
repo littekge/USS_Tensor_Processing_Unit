@@ -125,6 +125,9 @@ SPI_Interface SPI_int(
 */
 
 // ---------- DEBUG ---------- //
+
+//code to manually clock device
+
 /*
 //code to test ASCII drivers
 ascii_master_controller controller (
@@ -152,5 +155,32 @@ ascii_master_controller controller (
 	// ---------- END DEBUG ---------- //
 );
 */
+
+//code to test debug module
+debug debug1 (
+	.i_clk(clk),
+	.i_rst(rst),
+	
+	.i_data(32'h0ABC0329), //signed integer to write to the screen
+	.i_write_next(~KEY[1]), //pulse high for one clock cycle to write the integer in i_data
+	.o_write_ready(), //high if the module is ready for the next integer
+	
+	//VGA signal passthrough
+	.vga_blank(VGA_BLANK_N),
+	.vga_b(VGA_B),
+	.vga_r(VGA_R),
+	.vga_g(VGA_G),
+	.vga_clk(VGA_CLK),
+	.vga_hs(VGA_HS),
+	.vga_vs(VGA_VS),
+	.vga_sync(VGA_SYNC_N),
+
+	// ---------- DEBUG ---------- //
+	.SW(SW[9:0]),
+	.KEY(KEY[3:0]),
+	.LEDR(LEDR[9:0])
+	// ---------- END DEBUG ---------- //
+);
+
 // ---------- END DEBUG ---------- //
 endmodule

@@ -4,6 +4,7 @@
  * Date: 5/19/2026
  * 
  * This module is a VGA Driver designed to output display to a monitor. 
+ * Resolution is 640x480
  */
 module vga_driver (
 	
