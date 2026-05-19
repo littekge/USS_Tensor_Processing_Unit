@@ -1,3 +1,12 @@
+/* 
+ * File: Tensor_Processing_Unit.v
+ * Author: Gabe Litteken 
+ * Date: 5/19/2026
+ * 
+ * This is the top level module for this project. It is designed to implement
+ * a tensor processing unit based on Google's design and interface it with
+ * relevant peripherals.
+ */
 module Tensor_Processing_Unit (
 	//////////// ADC //////////
 	// output		          		ADC_CONVST,
@@ -78,10 +87,10 @@ module Tensor_Processing_Unit (
 	output		          		VGA_HS,
 	output		     [7:0]		VGA_R,
 	output		          		VGA_SYNC_N,
-	output		          		VGA_VS
+	output		          		VGA_VS,
 
 	//////////// GPIO_0, GPIO_0 connect to GPIO Default //////////
-	inout 		    [35:0]		GPIO_0,
+	inout 		    [35:0]		GPIO_0
 
 	//////////// GPIO_1, GPIO_1 connect to GPIO Default //////////
 	// inout 		    [35:0]		GPIO_1
@@ -92,6 +101,8 @@ wire clk, rst;
 assign clk = CLOCK_50;
 assign rst = KEY[0];
 
+
+/*
 SPI_Interface SPI_int(
 	//clock and reset
    .clk(clk),
@@ -111,7 +122,35 @@ SPI_Interface SPI_int(
 	i_SPI_MOSI(),
 	i_SPI_SS()
 );
+*/
 
+// ---------- DEBUG ---------- //
+/*
+//code to test ASCII drivers
+ascii_master_controller controller (
 
+	.clk(clk),
+	.rst(rst),
+	
+	.ascii_write_en(1'b1), //enables writing
+	.ascii_input(32'h37FFFFFF), //test character is a white 7
+	.ascii_write_address(13'd20), //test address is 20
+	
+	.vga_blank(VGA_BLANK_N),
+	.vga_b(VGA_B),
+	.vga_r(VGA_R),
+	.vga_g(VGA_G),
+	.vga_clk(VGA_CLK),
+	.vga_hs(VGA_HS),
+	.vga_vs(VGA_VS),
+	.vga_sync(VGA_SYNC_N),
 
+	// ---------- DEBUG ---------- //
+	.SW(SW[9:0]),
+	.KEY(KEY[3:0]),
+	.LEDR(LEDR[9:0])
+	// ---------- END DEBUG ---------- //
+);
+*/
+// ---------- END DEBUG ---------- //
 endmodule

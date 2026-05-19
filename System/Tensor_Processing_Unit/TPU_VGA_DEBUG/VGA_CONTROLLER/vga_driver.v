@@ -1,14 +1,27 @@
+/* 
+ * File: vga_driver.v
+ * Author: Gabe Litteken
+ * Date: 5/19/2026
+ * 
+ * This module is a VGA Driver designed to output display to a monitor. 
+ */
 module vga_driver (
-	input [7:0]r,
+	
+	input clk_25, //VGA clock input
+	input rst, //reset signal
+	
+	//color values
+	input [7:0]r, 
 	input [7:0]g,
 	input [7:0]b,
-	input clk_25,
-	input rst,
 	
+	//coordinates
 	output wire [9:0]x,
 	output wire [9:0]y,
-	output reg disp_done,
 	
+	output reg disp_done, //high when a full frame has been displayed
+	
+	//VGA signals
 	output wire vga_blank,
 	output wire [7:0]vga_b,
 	output wire [7:0]vga_g,
@@ -18,30 +31,17 @@ module vga_driver (
 	output reg vga_vs,
 	output wire vga_sync_n,
 	
-	/*-----------------DEBUG-----------------*/
+	// ---------- DEBUG ---------- //
 	input [9:0]SW,
 	input [3:0]KEY,
 	input [9:0]LEDR
+	// ---------- END DEBUG ---------- //
 	
 );
 
-/*-----------------DECLARATIONS AND ASSIGNMENTS-----------------*/
 
-reg [1:0]vs, hs;
-reg [1:0]hns, vns;
-reg [9:0]hcount, vcount;
-reg hblank, vblank;
 
-assign vga_r = r;
-assign vga_b = b;
-assign vga_g = g;
-assign vga_blank = hblank & vblank;
-assign vga_sync_n = 1'b1;
-assign vga_clk = clk_25;
-
-assign x = (hblank == 1'd1)?(hcount):(10'd0);
-assign y = (vblank == 1'd1)?(vcount):(10'd0);
-
+// ---------- PARAMETERS ---------- //
 parameter 
 			HDISP = 2'd0,
 			HFRONT = 2'd1,
@@ -64,33 +64,28 @@ parameter
 			VFRONT_TIME = 10'd9,
 			VSYNC_TIME = 10'd1,
 			VBACK_TIME = 10'd32;
+// ---------- END PARAMETERS ---------- //
 
 
-	
-/*-----------------DEBUG-----------------*/
 
-/*		
-parameter
-			HDISP_TIME = 10'd5,
-			HFRONT_TIME = 10'd5,
-			HSYNC_TIME = 10'd5,
-			HBACK_TIME = 10'd5,
-			
-			VDISP_TIME = 10'd5,  
-			VFRONT_TIME = 10'd5,
-			VSYNC_TIME = 10'd5,
-			VBACK_TIME = 10'd5;
-*/	
-/*
-reg [9:0]X_OFFSET;
+// ---------- CODE ---------- //
+//Assignments
+reg [1:0]vs, hs;
+reg [1:0]hns, vns;
+reg [9:0]hcount, vcount;
+reg hblank, vblank;
 
-always @ (*)
-begin
-	X_OFFSET[2:0] = SW[2:0];
-end
-*/
-/*-----------------CODE-----------------*/
-			
+assign vga_r = r;
+assign vga_b = b;
+assign vga_g = g;
+assign vga_blank = hblank & vblank;
+assign vga_sync_n = 1'b1;
+assign vga_clk = clk_25;
+
+assign x = (hblank == 1'd1)?(hcount):(10'd0);
+assign y = (vblank == 1'd1)?(vcount):(10'd0);
+
+//State machine			
 always @ (posedge clk_25 or negedge rst)
 begin
 	if (rst == 1'b0)
@@ -266,4 +261,30 @@ begin
 		endcase
 	end
 end
+// ---------- END CODE ---------- //
+
+
+
+// ---------- DEBUG ---------- //
+/*		
+parameter
+			HDISP_TIME = 10'd5,
+			HFRONT_TIME = 10'd5,
+			HSYNC_TIME = 10'd5,
+			HBACK_TIME = 10'd5,
+			
+			VDISP_TIME = 10'd5,  
+			VFRONT_TIME = 10'd5,
+			VSYNC_TIME = 10'd5,
+			VBACK_TIME = 10'd5;
+*/	
+/*
+reg [9:0]X_OFFSET;
+
+always @ (*)
+begin
+	X_OFFSET[2:0] = SW[2:0];
+end
+*/
+// ---------- END DEBUG ---------- //
 endmodule
