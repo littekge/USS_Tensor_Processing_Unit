@@ -127,6 +127,9 @@ SPI_Interface SPI_int(
 // ---------- DEBUG ---------- //
 
 //code to test SPI connection
+wire readrq, sclear;
+assign readrq = ~KEY[3];
+assign sclear= ~KEY[2];
 
 SPI_Interface SPI_int(
 	//clock and reset
@@ -134,7 +137,7 @@ SPI_Interface SPI_int(
    .rst(rst),
 	
 	//buffer interfacing signals
-	.i_rdreq(),
+	.i_rdreq(readrq),
 	.i_sclr(),
 	.o_empty(),
 	.o_full(),
