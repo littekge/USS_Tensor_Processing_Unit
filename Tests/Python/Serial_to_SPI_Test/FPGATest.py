@@ -12,10 +12,10 @@ timeout = 1
 time.sleep(3)
 ser.reset_input_buffer()
 
-for k in range(10):
-    for i in range(99):
-        ser.write(bytes([i]))
-    time.sleep(0.2)
+# for k in range(10):
+for i in range(99):
+    ser.write(bytes([i]))
+time.sleep(0.2)
     
     
 
