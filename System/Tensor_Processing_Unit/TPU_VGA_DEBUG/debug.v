@@ -24,13 +24,13 @@ module debug (
 	output wire	vga_clk,
 	output wire	vga_hs,
 	output wire	vga_vs,
-	output wire	vga_sync,
+	output wire	vga_sync
 
 	
 	// ---------- DEBUG ---------- //
-	input [9:0]SW,
-	input [3:0]KEY,
-	output [9:0]LEDR
+	//input [9:0]SW,
+	//input [3:0]KEY,
+	//output [9:0]LEDR
 	// ---------- END DEBUG ---------- //
 );
 
@@ -40,7 +40,7 @@ parameter
 	ERROR = 3'd0,
 	START = 3'd1,
 	WAIT_WREN = 3'd2,
-	CHECK = 3'd3,
+	COL_CHECK = 3'd3,
 	WRITE = 3'd4,
 	COL_INC = 3'd5,
 	ROW_INC = 3'd6;
@@ -49,7 +49,7 @@ parameter
 
 // ---------- CODE ---------- //
 reg [3:0] col_num; //column number
-reg [4:0] row_num; //row number
+reg [7:0] row_num; //row number
 
 reg [31:0] data; //register to store input data
 
@@ -74,10 +74,10 @@ always @ (*)
 begin
 	case (S)
 		START: NS = WAIT_WREN;
-		WAIT_WREN: NS = (i_write_next == 1'b1)?(CHECK):(WAIT_WREN); 
-		CHECK: NS = (col_num < 4'd9)?(WRITE):(ROW_INC);
+		WAIT_WREN: NS = (i_write_next == 1'b1)?(COL_CHECK):(WAIT_WREN);  //idles in WAIT_WREN until write next signal is recieved
+		COL_CHECK: NS = (col_num < 4'd9)?(WRITE):(ROW_INC); //operates a for loop 
 		WRITE: NS = COL_INC;
-		COL_INC: NS = CHECK;
+		COL_INC: NS = COL_CHECK;
 		ROW_INC: NS = WAIT_WREN;
 		default: NS = ERROR;
 	endcase
@@ -88,34 +88,38 @@ always @ (posedge i_clk or negedge i_rst)
 begin
 	if (i_rst == 1'b0)
 	begin
-		row_num <= 5'd0;
+		//zeroing registers on reset
+		row_num <= 8'd0;
 		col_num <= 4'd0;
+		ascii_wren <= 1'd0;
+		o_write_ready <= 1'd0;
+		data <= 32'd0;
 	end
 	else
 	begin
 		case (S)
 			WAIT_WREN:
 			begin
-				col_num <= 4'b0; //reset row number
-				o_write_ready <= 1'b1; //indicate next number is ready
-				data <= i_data;
+				o_write_ready <= 1'b1; //indicates waiting for next input
+				data <= i_data;  //save current data (avoids strange behavior if input is changed asynchronously)
 			end
-			CHECK:
+			COL_CHECK:
 			begin
-				o_write_ready <= 1'b0;
+				o_write_ready <= 1'b0; //indicates operation
+				col_num <= (NS == ROW_INC)?(4'd0):(col_num); //resetting column number when exiting for loop
 			end
 			WRITE:
 			begin
-				ascii_wren <= 1'b1;
+				ascii_wren <= 1'b1; //write to ASCII memory
 			end
 			COL_INC:
 			begin
 				ascii_wren <= 1'b0;
-				col_num <= col_num + 4'd1;
+				col_num <= col_num + 4'd1; //increment column number
 			end
 			ROW_INC:
 			begin
-				row_num <= row_num + 5'd1;
+				row_num <= row_num + 8'd1; //increment row number
 			end
 			default:; //do nothing
 		endcase
@@ -127,7 +131,7 @@ wire is_negative;
 wire [31:0]two_comp;
 wire [3:0]current_char_val;
 
-assign ascii_addr = (13'd80 * row_num) + col_num + 13'd2; //decode address
+assign ascii_addr = (13'd80 * (row_num % 8'd60)) + col_num + ((row_num / 60) * 8'd10); //decode address
 assign is_negative = data[31]; //check sign
 assign two_comp = (is_negative == 1'b1)?((~data) + 1'b1):data; //convert from two's complement
 assign current_char_val = two_comp >> 4*(4'd8-col_num);//find value of current character from two's comp and column number
@@ -201,8 +205,10 @@ ascii_master_controller controller (
 
 
 // ---------- DEBUG ---------- //
+/*
 assign LEDR[2:0] = S;
 assign LEDR[9:6] = col_num;
+*/
 // ---------- END DEBUG ---------- //
 
 endmodule

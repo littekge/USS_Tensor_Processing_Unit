@@ -20,12 +20,12 @@ module SPI_Interface(
 	
 	//SPI Signals
 	input i_SPI_Clk,
-	output o_SPI_MISO,
+	output wire o_SPI_MISO,
 	input i_SPI_MOSI,
 	input i_SPI_SS
 );
 
-SPI_Input_Buffer inbuf (
+SPI_Input_buffer inbuf (
 	.clock(clk),
 	.data(recieve_Byte),
 	.rdreq(i_rdreq),
@@ -41,7 +41,7 @@ SPI_Input_Buffer inbuf (
 wire recieve_DV;
 wire [7:0] recieve_Byte;
 
-SPI_Slave #(SPI_MODE = 0) slave1 (
+SPI_Slave #(.SPI_MODE(0)) slave1 (
 	.i_Rst_L(rst), //FPGA reset
 	.i_Clk(clk), //FPGA clock
 	

@@ -126,7 +126,27 @@ SPI_Interface SPI_int(
 
 // ---------- DEBUG ---------- //
 
-//code to manually clock device
+//code to test SPI connection
+
+SPI_Interface SPI_int(
+	//clock and reset
+   .clk(clk),
+   .rst(rst),
+	
+	//buffer interfacing signals
+	.i_rdreq(),
+	.i_sclr(),
+	.o_empty(),
+	.o_full(),
+	.o_q(),
+	.o_usedw(),
+	
+	//SPI Signals
+	.i_SPI_Clk(GPIO_0[7]),
+	.o_SPI_MISO(GPIO_0[5]),
+	.i_SPI_MOSI(GPIO_0[3]),
+	.i_SPI_SS(GPIO_0[1])
+);
 
 /*
 //code to test ASCII drivers
@@ -156,14 +176,68 @@ ascii_master_controller controller (
 );
 */
 
+
 //code to test debug module
+/*
+parameter
+	WAIT_READY = 2'd0,
+	WRITE_ON = 2'd1,
+	WRITE_OFF = 2'd2,
+	INC = 2'd3;
+
+reg [1:0]S, NS;
+reg [7:0]count;
+reg start_write;
+
+always @ (posedge clk or negedge rst)
+begin
+	if (rst == 1'b0)
+	begin
+		S <= WAIT_READY; //sets state to START if reset is triggered
+	end
+	else
+	begin
+		S <= NS; //otherwise set S to NS
+	end
+end
+
+always @ (*)
+begin
+	case (S)
+		WAIT_READY: NS = (write_ready)?(WRITE_ON):(WAIT_READY);
+		WRITE_ON: NS = WRITE_OFF;
+		WRITE_OFF: NS = INC;
+		INC: NS = WAIT_READY;
+	endcase
+end
+
+always @ (posedge clk or negedge rst)
+begin
+	if (rst == 1'b0)
+	begin
+		count <= 8'd0;
+		start_write <= 1'd0;
+	end
+	else
+	begin
+		case (S)
+			WRITE_ON: start_write <= 1'd1;
+			WRITE_OFF: start_write <= 1'd0; 
+			INC: count <= count + 8'd1;
+			default:;
+		endcase
+	end
+end
+
+wire write_ready;
+
 debug debug1 (
 	.i_clk(clk),
 	.i_rst(rst),
 	
-	.i_data(32'h0ABC0329), //signed integer to write to the screen
-	.i_write_next(~KEY[1]), //pulse high for one clock cycle to write the integer in i_data
-	.o_write_ready(), //high if the module is ready for the next integer
+	.i_data({24'd0, count}), //signed integer to write to the screen
+	.i_write_next(start_write), //pulse high for one clock cycle to write the integer in i_data
+	.o_write_ready(write_ready), //high if the module is ready for the next integer
 	
 	//VGA signal passthrough
 	.vga_blank(VGA_BLANK_N),
@@ -176,11 +250,14 @@ debug debug1 (
 	.vga_sync(VGA_SYNC_N),
 
 	// ---------- DEBUG ---------- //
-	.SW(SW[9:0]),
-	.KEY(KEY[3:0]),
-	.LEDR(LEDR[9:0])
+	//.SW(SW[9:0]),
+	//.KEY(KEY[3:0]),
+	//.LEDR(LEDR[9:0])
 	// ---------- END DEBUG ---------- //
 );
+*/
+
+
 
 // ---------- END DEBUG ---------- //
 endmodule

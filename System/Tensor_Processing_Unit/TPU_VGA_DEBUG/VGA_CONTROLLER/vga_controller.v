@@ -24,12 +24,12 @@ module vga_controller (
 	output wire	vga_clk,
 	output wire	vga_hs,
 	output wire	vga_vs,
-	output wire	vga_sync,
+	output wire	vga_sync
 	
 	// ---------- DEBUG ---------- //
-	input [9:0]SW,
-	input [3:0]KEY,
-	input [9:0]LEDR
+	//input [9:0]SW,
+	//input [3:0]KEY,
+	//input [9:0]LEDR
 	// ---------- END DEBUG ---------- //
 	
 );
@@ -76,13 +76,13 @@ vga_driver driver(
 	.vga_clk(vga_clk),
 	.vga_hs(vga_hs),
 	.vga_vs(vga_vs),
-	.vga_sync_n(vga_sync),
+	.vga_sync_n(vga_sync)
 	
 	
 	// ---------- DEBUG ---------- //
-	.SW(SW),
-	.KEY(KEY),
-	.LEDR(LEDR[9:0])
+	//.SW(SW),
+	//.KEY(KEY),
+	//.LEDR(LEDR[9:0])
 	// ---------- END DEBUG ---------- //
 );
 
