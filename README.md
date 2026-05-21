@@ -7,7 +7,7 @@ This is a general overview of the project folder hierarchy and a log of what par
 The system folder contains the entire TPU system, including data conversion, communication, and TPU hardware.
 ### Neural_Network
 The *Neural_Network* folder contains neural network models and outermost application code.
-- Digit Recognition N.N. in pytorch (pending)
+- Digit Recognition N.N. in pytorch (in progress)
 ### Synth_Flow
 The *Synth_Flow* folder contains code to translate a neural network into a data format usable by the TPU and subsequently load it onto an FPGA.
 #### Neural_Network_2_Serial
