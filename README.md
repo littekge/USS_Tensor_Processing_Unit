@@ -25,8 +25,8 @@ The *TPU_VGA_DEBUG* folder contains debug code that can output numbers to a moni
 - VGA controller (complete)
 #### TPU_SPI_INTERFACE
 The *TPU_SPI_INTERFACE* folder contains the SPI reciever and buffer that communicate with the Arduino.
-- SPI reciever module (in progress)
-- SPI recieve buffer (in progress)
+- SPI reciever module (complete)
+- SPI recieve buffer (complete)
 ## Tests
 The *Tests* folder contains code used to verify the functionality of communication links and other systems.
 
