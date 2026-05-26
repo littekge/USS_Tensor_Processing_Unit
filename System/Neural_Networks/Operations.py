@@ -13,6 +13,8 @@ class TRAINING_PARAMS:
     BATCH_SIZE: int = 4 # number of images processed before calculating loss and updating weights
     LEARNING_RATE: float = 0.001 # learning rate
     MOMENTUM: float = 0.9 # momentum
+    LOSS_FUNCTION: str = "MSE" # which loss function to use in training
+    CLASSIFICATION_MODE: str = "regression" # type of correctness classification to use in testing
 
 def Train(model, dataset, save_file_path, params):
     # assertions
@@ -20,9 +22,16 @@ def Train(model, dataset, save_file_path, params):
     assert 0 < params.SUBSET_SIZE <= len(dataset) # subset size must be less than or equal to dataset size
     assert 0 < params.BATCH_SIZE <= params.SUBSET_SIZE # batch size must be less than or equal to subset size
     # constants def
-    PRINT_INTERVAL = params.SUBSET_SIZE/params.BATCH_SIZE/10 # how often training data should be printed
+    PRINT_INTERVAL = max(1, int(params.SUBSET_SIZE/params.BATCH_SIZE/10)) # how often training data should be printed
 
-    criterion = nn.CrossEntropyLoss() # loss function
+    # different loss functions
+    match params.LOSS_FUNCTION:
+        case "MSE": criterion = nn.MSELoss()
+        case "CrossEntropy": criterion = nn.CrossEntropyLoss() 
+        case _: 
+            print("invalid loss_type, defaulting to MSELoss...")
+            criterion = nn.MSELoss()
+
     optimizer = optim.SGD(model.parameters(), params.LEARNING_RATE, params.MOMENTUM) # learning driver to adjust weights
 
     for epoch in range(params.NUM_EPOCHS):
@@ -54,31 +63,50 @@ def Train(model, dataset, save_file_path, params):
     torch.save(model.state_dict(), path)
     print("Model saved successfully!")
     
-def Run(model, dataset, load_file_path, BATCH_SIZE=4):
+
+
+# runs the neural network with relevant parameters
+def Run(model, dataset, load_file_path, params):
     # assertions
+    assert isinstance(params, TRAINING_PARAMS) # assert that params is correct type
     assert load_file_path.is_file() # assert that the weights file exists
-    assert 0 < BATCH_SIZE < len(dataset) # Batch size cannot be larger than dataset
+    assert 0 < params.BATCH_SIZE < len(dataset) # Batch size cannot be larger than dataset
 
     # constants def
-    PRINT_INTERVAL = len(dataset) / BATCH_SIZE / 10 # determining print interval
+    PRINT_INTERVAL = max(1, int(len(dataset) / params.BATCH_SIZE / 10)) # determining print interval
 
     model.load_state_dict(torch.load(load_file_path, weights_only=True)) # loading model
-    testLoader = torch.utils.data.DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2) # loading test dataset
+    testLoader = torch.utils.data.DataLoader(dataset, batch_size=params.BATCH_SIZE, shuffle=False, num_workers=2) # loading test dataset
     # calculating and printing the accuracy of the model
     correct = 0
     total = 0
+
     with torch.no_grad():
         for i, data in enumerate(testLoader, 0):
-            images, labels = data
-            outputs = model(images)
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-            if i % PRINT_INTERVAL == PRINT_INTERVAL-1:
-                print("[%d] correct: %d total: %d" % (i+1, correct, total))
-            
+            inputs, labels = data
+            outputs = model(inputs)
 
-    print('\nAccuracy of the network on the 10000 test images: %d %%' % (
+            match params.CLASSIFICATION_MODE:
+                case "classification":
+                    _, predicted = torch.max(outputs.data, 1)
+                    total += labels.size(0)
+                    correct += (predicted == labels).sum().item()
+
+                case "regression":
+                    tolerance = 0.1
+                    correct += (torch.abs(outputs - labels) < tolerance).sum().item()
+                    total += labels.numel()
+
+                case _:
+                    print("invalid classification mode, defaulting to regression...")
+                    tolerance = 0.1
+                    correct += (torch.abs(outputs - labels) < tolerance).sum().item()
+                    total += labels.numel()
+
+            if i % PRINT_INTERVAL == PRINT_INTERVAL - 1:
+                print("[%d] correct: %d total: %d" % (i + 1, correct, total))
+
+    print('\nAccuracy of the network: %d %%' % (
     100 * correct / total))
    
     # printing graph of function calls and model parameters

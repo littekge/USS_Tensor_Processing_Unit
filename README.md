@@ -8,12 +8,12 @@ The system folder contains the entire TPU system, including data conversion, com
 ### Neural_Network
 The *Neural_Network* folder contains neural network models (defined using PyTorch) and outermost application code.
 - Digit Recognition N.N. (LeNet-5) (complete)
-- Extremely small N.N. for initial benchmarks (TinyNN) (in progress)
+- Extremely small N.N. for initial benchmarks (TinyNN) (complete)
 ### Synth_Flow
 The *Synth_Flow* folder contains code to translate a neural network into a data format usable by the TPU and subsequently load it onto an FPGA.
 #### Neural_Network_2_Serial
 The *NeuralNetwork2Serial* folder contains a python translation that converts a neural network into serial data formatted for the FPGA. All of the data conversion is done here, and subsequent steps in the synth flow simply forward data using various communication protocoals.
-- Python conversion (pending)
+- Python conversion (in progress)
 #### Arduino_2_FPGA
 The *Arduino_2_FPGA* folder contains an Arduino program to forward data from the serial reciever on the arduino to the SPI output pins.
 - Serial Reciever on Arduino (complete)
