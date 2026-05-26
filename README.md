@@ -1,13 +1,14 @@
 # USS_Tensor_Processing_Unit
-Miami University Undergraduate Summer Scholars program, tensor processing unit research repository.
+This repository contains research on the sythesis flow and hardware code required to accelerate a pytorch neural network using an FPGA. This research is endorsed and funded by Miami University of Ohio and conducted under their Electrical and Computer Engineering department in the College of Engineering and Computing.
 
 # Folder Heirarchy and Project Log:
 This is a general overview of the project folder hierarchy and a log of what parts of the system have been implemented. Only relevant directories are included; further subdirectories are either self-explanatory or irrelevent to the overall function of the system. 
 ## System
 The system folder contains the entire TPU system, including data conversion, communication, and TPU hardware.
 ### Neural_Network
-The *Neural_Network* folder contains neural network models and outermost application code.
-- Digit Recognition N.N. in pytorch (in progress)
+The *Neural_Network* folder contains neural network models (defined using PyTorch) and outermost application code.
+- Digit Recognition N.N. (LeNet-5) (complete)
+- Extremely small N.N. for initial benchmarks (TinyNN) (in progress)
 ### Synth_Flow
 The *Synth_Flow* folder contains code to translate a neural network into a data format usable by the TPU and subsequently load it onto an FPGA.
 #### Neural_Network_2_Serial
