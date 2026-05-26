@@ -1,16 +1,13 @@
 import Operations
 
 # define other imports
-from Tiny_NN.Tiny_NN import Tiny_NN
-import torch
-from torch.utils.data import TensorDataset
 
 if __name__ == "__main__":
     # model parameters
     model_params = Operations.MODEL_PARAMS(
-        MODEL=Tiny_NN(),
-        MODEL_NAME="Tiny_NN",
-        RUN_NAME="Recent",
+        MODEL=NN_NAME(),
+        MODEL_NAME="NN_NAME",
+        RUN_NAME="RUN_NAME",
         TRAIN = True,
         RUN = True,
         EXPORT = True
@@ -19,26 +16,21 @@ if __name__ == "__main__":
     # training parameters
     training_params = Operations.TRAINING_PARAMS(
         SUBSET_SIZE=100,
-        NUM_EPOCHS=2, 
-        BATCH_SIZE=4, 
+        NUM_EPOCHS=2,
+        BATCH_SIZE=4,
         LOSS_FUNCTION="MSE",
         CLASSIFICATION_MODE="regression"
     )
 
     # ---------- DEFINED PER MODEL ----------
-    DATASET_SIZE = 1000 # define dataset size
-    # create basic training data
-    train_x = torch.randn(DATASET_SIZE, 1)
-    train_y = train_x.clone()
-    trainSet = TensorDataset(train_x, train_y)
+    # define training data
+    trainSet = 
 
-    # create basic test data
-    test_x = torch.randn(DATASET_SIZE, 1)
-    test_y = test_x.clone()
-    testSet = TensorDataset(test_x, test_y)
+    # define test data
+    testSet = 
 
-    # create sample input
-    exportSet = (torch.tensor([[0.5]], dtype=torch.float32),)
+    # define sample data for export
+    exportSet = 
     # ---------- END DEFINED PER MODEL ----------
 
     Operations.Start(

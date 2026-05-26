@@ -4,7 +4,15 @@ import torch.optim as optim
 from torch.utils.data import SubsetRandomSampler as sample
 from pathlib import Path
 from dataclasses import dataclass
-from torch.fx import symbolic_trace
+
+@dataclass
+class MODEL_PARAMS:
+    MODEL: torch.nn.Module
+    MODEL_NAME: str
+    RUN_NAME: str
+    TRAIN: bool = False
+    RUN: bool = True
+    EXPORT: bool = False
 
 @dataclass
 class TRAINING_PARAMS:
@@ -15,6 +23,25 @@ class TRAINING_PARAMS:
     MOMENTUM: float = 0.9 # momentum
     LOSS_FUNCTION: str = "MSE" # which loss function to use in training
     CLASSIFICATION_MODE: str = "regression" # type of correctness classification to use in testing
+
+def Start(model_params, training_params, trainSet=None, testSet=None, exportSet=None):
+    # assertions
+    assert isinstance(model_params, MODEL_PARAMS) # asserts that model_params is correct type
+    if model_params.TRAIN: assert trainSet != None # assert that trainSet exists if training
+    if model_params.RUN: assert testSet != None # assert that testSet exisits if running
+    if model_params.EXPORT: assert exportSet != None # assert that exportSet exisits if exporting
+
+    # determining path variables
+    CURRENT_DIR = Path(__file__).parent # determining file path
+    SAVE_PATH = CURRENT_DIR / model_params.MODEL_NAME / str(model_params.MODEL_NAME + "_" + model_params.RUN_NAME + ".pth") # setting save path
+    LOAD_PATH = SAVE_PATH # setting load path
+    EXPORT_PATH = CURRENT_DIR / model_params.MODEL_NAME / str(model_params.MODEL_NAME + "_" + model_params.RUN_NAME + ".pt2") # setting export path
+
+    if model_params.TRAIN: Train(model=model_params.MODEL, dataset=trainSet, save_file_path=SAVE_PATH, params=training_params)
+    if model_params.EXPORT: Save(model=model_params.MODEL, sample_input=exportSet, save_file_path=EXPORT_PATH)
+    if model_params.RUN: Run(model=model_params.MODEL, dataset=testSet, load_file_path=LOAD_PATH, params=training_params)
+    
+    
 
 def Train(model, dataset, save_file_path, params):
     # assertions
@@ -109,16 +136,9 @@ def Run(model, dataset, load_file_path, params):
     print('\nAccuracy of the network: %d %%' % (
     100 * correct / total))
    
-    # printing graph of function calls and model parameters
-    with torch.no_grad():
-        model.eval()
-        gm = symbolic_trace(model)
-        print("\n==== Graph ====")
-        gm.graph.print_tabular()
-
-        for layer in model.modules():
-            print(layer)
-
-        for name, param in model.named_parameters():
-            print(name, param)
+    
+def Save(model, sample_input, save_file_path):
+    exportedModel = torch.export.export(model, sample_input) # converted to ExportedProgram
+    torch.export.save(exportedModel, save_file_path) # save as pt2 archive
+    print("Model exported to .pt2 successfully!")
     

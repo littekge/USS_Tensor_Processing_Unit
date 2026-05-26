@@ -1,43 +1,35 @@
+import Operations
+
+# define other imports
 from LeNet_5.LeNet_5 import LeNet_5
+import torch
 import torchvision
 import torchvision.transforms as transforms
 from pathlib import Path
-import Operations
 
 if __name__ == "__main__":
-    # User options
-    NN_NAME = "LeNet_5"
-    SAVE_FILE_NAME = "LeNet_5_recent.pth"
-    TRAIN = True
-    RUN = True
-
-    # training parameters
-    params = Operations.TRAINING_PARAMS(
-        SUBSET_SIZE=1000, # size of the training subset for each epoch
-        NUM_EPOCHS=2, # number of epochs to train on
-        BATCH_SIZE=4, # number of images processed before calculating loss and updating weights 
-        LOSS_FUNCTION="CrossEntropy", # loss function for pattern recognition
-        CLASSIFICATION_MODE="classification" # classification mode
+    # model parameters
+    model_params = Operations.MODEL_PARAMS(
+        MODEL=LeNet_5(),
+        MODEL_NAME="LeNet_5",
+        RUN_NAME="Recent",
+        TRAIN = True,
+        RUN = True,
+        EXPORT = True
     )
 
-    # setting default save file name if unspecified
-    if SAVE_FILE_NAME == None:
-        SAVE_FILE_NAME = (
-            NN_NAME + "_" + 
-            str(params.SUBSET_SIZE) + "_" + 
-            str(params.NUM_EPOCHS) + "_" + 
-            str(params.BATCH_SIZE) + "_" + 
-            str(params.LEARNING_RATE) + "_" + 
-            str(params.MOMENTUM) + "_" +
-            str(params.LOSS_FUNCTION) + ".pth" 
-        )
-    
-    # determining path variables
-    CURRENT_DIR = Path(__file__).parent # determining file path
-    DATA_PATH = CURRENT_DIR / NN_NAME / "dataset.e" # setting path
-    SAVE_PATH = CURRENT_DIR / NN_NAME / SAVE_FILE_NAME
+    # training parameters
+    training_params = Operations.TRAINING_PARAMS(
+        SUBSET_SIZE=1000, 
+        NUM_EPOCHS=2, 
+        BATCH_SIZE=4, 
+        LOSS_FUNCTION="CrossEntropy", 
+        CLASSIFICATION_MODE="classification" 
+    )
 
     # ---------- DEFINED PER MODEL ----------
+    CURRENT_DIR = Path(__file__).parent # determining file path
+    DATA_PATH = CURRENT_DIR / model_params.MODEL_NAME / "dataset.e" # setting dataset path
     # converts images to normalized tensors
     transform = transforms.Compose([
         transforms.ToTensor(),
@@ -45,11 +37,15 @@ if __name__ == "__main__":
     ])
     trainSet = torchvision.datasets.MNIST(root=DATA_PATH, train=True, download=True, transform=transform) # defining training dataset
     testSet = torchvision.datasets.MNIST(root=DATA_PATH, train=False, download=True, transform=transform) # defining test dataset
-    net = LeNet_5()
+    exportSet = (torch.randn(1, 1, 28, 28),)
     # ---------- END DEFINED PER MODEL ----------
-
-    if TRAIN: Operations.Train(model=net, dataset=trainSet, save_file_path=SAVE_PATH, params=params)
-    if RUN: Operations.Run(model=net, dataset=testSet, load_file_path=SAVE_PATH, params=params)
-        
+    
+    Operations.Start(
+        model_params=model_params,
+        training_params=training_params,
+        testSet=testSet,
+        trainSet=trainSet,
+        exportSet=exportSet
+    )
 
     
