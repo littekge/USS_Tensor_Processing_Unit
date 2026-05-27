@@ -13,8 +13,8 @@ if __name__ == "__main__":
         MODEL=LeNet_5(),
         MODEL_NAME="LeNet_5",
         RUN_NAME="Recent",
-        TRAIN = True,
-        RUN = True,
+        TRAIN = False,
+        RUN = False,
         EXPORT = True
     )
 

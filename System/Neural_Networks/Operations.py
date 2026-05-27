@@ -136,9 +136,10 @@ def Run(model, dataset, load_file_path, params):
     print('\nAccuracy of the network: %d %%' % (
     100 * correct / total))
    
-    
 def Save(model, sample_input, save_file_path):
     exportedModel = torch.export.export(model, sample_input) # converted to ExportedProgram
     torch.export.save(exportedModel, save_file_path) # save as pt2 archive
     print("Model exported to .pt2 successfully!")
+    
+
     
