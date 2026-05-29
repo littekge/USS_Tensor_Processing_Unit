@@ -4,6 +4,7 @@ import torch.optim as optim
 from torch.utils.data import SubsetRandomSampler as sample
 from pathlib import Path
 from dataclasses import dataclass
+import torchax.export as export
 
 @dataclass
 class MODEL_PARAMS:
@@ -36,13 +37,11 @@ def Start(model_params, training_params, trainSet=None, testSet=None, exportSet=
 
     # determining path variables
     CURRENT_DIR = Path(__file__).parent # determining file path
-    SAVE_PATH = CURRENT_DIR / model_params.MODEL_NAME / str(model_params.MODEL_NAME + "_" + model_params.RUN_NAME + ".pth") # setting save path
-    LOAD_PATH = SAVE_PATH # setting load path
-    EXPORT_PATH = CURRENT_DIR / model_params.MODEL_NAME / str(model_params.MODEL_NAME + "_" + model_params.RUN_NAME + ".pt2") # setting export path
+    PATH = CURRENT_DIR / model_params.MODEL_NAME / str(model_params.MODEL_NAME + "_" + model_params.RUN_NAME) # setting save path
 
-    if model_params.TRAIN: Train(model=model_params.MODEL, dataset=trainSet, save_file_path=SAVE_PATH, params=training_params)
-    if model_params.EXPORT: Save(model=model_params.MODEL, sample_input=exportSet, save_file_path=EXPORT_PATH)
-    if model_params.RUN: Run(model=model_params.MODEL, dataset=testSet, load_file_path=LOAD_PATH, params=training_params)
+    if model_params.TRAIN: Train(model=model_params.MODEL, dataset=trainSet, save_file_path=PATH, params=training_params)
+    if model_params.EXPORT: Save(model=model_params.MODEL, sample_input=exportSet, save_file_path=PATH)
+    if model_params.RUN: Run(model=model_params.MODEL, dataset=testSet, load_file_path=PATH, params=training_params)
     
     
 
@@ -89,15 +88,14 @@ def Train(model, dataset, save_file_path, params):
     print('Finished Training')
 
     # saving data
-    currentDir = Path(__file__).parent # determining file path
-    path = currentDir / save_file_path # determining save path
-    torch.save(model.state_dict(), path)
+    torch.save(model.state_dict(), Path(str(save_file_path) + ".pth"))
     print("Model saved successfully!")
     
 
 
 # runs the neural network with relevant parameters
 def Run(model, dataset, load_file_path, params):
+    load_file_path = Path(str(load_file_path) + ".pth")
     # assertions
     assert isinstance(params, TRAINING_PARAMS) # assert that params is correct type
     assert load_file_path.is_file() # assert that the weights file exists
@@ -142,8 +140,11 @@ def Run(model, dataset, load_file_path, params):
    
 def Save(model, sample_input, save_file_path):
     exportedModel = torch.export.export(model, sample_input) # converted to ExportedProgram
-    torch.export.save(exportedModel, save_file_path) # save as pt2 archive
+    torch.export.save(exportedModel, Path(str(save_file_path) + ".pt2")) # save as pt2 archive
     print("Model exported to .pt2 successfully!")
-    
+    weights, stablehlo = export.exported_program_to_stablehlo(exportedModel)
+    with open(Path(str(save_file_path) + ".mlir"), "w") as out:
+        out.write(stablehlo.mlir_module())
+    print("Model exported to .mlir successfully!")
 
     

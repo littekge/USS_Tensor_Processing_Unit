@@ -69,8 +69,8 @@ if __name__ == "__main__":
             model_params.MODEL = LeNet_5()
             trainSet, testSet, exportSet = Get_LeNet_5_Data()
             training_params = Operations.TRAINING_PARAMS(
-                SUBSET_SIZE=1000, 
-                NUM_EPOCHS=2, 
+                SUBSET_SIZE=5000, 
+                NUM_EPOCHS=5, 
                 BATCH_SIZE=4, 
                 LOSS_FUNCTION="CrossEntropy", 
                 CLASSIFICATION_MODE="classification" 
@@ -79,8 +79,8 @@ if __name__ == "__main__":
             model_params.MODEL = Tiny_NN()
             trainSet, testSet, exportSet = Get_Tiny_NN_Data()
             training_params = Operations.TRAINING_PARAMS(
-                SUBSET_SIZE=100,
-                NUM_EPOCHS=2, 
+                SUBSET_SIZE=1000,
+                NUM_EPOCHS=5, 
                 BATCH_SIZE=4, 
                 LOSS_FUNCTION="MSE",
                 CLASSIFICATION_MODE="regression"
