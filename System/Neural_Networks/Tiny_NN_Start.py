@@ -11,8 +11,8 @@ if __name__ == "__main__":
         MODEL=Tiny_NN(),
         MODEL_NAME="Tiny_NN",
         RUN_NAME="Recent",
-        TRAIN = False,
-        RUN = False,
+        TRAIN = True,
+        RUN = True,
         EXPORT = True
     )
 
