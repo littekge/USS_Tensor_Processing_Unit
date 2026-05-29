@@ -1,0 +1,104 @@
+
+# Neural network imports
+from Tiny_NN.Tiny_NN import Tiny_NN
+from LeNet_5.LeNet_5 import LeNet_5
+
+# define other imports
+import Operations
+import torch
+from torch.utils.data import TensorDataset
+import torchvision
+import torchvision.transforms as transforms
+from pathlib import Path
+import argparse
+
+
+
+def Get_LeNet_5_Data():
+    # ---------- DEFINED PER MODEL ----------
+    CURRENT_DIR = Path(__file__).parent # determining file path
+    DATA_PATH = CURRENT_DIR / model_params.MODEL_NAME / "dataset.e" # setting dataset path
+    # converts images to normalized tensors
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.1307,), (0.3018,))
+    ])
+    trainSet = torchvision.datasets.MNIST(root=DATA_PATH, train=True, download=True, transform=transform) # defining training dataset
+    testSet = torchvision.datasets.MNIST(root=DATA_PATH, train=False, download=True, transform=transform) # defining test dataset
+    exportSet = (torch.randn(1, 1, 28, 28),)
+    return trainSet, testSet, exportSet
+
+
+def Get_Tiny_NN_Data():
+    DATASET_SIZE = 1000 # define dataset size
+    # create basic training data
+    train_x = torch.randn(DATASET_SIZE, 1)
+    train_y = train_x.clone()
+    trainSet = TensorDataset(train_x, train_y)
+
+    # create basic test data
+    test_x = torch.randn(DATASET_SIZE, 1)
+    test_y = test_x.clone()
+    testSet = TensorDataset(test_x, test_y)
+
+    # create sample input
+    exportSet = (torch.tensor([[0.5]], dtype=torch.float32),)
+    return trainSet, testSet, exportSet
+   
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("model_name")
+    parser.add_argument("run_name")
+    parser.add_argument("-t", "--train", action='store_true')
+    parser.add_argument("-e", "--export", action='store_true')
+    parser.add_argument("-r", "--run", action='store_true')
+    
+    args = parser.parse_args()
+
+    model_params = Operations.MODEL_PARAMS(
+        MODEL_NAME=args.model_name,
+        RUN_NAME=args.run_name,
+        TRAIN = args.train,
+        RUN = args.run,
+        EXPORT = args.export
+    )
+
+    match args.model_name:
+        case "LeNet_5":
+            model_params.MODEL = LeNet_5()
+            trainSet, testSet, exportSet = Get_LeNet_5_Data()
+            training_params = Operations.TRAINING_PARAMS(
+                SUBSET_SIZE=1000, 
+                NUM_EPOCHS=2, 
+                BATCH_SIZE=4, 
+                LOSS_FUNCTION="CrossEntropy", 
+                CLASSIFICATION_MODE="classification" 
+            )
+        case "Tiny_NN":
+            model_params.MODEL = Tiny_NN()
+            trainSet, testSet, exportSet = Get_Tiny_NN_Data()
+            training_params = Operations.TRAINING_PARAMS(
+                SUBSET_SIZE=100,
+                NUM_EPOCHS=2, 
+                BATCH_SIZE=4, 
+                LOSS_FUNCTION="MSE",
+                CLASSIFICATION_MODE="regression"
+            )
+        case _:
+            print("Invalid model name, exiting...")
+            quit()
+
+    Operations.Start(
+        model_params=model_params,
+        training_params=training_params,
+        testSet=testSet,
+        trainSet=trainSet,
+        exportSet=exportSet
+    )
+    
+    
+
+
+
+

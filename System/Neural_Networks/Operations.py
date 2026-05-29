@@ -7,16 +7,16 @@ from dataclasses import dataclass
 
 @dataclass
 class MODEL_PARAMS:
-    MODEL: torch.nn.Module
-    MODEL_NAME: str
-    RUN_NAME: str
+    MODEL: torch.nn.Module = None
+    MODEL_NAME: str = None
+    RUN_NAME: str = None
     TRAIN: bool = False
     RUN: bool = True
     EXPORT: bool = False
 
 @dataclass
 class TRAINING_PARAMS:
-    SUBSET_SIZE: int # size of the training subset for each epoch
+    SUBSET_SIZE: int = None # size of the training subset for each epoch
     NUM_EPOCHS: int = 10 # number of epochs to train on
     BATCH_SIZE: int = 4 # number of images processed before calculating loss and updating weights
     LEARNING_RATE: float = 0.001 # learning rate
@@ -27,6 +27,9 @@ class TRAINING_PARAMS:
 def Start(model_params, training_params, trainSet=None, testSet=None, exportSet=None):
     # assertions
     assert isinstance(model_params, MODEL_PARAMS) # asserts that model_params is correct type
+    assert model_params.MODEL != None
+    assert model_params.MODEL_NAME != None
+    assert model_params.RUN_NAME != None
     if model_params.TRAIN: assert trainSet != None # assert that trainSet exists if training
     if model_params.RUN: assert testSet != None # assert that testSet exisits if running
     if model_params.EXPORT: assert exportSet != None # assert that exportSet exisits if exporting
@@ -46,6 +49,7 @@ def Start(model_params, training_params, trainSet=None, testSet=None, exportSet=
 def Train(model, dataset, save_file_path, params):
     # assertions
     assert isinstance(params, TRAINING_PARAMS) # assert that params is correct type
+    assert params.SUBSET_SIZE != None
     assert 0 < params.SUBSET_SIZE <= len(dataset) # subset size must be less than or equal to dataset size
     assert 0 < params.BATCH_SIZE <= params.SUBSET_SIZE # batch size must be less than or equal to subset size
     # constants def
