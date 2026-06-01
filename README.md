@@ -5,15 +5,15 @@ This repository contains research on the sythesis flow and hardware code require
 This is a general overview of the project folder hierarchy and a log of what parts of the system have been implemented. Only relevant directories are included; further subdirectories are either self-explanatory or irrelevent to the overall function of the system. 
 ## System
 The system folder contains the entire TPU system, including data conversion, communication, and TPU hardware.
-### Neural_Network
-The *Neural_Network* folder contains neural network models (defined using PyTorch) and outermost application code.
+### Neural_Networks
+The *Neural_Networks* folder contains neural network models (defined using PyTorch) and outermost application code.
 - Digit Recognition N.N. (LeNet-5) (complete)
 - Extremely small N.N. for initial benchmarks (TinyNN) (complete)
 ### Synth_Flow
 The *Synth_Flow* folder contains code to translate a neural network into a data format usable by the TPU and subsequently load it onto an FPGA.
 #### Neural_Network_2_Serial
-The *NeuralNetwork2Serial* folder contains a python translation that converts a neural network into serial data formatted for the FPGA. All of the data conversion is done here, and subsequent steps in the synth flow simply forward data using various communication protocoals.
-- Python conversion (in progress)
+The *NeuralNetwork2Serial* folder contains an MLIR oipeline that converts a neural network into serial data formatted for the FPGA. All of the data conversion is done here, and additional steps in the synth flow simply forward data using various communication protocoals.
+- MLIR conversion (in progress)
 #### Arduino_2_FPGA
 The *Arduino_2_FPGA* folder contains an Arduino program to forward data from the serial reciever on the arduino to the SPI output pins.
 - Serial Reciever on Arduino (complete)
@@ -29,7 +29,7 @@ The *TPU_SPI_INTERFACE* folder contains the SPI reciever and buffer that communi
 - SPI reciever module (complete)
 - SPI recieve buffer (complete)
 ## Tests
-The *Tests* folder contains code used to verify the functionality of communication links and other systems.
+The *Tests* folder contains code used to verify the functionality of systems in the project.
 
 ## Current Possible Failure Points
 1. The resistor divider between the Arduino and FPGA used to rectify voltage levels between the two devices rounds off the corners of the SPI bus waveform. If issues begin to arise, a proper logic level converter may be needed.
