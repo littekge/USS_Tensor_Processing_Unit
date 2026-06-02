@@ -2,6 +2,7 @@
 # Neural network imports
 from Tiny_NN.Tiny_NN import Tiny_NN
 from LeNet_5.LeNet_5 import LeNet_5
+from Bigger_NN.Bigger_NN import Bigger_NN
 # define other imports
 import Operations
 import torch
@@ -13,7 +14,6 @@ import argparse
 
 
 def Get_LeNet_5_Data():
-    # ---------- DEFINED PER MODEL ----------
     CURRENT_DIR = Path(__file__).parent # determining file path
     DATA_PATH = CURRENT_DIR / model_params.MODEL_NAME / "dataset.e" # setting dataset path
     # converts images to normalized tensors
@@ -43,6 +43,22 @@ def Get_Tiny_NN_Data():
     exportSet = (torch.tensor([[0.5]], dtype=torch.float32),)
     return trainSet, testSet, exportSet
    
+def Get_Bigger_NN_Data():
+    DATASET_SIZE = 1000 # define dataset size
+    # create basic training data
+    train_x = torch.randn(DATASET_SIZE, 1)
+    train_y = train_x.clone()
+    trainSet = TensorDataset(train_x, train_y)
+
+    # create basic test data
+    test_x = torch.randn(DATASET_SIZE, 1)
+    test_y = test_x.clone()
+    testSet = TensorDataset(test_x, test_y)
+
+    # create sample input
+    exportSet = (torch.tensor([[0.5]], dtype=torch.float32),)
+    return trainSet, testSet, exportSet
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -76,6 +92,16 @@ if __name__ == "__main__":
         case "Tiny_NN":
             model_params.MODEL = Tiny_NN()
             trainSet, testSet, exportSet = Get_Tiny_NN_Data()
+            training_params = Operations.TRAINING_PARAMS(
+                SUBSET_SIZE=1000,
+                NUM_EPOCHS=5, 
+                BATCH_SIZE=4, 
+                LOSS_FUNCTION="MSE",
+                CLASSIFICATION_MODE="regression"
+            )
+        case "Bigger_NN":
+            model_params.MODEL = Bigger_NN()
+            trainSet, testSet, exportSet = Get_Bigger_NN_Data()
             training_params = Operations.TRAINING_PARAMS(
                 SUBSET_SIZE=1000,
                 NUM_EPOCHS=5, 
