@@ -2,7 +2,6 @@
 # Neural network imports
 from Tiny_NN.Tiny_NN import Tiny_NN
 from LeNet_5.LeNet_5 import LeNet_5
-
 # define other imports
 import Operations
 import torch
@@ -11,7 +10,6 @@ import torchvision
 import torchvision.transforms as transforms
 from pathlib import Path
 import argparse
-
 
 
 def Get_LeNet_5_Data():
