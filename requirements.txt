@@ -1,3 +1,5 @@
+--find-links https://github.com/openxla/stablehlo/releases/expanded_assets/dev-wheels
+
 cuda-bindings==13.3.0
 cuda-pathfinder==1.5.5
 cuda-toolkit==13.0.2
@@ -31,7 +33,7 @@ pillow==12.2.0
 pyserial==3.5
 scipy==1.17.1
 setuptools==81.0.0
-stablehlo==1.12.1.1751868740+6f7b4ab8
+stablehlo==1.12.1.1751868740+6f7b4ab8 ; python_version >= "3.10" and python_version < "3.13" and platform_system == "Linux" and platform_machine == "x86_64"
 sympy==1.14.0
 torch==2.12.0
 torchax==0.0.12
