@@ -1,6 +1,8 @@
+'''
 from mlir import ir
 from mlir.passmanager import PassManager
 from mlir.dialects import stablehlo
+'''
 import argparse
 from pathlib import Path
 import subprocess
@@ -28,7 +30,7 @@ if __name__ == "__main__":
     with ir.Context() as ctx, ir.Location.unknown():
         stablehlo.register_dialect(ctx)
         stablehlo.register_stablehlo_passes()
-
+        
         optim_text = OPTIM_PATH.read_text(encoding="utf-8")
         module = ir.Module.parse(optim_text)
         pm = PassManager.parse(
@@ -36,6 +38,7 @@ if __name__ == "__main__":
         "canonicalize"
         "))"
         )
+        
         pm.run(module.operation)
         CANON_PATH = CURRENT_DIR / "current.canon.mlir"
         with open(CANON_PATH, "w") as out:
@@ -52,4 +55,4 @@ if __name__ == "__main__":
         CANON_PATH = CURRENT_DIR / "current.cse.mlir"
         with open(CANON_PATH, "w") as out:
             out.write(str(module))
-            '''
+    '''

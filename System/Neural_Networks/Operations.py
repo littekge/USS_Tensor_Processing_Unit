@@ -2,9 +2,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import SubsetRandomSampler as sample
+import torchax.export as export
 from pathlib import Path
 from dataclasses import dataclass
-import torchax.export as export
+
 
 @dataclass
 class MODEL_PARAMS:
@@ -26,6 +27,20 @@ class TRAINING_PARAMS:
     CLASSIFICATION_MODE: str = "regression" # type of correctness classification to use in testing
 
 def Start(model_params, training_params, trainSet=None, testSet=None, exportSet=None):
+    # Set up warnings
+    import warnings
+    warnings.filterwarnings(
+        action='ignore',
+        category=DeprecationWarning,
+        module=r'.*'
+    )
+    warnings.filterwarnings(
+        action='ignore',
+        category=FutureWarning,
+        module=r'.*'
+    )
+    
+
     # assertions
     assert isinstance(model_params, MODEL_PARAMS) # asserts that model_params is correct type
     assert model_params.MODEL != None
@@ -139,6 +154,7 @@ def Run(model, dataset, load_file_path, params):
     100 * correct / total))
    
 def Save(model, sample_input, save_file_path):
+    model = model.eval()
     exportedModel = torch.export.export(model, sample_input) # converted to ExportedProgram
     torch.export.save(exportedModel, Path(str(save_file_path) + ".pt2")) # save as pt2 archive
     print("Model exported to .pt2 successfully!")

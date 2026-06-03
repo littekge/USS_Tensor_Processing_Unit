@@ -34,3 +34,4 @@ The *Tests* folder contains code used to verify the functionality of systems in 
 ## Current Possible Failure Points
 1. The resistor divider between the Arduino and FPGA used to rectify voltage levels between the two devices rounds off the corners of the SPI bus waveform. If issues begin to arise, a proper logic level converter may be needed.
 2. The SPI_Slave.v file I found on Github explicitly requires a timing constraint when crossing clock domains, but I do not currently have one. 
+3. The compilation pipeline a version of StableHLO that I built locally. Currently, this makes the compilation flow difficult to recreate on other machines.
