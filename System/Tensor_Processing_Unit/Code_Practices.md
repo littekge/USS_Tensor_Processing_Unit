@@ -1,5 +1,5 @@
-# Code Syntax for Verilog Files
-This is the commenting syntax and rules I follow for verilog files and development.
+# Coding Practices for Verilog Files
+This is the commenting syntax and coding practices for verilog files and development.
 
 ## Modules
 1. Each .v file must declare and fully contain only a single module.
