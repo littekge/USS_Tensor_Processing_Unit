@@ -15,15 +15,17 @@
 The Functional TPU is a tensor processing unit roughly based on Google's first generation TPU. This project aims to create Verilog HDL code that implements the instruction set detailed in `Functional_TPU_ISA_v0.1.md` in order to accelerate small neural networks.
 
 **Design Goals:**
-- Systolic Array for matrix multiplication.
+- Output-stationary systolic array for matrix multiplication.
 - Storage of tensors as flattened arrays.
-- Tensor flattening and unflattening module.
+- Vector processor to handle loading and storing of tensors.
 - Seperate memories for program instructions, weights/biases, and temporary data.
 - Dynamic programming of TPU through SPI link.
 
 ## Current State (v0.1 - What's Working)
-- **SPI Link:** `TPU_SPI_INTERFACE/SPI_Slave.v` and `TPU_SPI_INTERFACE/SPI_INPUT_BUFFER/SPI_Input_buffer.v` are correctly wired together by `TPU_SPI_INTERFACE/SPI_Interface.v` which is currently the top level module for the `TPU_SPI_INTERFACE/` subdirectory. The SPI input buffer has been verified to properly recieve and store data from the SPI slave module.
-- **VGA Debugging:** `TPU_VGA_DEBUG/Debug.v` can be successfully used to display 32 bit integers as hexidecimal values on a monitor connected to the FPGA via it's VGA port.
+- **SPI Link:** `TPU/PROGRAMMER/TPU_SPI_LINK/SPI_Slave.v` and `TPU/PROGRAMMER/TPU_SPI_LINK/SPI_INPUT_BUFFER/SPI_Input_buffer.v` are correctly wired together by `TPU/PROGRAMMER/TPU_SPI_LINK/SPI_Interface.v` which is currently the top level module for the `TPU/PROGRAMMER/TPU_SPI_LINK/` subdirectory. The SPI input buffer has been verified to properly recieve and store data from the SPI slave module.
+- **VGA Debugging:** `TPU/TPU_VGA_DEBUG/debug.v` can be successfully used to display 32 bit integers as hexidecimal values on a monitor connected to the FPGA via it's VGA port.
 
 ## Architecture
 
+
+## Build Plan

@@ -8,10 +8,10 @@ This section describes memory expectations of the *Functional TPU instruction se
 The ISA expects tensors to be formatteed in memory as a contiguous flattened array, with the address of the first element being used to dereference the entire tensor. For example, if a tensor is stored at memory address 0x2 with dimensions 2x2, the next unused address will be at 0x2 + 4 = 0x6. All matrix operands referenced by memory addresses are logically interpreted by the ISA as Row-Major arrays. Tensors of an order greater than 2 are not supported.
 
 ### Reserved Addresses
-The ISA defines a number of reserved memory addresses that serve special functions. Descriptions of reserved addresses and their functionality are shown below.
+The ISA defines a number of reserved memory addresses that serve special functions. Regardless of memory structure, reserved addresses are still treated as valid locations in the main address space. Descriptions of reserved addresses and their functionality are shown below.
 
 **Address 0x0:**
-Address 0x0 acts as a register with all bits hardwired to 0.
+Address 0x0 acts as a register with all bits hardwired to 0. 0x0 may only be used as a source address; attempting to store data at 0x0 will raise an error, discarding the data in the process.
 
 **Address 0x1:**
 The ISA defines address 0x1 as a unique, architecturally isolated memory designation used to store temporary data. Any tensor in a format expectd by the ISA may be stored at address 0x1. The symbol 0x1 may be targeted as a destination or source address by any vector or matrix memory instruction. Any write or store operation targeting 0x1 inherently invalidates and completely overwrites all elements previously residing within it. The ISA does not currently support partial overwrites.
