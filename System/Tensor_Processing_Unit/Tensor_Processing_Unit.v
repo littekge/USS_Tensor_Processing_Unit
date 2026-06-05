@@ -102,30 +102,10 @@ assign clk = CLOCK_50;
 assign rst = KEY[0];
 
 
-/*
-SPI_Interface SPI_int(
-	//clock and reset
-   .clk(clk),
-   .rst(rst),
-	
-	//buffer interfacing signals
-	i_rdreq(),
-	i_sclr(),
-	o_empty(),
-	o_full(),
-	o_q(),
-	o_usedw(),
-	
-	//SPI Signals
-	i_SPI_Clk(),
-	o_SPI_MISO(),
-	i_SPI_MOSI(),
-	i_SPI_SS()
-);
-*/
+
 
 // ---------- DEBUG ---------- //
-
+/*
 //code to test SPI connection
 wire readrq, sclear;
 assign readrq = ~KEY[3];
@@ -150,6 +130,7 @@ SPI_Interface SPI_int(
 	.i_SPI_MOSI(GPIO_0[3]),
 	.i_SPI_SS(GPIO_0[1])
 );
+*/
 
 /*
 //code to test ASCII drivers
