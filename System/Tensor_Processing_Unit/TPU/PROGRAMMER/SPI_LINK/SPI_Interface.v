@@ -12,7 +12,6 @@ module SPI_Interface(
 	
 	//buffer interfacing signals
 	input i_rdreq,
-	input i_sclr,
 	output o_empty,
 	output o_full,
 	output [7:0] o_q,
@@ -29,12 +28,11 @@ SPI_Input_buffer inbuf (
 	.clock(clk),
 	.data(recieve_Byte),
 	.rdreq(i_rdreq),
-	.sclr(i_sclr),
+	.sclr(~rst),
 	.wrreq(recieve_DV),
 	.empty(o_empty),
 	.full(o_full),
 	.q(o_q),
-	.usedw(o_usedw)
 );
 
 //interfacing wires

@@ -45,8 +45,7 @@ module SPI_Input_buffer (
 	wrreq,
 	empty,
 	full,
-	q,
-	usedw);
+	q);
 
 	input	  clock;
 	input	[7:0]  data;
@@ -56,16 +55,13 @@ module SPI_Input_buffer (
 	output	  empty;
 	output	  full;
 	output	[7:0]  q;
-	output	[7:0]  usedw;
 
 	wire  sub_wire0;
 	wire  sub_wire1;
 	wire [7:0] sub_wire2;
-	wire [7:0] sub_wire3;
 	wire  empty = sub_wire0;
 	wire  full = sub_wire1;
 	wire [7:0] q = sub_wire2[7:0];
-	wire [7:0] usedw = sub_wire3[7:0];
 
 	scfifo	scfifo_component (
 				.clock (clock),
@@ -76,11 +72,11 @@ module SPI_Input_buffer (
 				.empty (sub_wire0),
 				.full (sub_wire1),
 				.q (sub_wire2),
-				.usedw (sub_wire3),
 				.aclr (),
 				.almost_empty (),
 				.almost_full (),
-				.eccstatus ());
+				.eccstatus (),
+				.usedw ());
 	defparam
 		scfifo_component.add_ram_output_register = "ON",
 		scfifo_component.intended_device_family = "Cyclone V",
@@ -117,7 +113,7 @@ endmodule
 // Retrieval info: PRIVATE: RAM_BLOCK_TYPE NUMERIC "0"
 // Retrieval info: PRIVATE: SYNTH_WRAPPER_GEN_POSTFIX STRING "0"
 // Retrieval info: PRIVATE: UNDERFLOW_CHECKING NUMERIC "0"
-// Retrieval info: PRIVATE: UsedW NUMERIC "1"
+// Retrieval info: PRIVATE: UsedW NUMERIC "0"
 // Retrieval info: PRIVATE: Width NUMERIC "8"
 // Retrieval info: PRIVATE: dc_aclr NUMERIC "0"
 // Retrieval info: PRIVATE: diff_widths NUMERIC "0"
@@ -149,7 +145,6 @@ endmodule
 // Retrieval info: USED_PORT: q 0 0 8 0 OUTPUT NODEFVAL "q[7..0]"
 // Retrieval info: USED_PORT: rdreq 0 0 0 0 INPUT NODEFVAL "rdreq"
 // Retrieval info: USED_PORT: sclr 0 0 0 0 INPUT NODEFVAL "sclr"
-// Retrieval info: USED_PORT: usedw 0 0 8 0 OUTPUT NODEFVAL "usedw[7..0]"
 // Retrieval info: USED_PORT: wrreq 0 0 0 0 INPUT NODEFVAL "wrreq"
 // Retrieval info: CONNECT: @clock 0 0 0 0 clock 0 0 0 0
 // Retrieval info: CONNECT: @data 0 0 8 0 data 0 0 8 0
@@ -159,7 +154,6 @@ endmodule
 // Retrieval info: CONNECT: empty 0 0 0 0 @empty 0 0 0 0
 // Retrieval info: CONNECT: full 0 0 0 0 @full 0 0 0 0
 // Retrieval info: CONNECT: q 0 0 8 0 @q 0 0 8 0
-// Retrieval info: CONNECT: usedw 0 0 8 0 @usedw 0 0 8 0
 // Retrieval info: GEN_FILE: TYPE_NORMAL SPI_Input_buffer.v TRUE
 // Retrieval info: GEN_FILE: TYPE_NORMAL SPI_Input_buffer.inc FALSE
 // Retrieval info: GEN_FILE: TYPE_NORMAL SPI_Input_buffer.cmp FALSE

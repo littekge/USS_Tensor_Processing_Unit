@@ -105,11 +105,10 @@ assign rst = KEY[0];
 
 
 // ---------- DEBUG ---------- //
-/*
+
 //code to test SPI connection
-wire readrq, sclear;
+wire readrq;
 assign readrq = ~KEY[3];
-assign sclear= ~KEY[2];
 
 SPI_Interface SPI_int(
 	//clock and reset
@@ -118,7 +117,6 @@ SPI_Interface SPI_int(
 	
 	//buffer interfacing signals
 	.i_rdreq(readrq),
-	.i_sclr(),
 	.o_empty(),
 	.o_full(),
 	.o_q(),
@@ -130,7 +128,7 @@ SPI_Interface SPI_int(
 	.i_SPI_MOSI(GPIO_0[3]),
 	.i_SPI_SS(GPIO_0[1])
 );
-*/
+
 
 /*
 //code to test ASCII drivers
