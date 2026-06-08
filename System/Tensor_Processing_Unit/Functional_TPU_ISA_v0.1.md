@@ -5,7 +5,7 @@
 This section describes memory expectations of the *Functional TPU instruction set architecture*. The ISA has an address space of 2^16=65536 words of length XLEN. The memory address space is non-cyclic.
 
 ### Tensors in Memory
-The ISA expects tensors to be formatteed in memory as a contiguous flattened array, with the address of the first element being used to dereference the entire tensor. For example, if a tensor is stored at memory address 0x2 with dimensions 2x2, the next unused address will be at 0x2 + 4 = 0x6. All matrix operands referenced by memory addresses are logically interpreted by the ISA as Row-Major arrays. Tensors of an order greater than 2 are not supported.
+The ISA expects tensors to be formatted in memory as a contiguous flattened array, with the address of the first element being used to dereference the entire tensor. For example, if a tensor is stored at memory address 0x2 with dimensions 2x2, the next unused address will be at 0x2 + 4 = 0x6. All matrix operands referenced by memory addresses are logically interpreted by the ISA as Row-Major arrays. Tensors of an order greater than 2 are not supported.
 
 ### Reserved Addresses
 The ISA defines a number of reserved memory addresses that serve special functions. Regardless of memory structure, reserved addresses are still treated as valid locations in the main address space. Descriptions of reserved addresses and their functionality are shown below.
@@ -14,7 +14,7 @@ The ISA defines a number of reserved memory addresses that serve special functio
 Address 0x0 acts as a register with all bits hardwired to 0. 0x0 may only be used as a source address; attempting to store data at 0x0 will raise an error, discarding the data in the process.
 
 **Address 0x1:**
-The ISA defines address 0x1 as a unique, architecturally isolated memory designation used to store temporary data. Any tensor in a format expectd by the ISA may be stored at address 0x1. The symbol 0x1 may be targeted as a destination or source address by any vector or matrix memory instruction. Any write or store operation targeting 0x1 inherently invalidates and completely overwrites all elements previously residing within it. The ISA does not currently support partial overwrites.
+The ISA defines address 0x1 as a unique, architecturally isolated memory designation used to store temporary data. Any tensor in a format expected by the ISA may be stored at address 0x1. The symbol 0x1 may be targeted as a destination or source address by any vector or matrix memory instruction. Any write or store operation targeting 0x1 inherently invalidates and completely overwrites all elements previously residing within it. The ISA does not currently support partial overwrites.
 
 ## Instruction Format
 This section describes the general format of *Functional TPU* instructions. In the *Functional TPU* ISA, there are three core instruction formats (ARITH, SHAPE, ACT) which all have a fixed length of 128 bits. Instructions are described with the most significant bit (127) on the left side of the instruction, and the least significant bit (0) on the right side. In common between all instruction sets are the following properties:
