@@ -120,7 +120,6 @@ SPI_Interface SPI_int(
 	.o_empty(),
 	.o_full(),
 	.o_q(),
-	.o_usedw(),
 	
 	//SPI Signals
 	.i_SPI_Clk(GPIO_0[7]),

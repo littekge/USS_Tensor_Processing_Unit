@@ -15,7 +15,6 @@ module SPI_Interface(
 	output o_empty,
 	output o_full,
 	output [7:0] o_q,
-	output [7:0] o_usedw,
 	
 	//SPI Signals
 	input i_SPI_Clk,
