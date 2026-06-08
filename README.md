@@ -24,6 +24,7 @@ The *Arduino_2_FPGA* folder contains an Arduino program to forward data from the
 ### Tensor_Processing_Unit
 The *Tensor_Processing_Unit* folder contains the TPU hardware written in Verilog HDL.
 - Functional TPU ISA (v0.1 complete)
+- Message protocol (in progress)
 - Hardware Spec (in progress)
 - Verilog code for TPU (pending)
 ## Tests
