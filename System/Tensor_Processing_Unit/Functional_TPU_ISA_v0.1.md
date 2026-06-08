@@ -53,10 +53,10 @@ This section describes individual instructions available in the *Functional TPU*
 
 
 #### mul
-*mul* takes a matrix of dimensions *dim11* x *dim12* located at address *src1* and multiplies it by a matrix of dimensions *dim21* x *dim22* located at address *src2*, storing the result contiguously starting from address *dest* in Row-Major order. *reserved* bits are set to 0.
+*mul* takes a matrix of dimensions *dim11* x *dim12* located at address *src1* and multiplies it by a matrix of dimensions *dim21* x *dim22* located at address *src2*, storing the result contiguously starting from address *dest* in Row-Major order. *reserved* bits are set to 0. Note that the current revision of the ISA does not support matrix dimensions greater than 15x15.
 
 #### add
-*add* perfoms elementwise addition between a matrix of dimensions *dim11* x *dim12* located at address *src1* and another matrix of dimensions *dim21* x *dim22* located at address *src2*, storing the result contiguously starting at address *dest* in Row-Major order. *reserved* bits are set to 0. Note that the source matrices must be conformable for addition to perform this operation.
+*add* perfoms elementwise addition between a matrix of dimensions *dim11* x *dim12* located at address *src1* and another matrix of dimensions *dim21* x *dim22* located at address *src2*, storing the result contiguously starting at address *dest* in Row-Major order. *reserved* bits are set to 0. Note that the source matrices must be conformable for addition to perform this operation. Also note that the current revision of the ISA does not support matrix dimensions greater than 15x15.
 
 ### Activation Instructions
 
