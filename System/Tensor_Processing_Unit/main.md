@@ -9,10 +9,10 @@
 - **Platform:** Terasic DE1-SoC FPGA
 - **License:** MIT License
 - **Change Log:** `log.md`
-- **Instruction Set Architecture:** `Functional_TPU_ISA_v0.1.md`
+- **Instruction Set Architecture:** `Functional_TPU_ISA_v0.2.md`
 
 ## General Project Description
-The Functional TPU is a tensor processing unit roughly based on Google's first generation TPU. This project aims to create Verilog HDL code that implements the instruction set detailed in `Functional_TPU_ISA_v0.1.md` in order to accelerate small neural networks.
+The Functional TPU is a tensor processing unit roughly based on Google's first generation TPU. This project aims to create Verilog HDL code that implements the instruction set detailed in `Functional_TPU_ISA_v0.2.md` in order to accelerate small neural networks.
 
 **Design Goals:**
 - Output-stationary systolic array for matrix multiplication.

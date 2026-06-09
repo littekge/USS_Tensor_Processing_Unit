@@ -14,15 +14,15 @@ The ISA defines a number of reserved memory addresses that serve special functio
 Address 0x0 acts as a register with all bits hardwired to 0. 0x0 may only be used as a source address; attempting to store data at 0x0 will raise an error, discarding the data in the process.
 
 **Address 0x1:**
-The ISA defines address 0x1 as a unique, architecturally isolated memory designation used to store temporary data. Any tensor in a format expected by the ISA may be stored at address 0x1. The symbol 0x1 may be targeted as a destination or source address by any vector or matrix memory instruction. Any write or store operation targeting 0x1 inherently invalidates and completely overwrites all elements previously residing within it. The ISA does not currently support partial overwrites.
+The ISA defines address 0x1 as a unique, architecturally isolated memory designation used to store temporary data. Any tensor in a format expected by the ISA may be stored at address 0x1. The symbol 0x1 may be targeted as a destination or source address by any instruction. Any write or store operation targeting 0x1 inherently invalidates and completely overwrites all elements previously residing within it. The ISA does not currently support partial overwrites.
 
 ## Instruction Format
-This section describes the general format of *Functional TPU* instructions. In the *Functional TPU* ISA, there are three core instruction formats (ARITH, SHAPE, ACT) which all have a fixed length of 128 bits. Instructions are described with the most significant bit (127) on the left side of the instruction, and the least significant bit (0) on the right side. In common between all instruction sets are the following properties:
+This section describes the general format of *Functional TPU* instructions. In the *Functional TPU* ISA, there are four core instruction formats (MUL, SHAPE, ACT, ELEM) which all have a fixed length of 128 bits. Instructions are described with the most significant bit (127) on the left side of the instruction, and the least significant bit (0) on the right side. In common between all instruction sets are the following properties:
 - **Opcode:** Bits 127-124 are reserved for the OPCODE.
 - **Variable Instruction:** Bits 123-0 are variable based on instruction format.
 Each instruction format is described below:
 
-### ARITH Format
+### MUL Format
 **Description by Bit:**
 
 | 127-124 | 123-108 | 107-104 | 103-100 | 99-84 | 83-80 | 79-76 | 75-60 | 59-3 | 2-0 |
@@ -39,26 +39,29 @@ Each instruction format is described below:
 | --- | --- | --- | --- | --- | --- |
 | opcode | rs1 | rd | len | reserved | funct3 |
 
+### ELEM Format
+**Description by Bit:**
+
+| 127-124 | 123-108 | 107-92 | 91-84 | 83-76 | 75-60 | 59-3 | 2-0 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| opcode | rs1 | rs2 | sz1 | sz2 | rd | reserved | funct3 |
+
 ## Instructions
 This section describes individual instructions available in the *Functional TPU* ISA.
 
-### Arithmetic Instructions
+### Multiplication Instructions
 **Description by Bit:**
 
 | 127-124 | 123-108 | 107-104 | 103-100 | 99-84 | 83-80 | 79-76 | 75-60 | 59-3 | 2-0 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | opcode | rs1 | sz11 | sz12 | rs2 | sz21 | sz22 | rd | reserved | funct3 |
-| ARITH | src1 | dim11 | dim12 | src2 | dim21 | dim22 | dest | 0 | MUL
-| ARITH | src1 | dim11 | dim12 | src2 | dim21 | dim22 | dest | 0 | ADD
+| MUL | src1 | dim11 | dim12 | src2 | dim21 | dim22 | dest | 0 | MULT |
 
-
-#### mul
-*mul* takes a matrix of dimensions *dim11* x *dim12* located at address *src1* and multiplies it by a matrix of dimensions *dim21* x *dim22* located at address *src2*, storing the result contiguously starting from address *dest* in Row-Major order. *reserved* bits are set to 0. Note that the current revision of the ISA does not support matrix dimensions greater than 15x15.
-
-#### add
-*add* perfoms elementwise addition between a matrix of dimensions *dim11* x *dim12* located at address *src1* and another matrix of dimensions *dim21* x *dim22* located at address *src2*, storing the result contiguously starting at address *dest* in Row-Major order. *reserved* bits are set to 0. Note that the source matrices must be conformable for addition to perform this operation. Also note that the current revision of the ISA does not support matrix dimensions greater than 15x15.
+#### mult
+*mult* takes a matrix of dimensions *dim11* x *dim12* located at address *src1* and multiplies it by a matrix of dimensions *dim21* x *dim22* located at address *src2*, storing the result contiguously starting from address *dest* in Row-Major order. *reserved* bits are set to 0. Note that the current revision of the ISA does not support matrix dimensions greater than 15x15 for this instruction.
 
 ### Activation Instructions
+**Description by Bit:**
 
 | 127-124 | 123-108 | 107-92 | 92-77 | 76-3 | 2-0 |
 | --- | --- | --- | --- | --- | --- |
@@ -67,3 +70,16 @@ This section describes individual instructions available in the *Functional TPU*
 
 #### relu
 *relu* applies the rectified linear unit activation function (*mathematically f(x) = max(0, x)*) to *size* contiguous elements beginning at address *rs1* and storing them contiguously at address *dest*.
+
+### Elementwise Instructions
+**Description by Bit:**
+
+| 127-124 | 123-108 | 107-92 | 91-84 | 83-76 | 75-60 | 59-3 | 2-0 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| opcode | rs1 | rs2 | sz1 | sz2 | rd | reserved | funct3 |
+| ELEM | src1 | src2 | dim1 | dim2 | dest | 0 | ADD |
+
+#### add
+*add* perfoms elementwise addition between two matrices of dimensions *dim1* x *dim2* located at addresses *src1* and *src2* respectively, storing the result contiguously starting at address *dest* in Row-Major order. *reserved* bits are set to 0. Note that the current revision of the ISA does not support matrix dimensions greater than 255x255 for this instruction.
+
+
