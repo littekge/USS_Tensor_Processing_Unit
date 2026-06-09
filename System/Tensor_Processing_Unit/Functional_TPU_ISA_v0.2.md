@@ -43,7 +43,7 @@ Each instruction format is described below:
 **Description by Bit:**
 
 | 127-124 | 123-108 | 107-92 | 91-84 | 83-76 | 75-60 | 59-3 | 2-0 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| --- | --- | --- | --- | --- | --- | --- | --- |
 | opcode | rs1 | rs2 | sz1 | sz2 | rd | reserved | funct3 |
 
 ## Instructions
@@ -75,7 +75,7 @@ This section describes individual instructions available in the *Functional TPU*
 **Description by Bit:**
 
 | 127-124 | 123-108 | 107-92 | 91-84 | 83-76 | 75-60 | 59-3 | 2-0 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| --- | --- | --- | --- | --- | --- | --- | --- |
 | opcode | rs1 | rs2 | sz1 | sz2 | rd | reserved | funct3 |
 | ELEM | src1 | src2 | dim1 | dim2 | dest | 0 | ADD |
 
