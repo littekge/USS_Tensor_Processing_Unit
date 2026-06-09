@@ -12,11 +12,13 @@ Each Verilog module is instantiated following the heirarchy below. Each entry in
                 - SPI_Input_buffer `/TPU/PROGRAMMER/SPI_LINK/SPI_INPUT_BUFFER/SPI_Input_buffer.v`
         - Program_Memory `/TPU/PROGRAMMER/PROGRAM_MEMORY/Program_Memory.v`
         - Feeder `/TPU/PROGRAMMER/Feeder.v`
-        - TPU_0x1_Buffer `/TPU/MEMORY/TPU_0x1_Buffer.v`
-        - Weight_Memory `/TPU/MEMORY/Weight_Memory.v`
-        - Vector_Processor `/TPU/PROCESSING/Vector_Processor.v`
         - Controller `/TPU/CONTROL/Controller.v`
+        - TPU_0x1_Buffer `/TPU/MEMORY/0X1_BUFFER/TPU_0x1_Buffer.v`
+        - Weight_Memory `/TPU/MEMORY/WEIGHT_MEMORY/Weight_Memory.v`
+        - Vector_Processor `/TPU/PROCESSING/Vector_Processor.v`
         - Activator `/TPU/PROCESSING/Activator.v`
+        - ALU `/TPU/PROCESSING/ALU.v`
+        - Vector_Buffer `/TPU/MEMORY/VECTOR_BUFFER/Vector_Buffer.v`
         - Systolic_Array `/TPU/SYSTOLIC_ARRAY/Systolic_Array.v`
             - Multiply_Accumulate_Unit `/TPU/SYSTOLIC_ARRAY/Multiply_Accumulate_Unit.v`
             - Systolic_Array_Input_Buffer `/TPU/SYSTOLIC_ARRAY/Systolic_Array_Input_Buffer.v`
@@ -70,7 +72,8 @@ Listed below are descriptions of each Verilog module following the general path 
         - Repeats the decode-write cycle until a STOP instruction is recieved.
         - Returns to searching for a START instruction.
     - **Error States:** The state machine defaults to a STATE_ERROR state in the event of undefined state machine behavior. The state machine enters a COM_ERROR state if it attempts to decode an invalid instruction.
-    - **PROGRAM Signal:** The module defines an output signal *program* (active LOW). When the START instruction is recieved, the module asserts *program* LOW. The *program* signal is connected via an OR gate with the global reset signal *rst*, and the resulting signal *trst* is passed to the following modules such that either *rst* or *program* can hold them in a default state: Feeder, Systolic_Array, Controller, Vector_Processor, and Activator. This is to ensure that the TPU internals cannot modify device memory while programming occurs. Likewise, the Programmer module must have full control over all device memory while the *program* signal is low. Once the module decodes a STOP code, *program* is asserted HIGH and normal device operation resumes.
+    - **PROGRAM Signal:** The module defines an output signal *program* (active LOW). When the START code is recieved, the module asserts *program* LOW. The *program* signal is connected via an OR gate with the global reset signal *rst*, and the resulting signal *trst* is passed to the following modules such that either *rst* or *program* can hold them in a default state: Feeder, Systolic_Array, Controller, Vector_Processor (*a* and *b*), Activator, ALU, and Vector_Buffer. This is to ensure that the TPU internals cannot modify device memory while programming occurs. Likewise, the Programmer module must have full control over all device memory while the *program* signal is low. Once the module decodes a STOP code, *program* is asserted HIGH and normal device operation resumes.
+    - **Program Memory:** When initially writing to the program memory, the Programmer should start from address 0x0. Subsequent writes to program memory should increment the address by 1 such that instructions are stored contiguously.
     - **Dual-Port RAM Access:** While programming the Weights_Memory and TPU_0x1_Buffer, the Programmer uses the port *a*.
 
 ### Program_Memory
@@ -81,7 +84,7 @@ Listed below are descriptions of each Verilog module following the general path 
     - **Write and Read Behavior:** The modules output port *q* always outputs the data present at the modules *address* input. When *wren* is asserted high, *q* is undefined and the value stored at *address* is overwritten by the *data* input.
 
 ### Weight_Memory
-- Path to File: `/TPU/MEMORY/Weight_Memory.v`
+- Path to File: `/TPU/MEMORY/WEIGHT_MEMORY/Weight_Memory.v`
 - Description: The Weight_Memory is a Quartus IP 2-port RAM module. It serves as the main memory of the TPU and stores 8-bit neural network weights.
     - **Word Width:** 8 bits
     - **Number of Words:** 65536
@@ -89,10 +92,10 @@ Listed below are descriptions of each Verilog module following the general path 
     - **Write and Read Behavior:** The modules output ports *q_a* and *q_b* always output the data present at *address_a* and *address_b* inputs. When *wren_a* or *wren_b* is asserted high, *q_a* or *q_b* is undefined and the value stored at *address_a* or *address_b* is overwritten by the *data_a* or *data_b* input respectively.
 
 ### TPU_0x1_Buffer
-- Path to File: `/TPU/MEMORY/TPU_0x1_Buffer.v`
+- Path to File: `/TPU/MEMORY/0X1_BUFFER/TPU_0x1_Buffer.v`
 - Description: The TPU_0x1_Buffer is a Quartus IP 1-port RAM module. It functions as the unique isolated memory required for address 0x1 in `Functional_TPU_ISA_v0.2.md`.
     - **Word Width:** 8 bits
-    - **Number of Words:** 16384
+    - **Number of Words:** 65536
     - **Dual Port:** The 0x1 buffer is dual port, meaning it has two seperate sets of identical control signals, *a* and *b*.
     - **Write and Read Behavior:** The modules output ports *q_a* and *q_b* always output the data present at *address_a* and *address_b* inputs. When *wren_a* or *wren_b* is asserted high, *q_a* or *q_b* is undefined and the value stored at *address_a* or *address_b* is overwritten by the *data_a* or *data_b* input respectively.
 
@@ -112,7 +115,7 @@ Listed below are descriptions of each Verilog module following the general path 
 ### Controller
 - Path to File: `/TPU/CONTROL/Controller.v`
 - Description: The Controller module is the "CPU" of the TPU. Combined with the Feeder module, the two implement the traditional CPU instruction cycle (Fetch-Decode-Execute-Writeback). The Controller module defines a finite state machine that converts instructions from the Feeder into control signals and manages timing and dataflow between other modules. Valid instructions and their formats are defined in `Functional_TPU_ISA_v0.2.md`.
-    - ***vector_start* Signals:** The Controller module defines two signals, *vector_start_a* and *vector_start_b* (active HIGH) that connect to Vector_Processor a and b respectively. The Controller asserts them HIGH for one clock cycle to indicate to each Vector_Processor that it may begin operations.
+    - ***vector_start* Signals:** The Controller module defines two signals, *vector_start_a* and *vector_start_b* (active HIGH) that connect to vector processor a and b respectively. The Controller asserts them HIGH for one clock cycle to indicate to each Vector_Processor that it may begin operations.
     - ***controller_idle* Signal:** The Controller module defines a *controller_idle* signal (active HIGH) that indicates that the Controller is ready to recieve another instruction.
     - **State Machine Flow:** 
         - Wait for the Feeder to assert *controller_start* HIGH.
@@ -126,7 +129,6 @@ Listed below are descriptions of each Verilog module following the general path 
         - Assert *controller_idle* signal HIGH.
         - Repeat.
     - **Error States:** The state machine defaults to a STATE_ERROR state in the event of undefined state machine behavior. The state machine enters a DECODE_ERROR state if it decodes an invalid instruction.
-    - **Activator Interaction:** When interfacing with the Activator module, one vector processor is allocated for feeding values to the activators input, and the second vector processor writes from the activators output to another destination (usually memory). Since the activators ouput is clocked, the second vector processor must begin sourcing values from the activators output one clock cycle after the first sets an input.  
 
 ### Vector_Processor
 - Path to File: `/TPU/PROCESSING/Vector_Processor.v`
@@ -135,18 +137,22 @@ Listed below are descriptions of each Verilog module following the general path 
         - **Sources:**
             - Device memory address
             - Systolic array output
-            - Activator output
+            - Vector buffer output
         - **Destinations:**
             - Device memory address
             - Systolic array input buffer a
             - Systolic array input buffer b
             - Activator input
+            - ALU input a
+            - ALU input b
     - **ISA Complience:** The Vector_Processor module formats data written to the Weight_Memory and TPU_0x1_Buffer in accordance with the `Functional_TPU_ISA_v0.2.md`. Likewise, it expects all data read from memory to be formatted in accordance with the ISA. As a result, the Vector_Processor handles translation of data from flattened arrays in memory to matrices when loading data to the systolic array input buffers and from matrices to flattened arrays when reading from the systolic array outputs and writing back to memory.
     - **Control Signals:** To remain ISA complient, the Vector_Processor module has various control signal inputs that it uses to interpret data.
         - **Dimensionality:** When interfacing with the systolic array, the vector processor checks the *dim0* and *dim1* inputs to determe the dimensionality (*dim0* x *dim1*) of the matrix its processing, and then either reads from the systolic array outputs or writes to the systolic array input buffers in the proper order.
         - **Length:** When interfacing with modules other than the systolic array, the Vector_Processor module checks the *length* input to determine how many elements should be processed.
         - **Memory Addressing:** The Vector_Processor module defines a *source_address* and *dest_address* input for reading from or writing to memory respectively. Combined with the *length*, *dim0*, and *dim1* signals, the vector processor determines the exect number of elements to read or write as well as their order.
         - ***vector_idle* Signal:** The Vector_Processor module defines a *vector_idle* signal (active HIGH) that indicates that the Vector_Processor has finished its control loop and is waiting for a new instruction.
+        - **ALU/Activator Signals:**
+        - **Systolic Array Signals:**
     - **State Machine Flow:**
         - Wait for the Controller to assert *vector_start* HIGH.
         - When the Controller asserts *vector_start* HIGH, assert *vector_idle* LOW.
@@ -158,9 +164,12 @@ Listed below are descriptions of each Verilog module following the general path 
 ### Activator
 - Path to File: `/TPU/PROCESSING/Activator.v`
 - Description: The Activator module implements the ACT instruction functions from the `Functional_TPU_ISA_v0.2.md`. 
-    - **ALU-Like Behavior:** The Activator module is effectively a specialized Arithemetic Logic Unit (ALU) that implements specific operations specified by the ISA. The activator takes an input value, applies a function to it based on a control signal, and outputs the result. 
-    - **Clocked Operation:** The Activator module has a clocked output, meaning that the result of an operation will be available one clock cycle after the input is set. This allows for simultanious reading of an old output and writing of a new input.
+    - **ALU-Like Behavior:** The Activator module is effectively a specialized Arithemetic Logic Unit (ALU) that implements operations specified by the ISA. 
     - **Control:** The Controller module sets the Activator function based on instruction. If the current instruction does not use the Activator, the Controller sets the Activator function to NO OP.
+    - ***enable* Signal:** The Activator module defines an *enable* input signal (active HIGH). While *enable* is asserted HIGH, every clock cycle the activator takes an input value, applies a function to it based on a control signal, and writes the result to the vector buffer. As a result, the activator can process a single value by asserting *enable* HIGH for one clock cycle.
+    
+
+### ALU
 
 ### Multiply_Accumulate_Unit
 - Path to File: `/TPU/SYSTOLIC_ARRAY/Multiply_Accumulate_Unit.v`
