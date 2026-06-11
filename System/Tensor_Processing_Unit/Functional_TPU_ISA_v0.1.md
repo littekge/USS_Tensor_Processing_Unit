@@ -1,6 +1,7 @@
 # Functional TPU Instruction Set Architecture (ISA)
 > **Purpose:** This document contains the *Functional TPU* instruction set architecture specification. 
 
+
 ## Memory
 This section describes memory expectations of the *Functional TPU instruction set architecture*. The ISA has an address space of 2^16=65536 words of length XLEN. The memory address space is non-cyclic.
 
@@ -16,8 +17,10 @@ Address 0x0 acts as a register with all bits hardwired to 0. 0x0 may only be use
 **Address 0x1:**
 The ISA defines address 0x1 as a unique, architecturally isolated memory designation used to store temporary data. Any tensor in a format expected by the ISA may be stored at address 0x1. The symbol 0x1 may be targeted as a destination or source address by any instruction. Any write or store operation targeting 0x1 inherently invalidates and completely overwrites all elements previously residing within it. The ISA does not currently support partial overwrites.
 
+--------------------------------------------------
+
 ## Instruction Format
-This section describes the general format of *Functional TPU* instructions. In the *Functional TPU* ISA, there are four core instruction formats (MUL, SHAPE, ACT, ELEM) which all have a fixed length of 128 bits. Instructions are described with the most significant bit (127) on the left side of the instruction, and the least significant bit (0) on the right side. In common between all instruction sets are the following properties:
+This section describes the general format of *Functional TPU* instructions. In the *Functional TPU* ISA, there are a variety of instruction formats (MUL, SHAPE, ACT, ELEM, SYSTEM) which all have a fixed length of 128 bits. Instructions are described with the most significant bit (127) on the left side of the instruction, and the least significant bit (0) on the right side. In common between all instruction sets are the following properties:
 - **Opcode:** Bits 127-124 are reserved for the OPCODE.
 - **Variable Instruction:** Bits 123-0 are variable based on instruction format.
 Each instruction format is described below:
@@ -27,6 +30,7 @@ Each instruction format is described below:
 
 | 127-124 | 123-108 | 107-104 | 103-100 | 99-84 | 83-80 | 79-76 | 75-60 | 59-3 | 2-0 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 4 | 16 | 4 | 4 | 16 | 4 | 4 | 16 | 57 | 3 |
 | opcode | rs1 | sz11 | sz12 | rs2 | sz21 | sz22 | rd | reserved | funct3 |
 
 ### SHAPE Format
@@ -35,8 +39,9 @@ Each instruction format is described below:
 ### ACT Format
 **Description by Bit:**
 
-| 127-124 | 123-108 | 107-92 | 92-77 | 76-3 | 2-0 |
+| 127-124 | 123-108 | 107-92 | 91-76 | 75-3 | 2-0 |
 | --- | --- | --- | --- | --- | --- |
+| 4 | 16 | 16 | 16 | 73 | 3 |
 | opcode | rs1 | rd | len | reserved | funct3 |
 
 ### ELEM Format
@@ -44,7 +49,18 @@ Each instruction format is described below:
 
 | 127-124 | 123-108 | 107-92 | 91-84 | 83-76 | 75-60 | 59-3 | 2-0 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| 4 | 16 | 16 | 8 | 8 | 16 | 57 | 3 |
 | opcode | rs1 | rs2 | sz1 | sz2 | rd | reserved | funct3 |
+
+### SYSTEM Format
+**Description by Bit:**
+
+| 127-124 | 123-3 | 2-0 |
+| --- | --- | --- |
+| 4 | 121 | 3 |
+| opcode | reserved | funct3 |
+
+--------------------------------------------------
 
 ## Instructions
 This section describes individual instructions available in the *Functional TPU* ISA.
@@ -54,6 +70,7 @@ This section describes individual instructions available in the *Functional TPU*
 
 | 127-124 | 123-108 | 107-104 | 103-100 | 99-84 | 83-80 | 79-76 | 75-60 | 59-3 | 2-0 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 4 | 16 | 4 | 4 | 16 | 4 | 4 | 16 | 57 | 3 |
 | opcode | rs1 | sz11 | sz12 | rs2 | sz21 | sz22 | rd | reserved | funct3 |
 | MUL | src1 | dim11 | dim12 | src2 | dim21 | dim22 | dest | 0 | MULT |
 
@@ -63,8 +80,9 @@ This section describes individual instructions available in the *Functional TPU*
 ### Activation Instructions
 **Description by Bit:**
 
-| 127-124 | 123-108 | 107-92 | 92-77 | 76-3 | 2-0 |
+| 127-124 | 123-108 | 107-92 | 91-76 | 75-3 | 2-0 |
 | --- | --- | --- | --- | --- | --- |
+| 4 | 16 | 16 | 16 | 73 | 3 |
 | opcode | rs1 | rd | len | reserved | funct3 |
 | ACT | src1 | dest | size | 0 | RELU |
 
@@ -76,10 +94,24 @@ This section describes individual instructions available in the *Functional TPU*
 
 | 127-124 | 123-108 | 107-92 | 91-84 | 83-76 | 75-60 | 59-3 | 2-0 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| 4 | 16 | 16 | 8 | 8 | 16 | 57 | 3 |
 | opcode | rs1 | rs2 | sz1 | sz2 | rd | reserved | funct3 |
 | ELEM | src1 | src2 | dim1 | dim2 | dest | 0 | ADD |
 
 #### add
-*add* perfoms elementwise addition between two matrices of dimensions *dim1* x *dim2* located at addresses *src1* and *src2* respectively, storing the result contiguously starting at address *dest* in Row-Major order. *reserved* bits are set to 0. Note that the current revision of the ISA does not support matrix dimensions greater than 255x255 for this instruction.
+*add* performs elementwise addition between two matrices of dimensions *dim1* x *dim2* located at addresses *src1* and *src2* respectively, storing the result contiguously starting at address *dest* in Row-Major order. *reserved* bits are set to 0. Note that the current revision of the ISA does not support matrix dimensions greater than 255x255 for this instruction.
 
+### System Instructions
+**Description by Bit:**
+
+| 127-124 | 123-3 | 2-0 |
+| --- | --- | --- |
+| 4 | 121 | 3 |
+| opcode | reserved | funct3 |
+| SYSTEM | PRIVATE | SYSCALL |
+
+#### syscall
+The *syscall* instruction is used to make a service request to the supporting system hardware. The system will define how parameters for the service request are passed.
+
+--------------------------------------------------
 
