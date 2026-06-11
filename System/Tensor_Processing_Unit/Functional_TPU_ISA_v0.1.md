@@ -115,3 +115,12 @@ The *syscall* instruction is used to make a service request to the supporting sy
 
 --------------------------------------------------
 
+## Instruction Set Listing
+This section defines the concrete binary layouts for all instructions in the *Functional TPU* ISA.
+
+| Instruction | opcode | funct3 |
+| --- | --- | --- |
+| mult | 1000 | 0x0 |
+| relu | 1001 | 0x0 |
+| add | 1010 | 0x0 |
+| syscall | 0000 | 0x0 | 
