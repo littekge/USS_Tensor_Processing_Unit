@@ -1,0 +1,174 @@
+m255
+K4
+z2
+Z0 !s12c _opt1
+Z1 !s99 nomlopt
+R0
+R1
+Z2 !s12c _opt
+R1
+R2
+R1
+R2
+R1
+R2
+R1
+R2
+R1
+R2
+R1
+R2
+R1
+!s11f MIXED_VERSIONS
+13
+!s112 1.1
+!i10d 8192
+!i10e 25
+!i10f 100
+cModel Technology
+Z3 dC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_processing_unit
+T_opt
+!s110 1781291457
+V]oKX5PRlT8G]MQgLi0@>P1
+Z4 04 19 4 work TB_Step1_Programmer fast 0
+=1-a83ca52cc348-6a2c59c1-40-13d8
+R1
+Z5 !s12b OEM100
+Z6 !s124 OEM10U5 
+o-quiet -auto_acc_if_foreign -work work -L altera_mf_ver
+Z7 tCvgOpt 0
+n@_opt
+Z8 OL;O;2023.3;77
+R3
+T_opt1
+!s110 1781295863
+V=k4;K@CQ>C`8Hb6X@6@;i3
+R4
+=1-a83ca52cc348-6a2c6af6-3dd-2920
+R1
+R5
+R6
+o-quiet -auto_acc_if_foreign -work work -L altera_mf_ver +acc
+R7
+n@_opt1
+R8
+vProgrammer
+2TPU/PROGRAMMER/Programmer.v
+!s110 1781295850
+!i10b 1
+!s100 ed19WOAzfORHDenl:F?;Z1
+IL2n[2BB3F56HN>oZB28[j3
+R3
+w1781294932
+8TPU/PROGRAMMER/Programmer.v
+FTPU/PROGRAMMER/Programmer.v
+!i122 24
+L0 10 297
+Z9 VDg1SIo80bB@j0V0VzS_@n1
+Z10 OL;L;2023.3;77
+r1
+!s85 0
+31
+!s108 1781295850.000000
+!s107 TPU/PROGRAMMER/Programmer.v|
+!s90 -work|work|TPU/PROGRAMMER/Programmer.v|
+!i113 0
+Z11 o-work work -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R7
+n@programmer
+vSPI_Input_buffer
+2TPU/PROGRAMMER/SPI_LINK/SPI_INPUT_BUFFER/SPI_Input_buffer.v
+!s110 1781295840
+!i10b 1
+!s100 KnAzBjkUab<D<ahj:QX2e1
+I94cGhSfP>8W7NZlkj<N@]2
+R3
+w1780936010
+8TPU/PROGRAMMER/SPI_LINK/SPI_INPUT_BUFFER/SPI_Input_buffer.v
+FTPU/PROGRAMMER/SPI_LINK/SPI_INPUT_BUFFER/SPI_Input_buffer.v
+!i122 22
+L0 40 54
+R9
+R10
+r1
+!s85 0
+31
+!s108 1781295840.000000
+!s107 TPU/PROGRAMMER/SPI_LINK/SPI_INPUT_BUFFER/SPI_Input_buffer.v|
+!s90 -work|work|TPU/PROGRAMMER/SPI_LINK/SPI_INPUT_BUFFER/SPI_Input_buffer.v|
+!i113 0
+R11
+R7
+n@s@p@i_@input_buffer
+vSPI_Interface
+2TPU/PROGRAMMER/SPI_LINK/SPI_Interface.v
+!s110 1781295846
+!i10b 1
+!s100 7T[:jaG_XcecajGna6RgU2
+I4eUDj8YKdVI:Af75;l<fM2
+R3
+w1781284051
+8TPU/PROGRAMMER/SPI_LINK/SPI_Interface.v
+FTPU/PROGRAMMER/SPI_LINK/SPI_Interface.v
+!i122 23
+L0 8 50
+R9
+R10
+r1
+!s85 0
+31
+!s108 1781295846.000000
+!s107 TPU/PROGRAMMER/SPI_LINK/SPI_Interface.v|
+!s90 -work|work|TPU/PROGRAMMER/SPI_LINK/SPI_Interface.v|
+!i113 0
+R11
+R7
+n@s@p@i_@interface
+vSPI_Slave
+2TPU/PROGRAMMER/SPI_LINK/SPI_Slave.v
+!s110 1781295834
+!i10b 1
+!s100 Ldn1iREWz<<93bb?BQ;IR3
+IY[ZcAgUM5QR_lQRA8[2lQ0
+R3
+w1779300033
+8TPU/PROGRAMMER/SPI_LINK/SPI_Slave.v
+FTPU/PROGRAMMER/SPI_LINK/SPI_Slave.v
+!i122 21
+L0 24 174
+R9
+R10
+r1
+!s85 0
+31
+!s108 1781295834.000000
+!s107 TPU/PROGRAMMER/SPI_LINK/SPI_Slave.v|
+!s90 -work|work|TPU/PROGRAMMER/SPI_LINK/SPI_Slave.v|
+!i113 0
+R11
+R7
+n@s@p@i_@slave
+vTB_Step1_Programmer
+2tests/TB_Step1_Programmer.v
+!s110 1781295855
+!i10b 1
+!s100 fG<eVO;JZPJk;C62`8_bP1
+I>LBQ3ni2YHPiI4;bk]gEi2
+R3
+w1781291444
+8tests/TB_Step1_Programmer.v
+Ftests/TB_Step1_Programmer.v
+!i122 25
+L0 45 317
+R9
+R10
+r1
+!s85 0
+31
+!s108 1781295855.000000
+!s107 tests/TB_Step1_Programmer.v|
+!s90 -work|work|tests/TB_Step1_Programmer.v|
+!i113 0
+R11
+R7
+n@t@b_@step1_@programmer

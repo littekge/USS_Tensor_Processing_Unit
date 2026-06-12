@@ -23,6 +23,10 @@ module SPI_Interface(
 	input i_SPI_SS
 );
 
+//interfacing wires
+wire recieve_DV;
+wire [7:0] recieve_Byte;
+
 SPI_Input_buffer inbuf (
 	.clock(clk),
 	.data(recieve_Byte),
@@ -31,12 +35,8 @@ SPI_Input_buffer inbuf (
 	.wrreq(recieve_DV),
 	.empty(o_empty),
 	.full(o_full),
-	.q(o_q),
+	.q(o_q)
 );
-
-//interfacing wires
-wire recieve_DV;
-wire [7:0] recieve_Byte;
 
 SPI_Slave #(.SPI_MODE(0)) slave1 (
 	.i_Rst_L(rst), //FPGA reset

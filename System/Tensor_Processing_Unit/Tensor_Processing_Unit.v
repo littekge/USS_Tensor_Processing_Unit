@@ -101,144 +101,40 @@ wire clk, rst;
 assign clk = CLOCK_50;
 assign rst = KEY[0];
 
+//ensure that Quartus knows that these GPIO pins are inputs
+assign GPIO_0[7] = 1'bz;
+assign GPIO_0[3] = 1'bz;
+assign GPIO_0[1] = 1'bz;
 
+// ---------- CODE ---------- //
 
+// Assign unused hardware outputs to safe defaults
+assign VGA_BLANK_N = 1'b1;
+assign VGA_CLK     = 1'b0;
+assign VGA_SYNC_N  = 1'b0;
+assign VGA_HS      = 1'b0;
+assign VGA_VS      = 1'b0;
+assign VGA_R       = 8'd0;
+assign VGA_G       = 8'd0;
+assign VGA_B       = 8'd0;
+assign LEDR        = 10'd0;
 
-// ---------- DEBUG ---------- //
-
-//code to test SPI connection
-wire readrq;
-assign readrq = ~KEY[3];
-
-SPI_Interface SPI_int(
-	//clock and reset
-   .clk(clk),
-   .rst(rst),
-	
-	//buffer interfacing signals
-	.i_rdreq(readrq),
-	.o_empty(),
-	.o_full(),
-	.o_q(),
-	
-	//SPI Signals
+// SPI signals routed through GPIO_0 (same pins as prior SPI test)
+//   GPIO_0[7] = SPI_Clk (input)
+//   GPIO_0[5] = SPI_MISO (output, tri-stated when inactive)
+//   GPIO_0[3] = SPI_MOSI (input)
+//   GPIO_0[1] = SPI_SS (input, active LOW)
+TPU tpu (
+	.i_clk    (clk),
+	.i_rst    (rst),
 	.i_SPI_Clk(GPIO_0[7]),
 	.o_SPI_MISO(GPIO_0[5]),
 	.i_SPI_MOSI(GPIO_0[3]),
-	.i_SPI_SS(GPIO_0[1])
+	.i_SPI_SS (GPIO_0[1])
 );
 
+// ---------- END CODE ---------- //
 
-/*
-//code to test ASCII drivers
-ascii_master_controller controller (
-
-	.clk(clk),
-	.rst(rst),
-	
-	.ascii_write_en(1'b1), //enables writing
-	.ascii_input(32'h37FFFFFF), //test character is a white 7
-	.ascii_write_address(13'd20), //test address is 20
-	
-	.vga_blank(VGA_BLANK_N),
-	.vga_b(VGA_B),
-	.vga_r(VGA_R),
-	.vga_g(VGA_G),
-	.vga_clk(VGA_CLK),
-	.vga_hs(VGA_HS),
-	.vga_vs(VGA_VS),
-	.vga_sync(VGA_SYNC_N),
-
-	// ---------- DEBUG ---------- //
-	.SW(SW[9:0]),
-	.KEY(KEY[3:0]),
-	.LEDR(LEDR[9:0])
-	// ---------- END DEBUG ---------- //
-);
-*/
-
-
-//code to test debug module
-/*
-parameter
-	WAIT_READY = 2'd0,
-	WRITE_ON = 2'd1,
-	WRITE_OFF = 2'd2,
-	INC = 2'd3;
-
-reg [1:0]S, NS;
-reg [7:0]count;
-reg start_write;
-
-always @ (posedge clk or negedge rst)
-begin
-	if (rst == 1'b0)
-	begin
-		S <= WAIT_READY; //sets state to START if reset is triggered
-	end
-	else
-	begin
-		S <= NS; //otherwise set S to NS
-	end
-end
-
-always @ (*)
-begin
-	case (S)
-		WAIT_READY: NS = (write_ready)?(WRITE_ON):(WAIT_READY);
-		WRITE_ON: NS = WRITE_OFF;
-		WRITE_OFF: NS = INC;
-		INC: NS = WAIT_READY;
-	endcase
-end
-
-always @ (posedge clk or negedge rst)
-begin
-	if (rst == 1'b0)
-	begin
-		count <= 8'd0;
-		start_write <= 1'd0;
-	end
-	else
-	begin
-		case (S)
-			WRITE_ON: start_write <= 1'd1;
-			WRITE_OFF: start_write <= 1'd0; 
-			INC: count <= count + 8'd1;
-			default:;
-		endcase
-	end
-end
-
-wire write_ready;
-
-debug debug1 (
-	.i_clk(clk),
-	.i_rst(rst),
-	
-	.i_data({24'd0, count}), //signed integer to write to the screen
-	.i_write_next(start_write), //pulse high for one clock cycle to write the integer in i_data
-	.o_write_ready(write_ready), //high if the module is ready for the next integer
-	
-	//VGA signal passthrough
-	.vga_blank(VGA_BLANK_N),
-	.vga_b(VGA_B),
-	.vga_r(VGA_R),
-	.vga_g(VGA_G),
-	.vga_clk(VGA_CLK),
-	.vga_hs(VGA_HS),
-	.vga_vs(VGA_VS),
-	.vga_sync(VGA_SYNC_N),
-
-	// ---------- DEBUG ---------- //
-	//.SW(SW[9:0]),
-	//.KEY(KEY[3:0]),
-	//.LEDR(LEDR[9:0])
-	// ---------- END DEBUG ---------- //
-);
-*/
-
-
-
+// ---------- DEBUG ---------- //
 // ---------- END DEBUG ---------- //
 endmodule
