@@ -3,6 +3,7 @@
 > These rules apply to every task in this project.
 > Github Copilot reads this file to begin the coding process.
 
+
 ## Project Context
 
 - **Platform:** Terasic DE1-SoC FPGA
@@ -203,3 +204,8 @@ When appending to `log.md`, use this format:
 - Tests added or updated
 - Any issues encountered
 ```
+
+## Chat Responses
+- **Summarize** responses into brief, high-level overviews to optimize token usage.
+- **Remove** extra conversational prose (introductory text, pleasantries, etc.). 
+- **Prioritize** functional, bulleted responses.
