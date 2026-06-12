@@ -104,8 +104,9 @@ TPU/
 See `Functional_TPU_Hardware_Specification_v0.1.md` for detailed descriptions of each module.
 
 1. Build and instantiate TPU and Programmer modules and MUX connections to the correct memory modules. Define the *trst* signal.
-2. Build and instantiate Feeder and Controller modules. Update the TPU module to route connections from the program memory to the feeder, and from the feeder to the controller.
-3. Build Vector_Processor module and instantiate vector processors *a* and *b* in the TPU module. Update the TPU module to route connections between the vector processor, controller, and memory.
-4. Build and instantiate Activator and ALU modules. Update the TPU module to route inputs from the vector processors and outputs to the vector buffer, implementing intermediate combinational logic in the process.
-5. Build and instantiate the Systolic_Array module and submodules (Systolic_Array_Input_Buffer and Multiply_Accumulate_Unit). Update the TPU module to route control signals from the controller to the systolic array.
-6. Perform a final debugging pass to catch residual logic or connection errors. Create timing constraints if necessary.
+2. Build and instantiate the Feeder module. Update the TPU module to route connections from the program memory to the feeder.
+3. Build and instantiate the Controller module. Update the TPU module to route connections from the feeder to the controller.
+4. Build Vector_Processor module and instantiate vector processors *a* and *b* in the TPU module. Update the TPU module to route connections between the vector processor, controller, and memory.
+5. Build and instantiate the Activator module. Update the TPU module to route input and control signals from vector processor *a* to the activator and output from the activator to the vector buffer, implementing intermediate combinational logic and quantization in the process.
+6. Build and instantiate the ALU module. Update the TPU module to appropriately route inputs and control signals from both vector processors to the ALU and outputs from the ALU to the vector buffer, implementing intermediate combinational logic and quantization in the process. Ensure that the *element_valid* signals of the two vector processors are properly connected to the *enable* signal of the ALU. 
+7. Build and instantiate the Systolic_Array module and submodules (Systolic_Array_Input_Buffer and Multiply_Accumulate_Unit). Update the TPU module to route control signals from the controller to the systolic array.

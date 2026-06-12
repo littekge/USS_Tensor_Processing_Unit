@@ -3,7 +3,6 @@
 > These rules apply to every task in this project.
 > Github Copilot reads this file to begin the coding process.
 
-
 ## Project Context
 
 - **Platform:** Terasic DE1-SoC FPGA
@@ -20,9 +19,10 @@
 1. **Before starting work**, read `main.md` to understand the build spec and `log.md` to see what's already been done.
 2. **Work in small increments** — one module or feature at a time.
 3. **After every change**, append a dated entry to `log.md` describing what was added, changed, or fixed.
-4. **Generate tests** after every build step. Build test cases and instructions on how to run them in the `/tests` folder, including what it looks like for each test to be successful and unsuccessful (test cases should evaluate the implementation of the most recent build step, so there should be 6 in total).
-5. **Commit often** with descriptive messages: `git add . ; git commit -m "feat: ..."`. Stay on the same git branch for the duration of the build.
-6. **Mark completed build steps** in `main.md`.
+4. **Review code** after every build step, identifying and correcting syntax and logic errors from the initial build.
+5. **Generate tests** after every build step. Build Verilog testbenches and instructions on how to run them in the `/tests` folder, including what it looks like for each test to be successful and unsuccessful (test cases should evaluate the implementation of the most recent build step, so there should be 7 in total).
+6. **Commit often** with descriptive messages: `git add . ; git commit -m "feat: ..."`. Stay on the same git branch for the duration of the build.
+7. **Mark completed build steps** in `main.md`.
 
 ## Coding Practices for Verilog Files
 
@@ -190,7 +190,7 @@ Follow three rules for comments:
 ## Architecture Rules
 
 - **Predefined Architecture:** All files in the `/TPU` subdirectory are already defined. Do not generate any new Verilog (.v) files.
-- **Markdown File Modification:** Do not modify existing markdown files unless explicitly specified by another instruction.
+- **Markdown File Modification:** Do not modify existing markdown files unless explicitly specified by another instruction. Do not generate any new markdown files. All changes can be sufficiently recorded in `log.md`
 
 ## Log Format
 
