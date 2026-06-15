@@ -117,7 +117,7 @@ assign VGA_VS      = 1'b0;
 assign VGA_R       = 8'd0;
 assign VGA_G       = 8'd0;
 assign VGA_B       = 8'd0;
-assign LEDR        = 10'd0;
+//assign LEDR        = 10'd0;
 
 // SPI signals routed through GPIO_0 (same pins as prior SPI test)
 //   GPIO_0[7] = SPI_Clk (input)
