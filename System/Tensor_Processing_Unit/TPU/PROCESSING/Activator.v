@@ -7,7 +7,7 @@
  */
 module Activator(
 
-	input i_clk,
+	input i_clk, //not connected
 	input i_trst,
 	
 	//control signals
@@ -18,7 +18,7 @@ module Activator(
 	
 	//data signals
 	input [7:0] i_data,
-	output wire [7:0] o_data
+	output reg [7:0] o_data
 	
 	// ---------- PARAMETERS ---------- //
 	// ---------- END PARAMETERS ---------- //
@@ -29,21 +29,33 @@ module Activator(
 
 // ---------- PARAMETERS ---------- //
 parameter [2:0]
-	RELU = 3'h0;
+	RELU = 3'h0,
+	NOOP = 3'h7;
 // ---------- END PARAMETERS ---------- //
 
 // ---------- CODE ---------- //
+// The Activator implementation is combinational, so i_enable is passed through to o_write
+// for writing to the vector buffer.
+assign o_write = i_enable;
+
 always @ (*)
 begin
-	case (i_activator_op)
-		o_data =
-	endcase 
+	if ((i_trst == 1'b0) | (i_clear == 1'b1))
+	begin
+		o_data = 8'd0;
+	end
+	else
+	begin
+		case (i_activator_op)
+			RELU: o_data =	($signed(i_data) > $signed(8'd0))?i_data:8'd0;
+			NOOP: o_data = 8'd0;
+			default: o_data = 8'd29;
+		endcase 
+	end
 end
 // ---------- END CODE ---------- //
 
 // ---------- DEBUG ---------- //
 // ---------- END DEBUG ---------- //
-
-
 
 endmodule

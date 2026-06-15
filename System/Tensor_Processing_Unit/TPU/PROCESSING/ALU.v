@@ -9,8 +9,8 @@ module ALU(
 	
 	//control signals
 	input [2:0] i_alu_op, 
-	input i_enable
-	output o_buffer_write
+	input i_enable,
+	output o_buffer_write,
 	
 	//data signals
 	input [7:0] i_data_a,
@@ -38,7 +38,7 @@ assign o_buffer_write = i_enable;
 always @ (*)
 begin
 	case (i_alu_op)
-		ADD: 
+		ADD: ;
 	
 	
 	endcase

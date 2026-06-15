@@ -147,19 +147,31 @@ wire [3:0]   vpa_sa_col;
 
 // Vector buffer data/control wires
 wire [7:0]   vb_q;
-wire         vb_wrreq;     // driven by Activator or ALU in steps 5/6
-wire [7:0]   vb_data_in;  // driven by Activator or ALU in steps 5/6
-assign vb_wrreq   = 1'b0;  // stub until steps 5/6
-assign vb_data_in = 8'd0;  // stub until steps 5/6
+wire         vb_wrreq;
+wire [7:0]   vb_data_in;
+assign vb_wrreq   = act_write | alu_write;
+assign vb_data_in = act_write ? act_data : alu_data;
 
 // VP_A vector buffer and downstream data wires
 wire         vpa_vb_rdreq;
-wire [7:0]   vpa_data;    // to Activator in step 5
+wire [7:0]   vpa_data;    // to Activator and ALU input A
 wire [7:0]   vpb_data;    // to ALU input B in step 6
 
 // ALU element_valid enable: both VP_A and VP_B must be valid simultaneously
 wire alu_enable;
 assign alu_enable = vpa_element_valid & vpb_element_valid;
+
+// Activator element_valid enable
+wire act_enable;
+assign act_enable = vpa_element_valid;
+
+// Activator and ALU write signals
+wire act_write;
+wire alu_write; //driven by ALU in step 6
+
+// Activator and ALU data output signals
+wire [7:0] act_data;
+wire [7:0] alu_data; //driven by ALU in step 6
 
 assign pm_data    = (program == 1'b0) ? prog_pm_data    : 128'd0;
 assign pm_address = (program == 1'b0) ? prog_pm_address : feeder_pm_address;
@@ -341,6 +353,17 @@ Vector_Buffer vb (
     .empty (),
     .full  (),
     .q     (vb_q)
+);
+
+Activator act (
+	.i_clk(i_clk),
+	.i_trst(trst),
+	.i_enable(act_enable),
+	.i_clear(ctrl_clear),
+	.o_write(act_write),
+	.i_activator_op(ctrl_activator_funct),
+	.i_data(vpa_data),
+	.o_data(act_data)
 );
 
 // ---------- END CODE ---------- //
