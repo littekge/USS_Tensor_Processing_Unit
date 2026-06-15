@@ -53,7 +53,7 @@ assign trst = i_rst & program;
 
 // MUX-selected inputs to memories.
 // Programmer controls all ports when program=LOW.
-// Feeder controls Program_Memory when program=HIGH (stub: connected in step 2).
+// Feeder controls Program_Memory when program=HIGH.
 // Vector_Processor A controls Weight_Memory and 0x1 Buffer port A when
 // program=HIGH (stub: connected in step 4).
 wire [127:0] pm_data;
@@ -66,8 +66,19 @@ wire [7:0]   buf_data_a;
 wire [15:0]  buf_address_a;
 wire         buf_wren_a;
 
+// Memory read outputs
+wire [127:0] pm_q;
+wire [7:0]   wm_q_a, wm_q_b;
+wire [7:0]   buf_q_a, buf_q_b;
+
+// Feeder program memory and controller outputs
+wire [9:0]   feeder_pm_address;
+wire         feeder_pm_wren;
+wire [127:0] feeder_instruction;      // connected to Controller in step 3
+wire         feeder_controller_start; // connected to Controller in step 3
+
 assign pm_data    = (program == 1'b0) ? prog_pm_data    : 128'd0;
-assign pm_address = (program == 1'b0) ? prog_pm_address : 10'd0;
+assign pm_address = (program == 1'b0) ? prog_pm_address : feeder_pm_address;
 assign pm_wren    = (program == 1'b0) ? prog_pm_wren    : 1'b0;
 
 assign wm_data_a    = (program == 1'b0) ? prog_wm_data_a    : 8'd0;
@@ -77,11 +88,6 @@ assign wm_wren_a    = (program == 1'b0) ? prog_wm_wren_a    : 1'b0;
 assign buf_data_a    = (program == 1'b0) ? prog_buf_data_a    : 8'd0;
 assign buf_address_a = (program == 1'b0) ? prog_buf_address_a : 16'd0;
 assign buf_wren_a    = (program == 1'b0) ? prog_buf_wren_a    : 1'b0;
-
-// Memory read outputs (used by Feeder and Vector_Processor in later build steps)
-wire [127:0] pm_q;
-wire [7:0]   wm_q_a, wm_q_b;
-wire [7:0]   buf_q_a, buf_q_b;
 
 Programmer prog (
     .i_clk          (i_clk),
@@ -132,6 +138,17 @@ TPU_0x1_Buffer buff (
     .wren_b   (1'b0),
     .q_a      (buf_q_a),
     .q_b      (buf_q_b)
+);
+
+Feeder feeder (
+    .i_clk              (i_clk),
+    .i_trst             (trst),
+    .i_pm_q             (pm_q),
+    .o_pm_address       (feeder_pm_address),
+    .o_pm_wren          (feeder_pm_wren),
+    .i_controller_idle  (1'b1),           // stub: connected to Controller in step 3
+    .o_instruction      (feeder_instruction),
+    .o_controller_start (feeder_controller_start)
 );
 
 // ---------- END CODE ---------- //

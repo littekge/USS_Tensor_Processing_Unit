@@ -2,6 +2,32 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-06-15 — Build Step 2: Feeder Module
+
+- Built `TPU/PROGRAMMER/Feeder.v` — 9-state FSM (START, FETCH, WAIT_PM, CHECK,
+  FORWARD, WAIT_CTRL, DONE, FEED_ERROR, STATE_ERROR) implementing the FETCH step
+  of the CPU instruction cycle.
+- State machine retrieves 128-bit instructions from Program_Memory using a program
+  counter register (*pc*), handles 1-cycle registered RAM output latency via a
+  dedicated WAIT_PM state, detects the syscall termination opcode (4'b0000) and
+  enters DONE, and synchronizes with the Controller via a controller_start/
+  controller_idle handshake.
+- FEED_ERROR is entered when controller acknowledges the instruction at PM_MAX_ADDRESS
+  (default 1023) without a prior syscall being found.
+- `o_pm_wren` is hardwired LOW (Feeder only reads Program_Memory).
+- PM_MAX_ADDRESS is a Verilog parameter (default 10'd1023) to allow small-memory
+  override in testbenches.
+- Updated `TPU/TPU.v` — declared `feeder_pm_address`, `feeder_pm_wren`,
+  `feeder_instruction`, and `feeder_controller_start` wires; updated `pm_address`
+  MUX to drive feeder_pm_address when program=HIGH; instantiated Feeder with
+  `i_controller_idle` stubbed to 1'b1 (connected to Controller in step 3).
+  Wire declarations moved before assign statements to avoid forward-reference warnings.
+- Created `tests/TB_Step2_Feeder.v` — 7-test testbench using a behavioral 4-word
+  Program_Memory (1-cycle registered output) and a behavioral Controller stub.
+  Tests: reset state, syscall DONE (no forward), non-syscall forward, one-cycle
+  controller_start pulse, PC increment after ack, correct instruction opcode
+  forwarded, FEED_ERROR after all addresses exhausted.
+
 ## 2026-06-12 — Programmer.v: SPI Buffer Latency Fix (WAIT/EXEC Refactor)
 
 - **Bug:** The SPI input buffer output (`spi_q`) has 1 cycle of registered latency
