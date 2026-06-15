@@ -2,6 +2,108 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-06-15 — Testbench: Added Tests 8–10 (0x1 Buffer and zero source coverage)
+
+- **Test 8** (`VSRC_MEM src=0x0001 → VDST_ACT`): Exercises the 0x1 Buffer
+  as a *read* source. Loads `buf_mem[0..1]` with 0xD1/0xD2, expects
+  `element_valid` to pulse twice with `o_data` = 0xD1 then 0xD2.
+  Verifies `buf_rd_addr = cur_rd_isa − mem_source_lat = elem_cnt` path.
+- **Test 9** (`VSRC_VEC_BUF → VDST_MEM dest=0x0001`): Exercises the 0x1
+  Buffer as a *write* destination. Pushes 0xE1/0xE2 into the VB, expects
+  them written to `buf_mem[0..1]`.
+  Verifies `buf_wr_addr = cur_wr_isa − mem_dest_lat = elem_cnt` path and
+  the `dst_is_buf` branch in `VB_WRITE`.
+- **Test 10** (`VSRC_MEM src=0x0000 → VDST_ACT`): Exercises the hardwired-
+  zero source. `mem_rd_data` is combinationally forced to 0x00 when
+  `mem_source_lat == 0x0000`; the state machine proceeds normally.
+  Expects `element_valid` twice with `o_data = 0x00`.
+- Updated header comment: "All 10 tests should PASS".
+
+## 2026-06-15 — Testbench Fix: vb_q implicit 1-bit wire (Test 5)
+
+- **Root cause (testbench bug):** `vb_q` was never explicitly declared. In
+  Verilog 2001, using an undeclared name in a continuous assignment
+  (`assign vb_q = vb_q_reg`) causes an implicit 1-bit `wire` declaration.
+  Only bit [0] was driven; bits [7:1] floated to Z, making `i_vb_q` appear
+  as `zZ` in the waveform. The VP always read 0x00 or 0xZZ from the FIFO.
+- **Fix (`tests/TB_Step4_VectorProcessor.v`):** Added explicit
+  `wire [7:0] vb_q;` declaration alongside `vb_q_reg`.
+
+## 2026-06-15 — VP Bug Fix: o_element_valid registered to align with o_data
+
+- **Root cause (VP bug, not testbench):** `o_element_valid` was a combinational
+  wire (`assign o_element_valid = (S == MEM_FORWARD) && ...`), while `o_data`
+  is a registered output updated via non-blocking assignment (NBA) in the
+  MEM_FORWARD case. Because NBA updates take effect *after* the posedge active
+  region, the correct data did not appear on `o_data` until the cycle *after*
+  `o_element_valid` had already gone LOW. The two signals were never
+  simultaneously valid.
+- **Fix (`TPU/PROCESSING/Vector_Processor.v`):**
+  - Changed `output wire o_element_valid` → `output reg o_element_valid`.
+  - Added `o_element_valid <= 1'b0` to the reset block and the default
+    deassert section (alongside `o_wm_wren`, `o_vb_rdreq`, etc.).
+  - In the MEM_FORWARD/VDST_ACT case: `o_element_valid <= 1'b1` alongside the
+    existing `o_data <= mem_rd_data`. Both NBAs commit at the same posedge, so
+    on the *following* cycle both `o_element_valid` and `o_data` are
+    simultaneously correct for the downstream consumer.
+  - Removed the stale `assign o_element_valid = ...` statement.
+- **Testbench (`tests/TB_Step4_VectorProcessor.v`):** No changes required.
+  The capture logic (`always @(posedge clk) if (vp_element_valid) ev_data[ev_count] <= vp_data`)
+  was already correct in its expectation; the VP was not fulfilling the
+  contract it implied.
+
+## 2026-06-15 — Testbench Fix: TB_Step4_VectorProcessor tests 2–4
+
+- **Root cause:** `MEM_ADDR` state checks `dst_is_zero` for all operations,
+  not just memory-write ones. Tests 2, 3, and 4 passed `mem_dest_address =
+  16'h0000`, which triggered `MEM_ERROR` even for `VDST_ACT`, `VDST_SA_A`,
+  and `VDST_SA_B` where the dest address is unused. With VP stuck in
+  `MEM_ERROR`, tests 5 and 6 also failed because `vp_start_and_wait` never
+  saw `vp_vector_idle` go HIGH.
+- **Fix (`tests/TB_Step4_VectorProcessor.v`):** Changed `mem_dest_address`
+  from `16'd0` to `16'h0002` in the `vp_start_and_wait` calls for tests 2,
+  3, and 4. The value is architecturally unused for those destination codes
+  but must be non-zero to avoid `MEM_ERROR`.
+
+## 2026-06-15 — Build Step 4: Vector_Processor Module
+
+- Built `TPU/PROCESSING/Vector_Processor.v` — 12-state FSM (START, IDLE,
+  MEM_ADDR, MEM_WAIT, MEM_FORWARD, VB_RDREQ, VB_WAIT, VB_WRITE, SA_OUT_SEL,
+  SA_OUT_WRITE, DONE_STATE, MEM_ERROR, STATE_ERROR) implementing all required
+  data routing for the current ISA.
+- **Memory abstraction:** ISA address 0x0 always returns 0x00; 0x1 maps to
+  TPU_0x1_Buffer at internal offset `elem_cnt`; addresses ≥ 0x2 map to
+  Weight_Memory at `(ISA_addr − 2)`.
+- **SA loading convention:** VP_A (VDST_SA_A) loads rows of rs1 sequentially
+  into top SA input buffers (top_buf[j] = row j); VP_B (VDST_SA_B) loads
+  columns of rs2 via strided memory access into left SA input buffers
+  (left_buf[i] = col i). The stride multiply (row_cnt × dim1_lat) uses
+  zero-extended 4-bit operands to avoid Verilog truncation.
+- **SA output readback (VSRC_SA_OUT):** VP_A reads MAC(sa_row=col_cnt,
+  sa_col=row_cnt) to reconstruct result[row_cnt][col_cnt] row-major, then
+  requantizes (arithmetic right-shift by REQUANT_SHIFT bits, saturate to
+  signed 8-bit) and writes linearly to destination memory.
+- **Done detection:** uses lookahead comparisons (`row_cnt == dim0_lat − 1 &&
+  col_cnt == dim1_lat − 1`) so next-state transitions evaluate the last
+  element correctly without needing an extra state.
+- **MEM_ERROR:** entered when `i_mem_dest_address == 16'h0000` (write to
+  reserved zero register).
+- Updated `TPU/TPU.v`:
+  - Declared VP_A/VP_B memory, handshake, and SA interface wires.
+  - Updated memory MUX: when program=HIGH, wm_address_a/data_a/wren_a and
+    buf_address_a/data_a/wren_a are now driven by VP_A (not stubbed to 0).
+  - Connected VP_B to WM port b and 0x1 Buffer port b (previously stubbed).
+  - Replaced Controller's `i_vector_idle_a/b` stubs with real VP idle signals.
+  - Instantiated `Vector_Buffer` with VP_A rdreq and `vb_sclr` connected;
+    wrreq and data stubs remain until steps 5/6.
+  - Declared `vpa_data`, `vpb_data`, `alu_enable` wires for steps 5/6.
+- Created `tests/TB_Step4_VectorProcessor.v` — 7-test testbench. Tests:
+  reset idle state; VSRC_MEM→VDST_ACT streaming with element_valid pulses;
+  VSRC_MEM→VDST_SA_A correct row-major top buffer loading; VSRC_MEM→VDST_SA_B
+  stride column-major left buffer loading; VSRC_VEC_BUF→VDST_MEM VB read/WM
+  write; VSRC_SA_OUT→VDST_MEM requantization with saturation; MEM_ERROR on
+  write to address 0x0.
+
 ## 2026-06-15 — Build Step 3: Controller Module
 
 - Built `TPU/CONTROL/Controller.v` — 11-state FSM (START, IDLE, CLEAR,

@@ -115,17 +115,64 @@ wire         ctrl_systolic_array_start;
 wire vb_sclr;
 assign vb_sclr = ctrl_clear | ~trst;
 
+// Vector_Processor_A outputs — memory port a
+wire [15:0]  vpa_wm_address;
+wire         vpa_wm_wren;
+wire [7:0]   vpa_wm_data;
+wire [15:0]  vpa_buf_address;
+wire         vpa_buf_wren;
+wire [7:0]   vpa_buf_data;
+
+// Vector_Processor_B outputs — memory port b
+wire [15:0]  vpb_wm_address;
+wire         vpb_wm_wren;
+wire [7:0]   vpb_wm_data;
+wire [15:0]  vpb_buf_address;
+wire         vpb_buf_wren;
+wire [7:0]   vpb_buf_data;
+
+// VP handshake signals
+wire         vpa_vector_idle;
+wire         vpa_element_valid;
+wire         vpb_vector_idle;
+wire         vpb_element_valid;
+
+// VP SA interface (stubs for step 7)
+wire [7:0]   vpa_sa_top_wrreq;
+wire [7:0]   vpa_sa_top_data;
+wire [7:0]   vpb_sa_left_wrreq;
+wire [7:0]   vpb_sa_left_data;
+wire [3:0]   vpa_sa_row;
+wire [3:0]   vpa_sa_col;
+
+// Vector buffer data/control wires
+wire [7:0]   vb_q;
+wire         vb_wrreq;     // driven by Activator or ALU in steps 5/6
+wire [7:0]   vb_data_in;  // driven by Activator or ALU in steps 5/6
+assign vb_wrreq   = 1'b0;  // stub until steps 5/6
+assign vb_data_in = 8'd0;  // stub until steps 5/6
+
+// VP_A vector buffer and downstream data wires
+wire         vpa_vb_rdreq;
+wire [7:0]   vpa_data;    // to Activator in step 5
+wire [7:0]   vpb_data;    // to ALU input B in step 6
+
+// ALU element_valid enable: both VP_A and VP_B must be valid simultaneously
+wire alu_enable;
+assign alu_enable = vpa_element_valid & vpb_element_valid;
+
 assign pm_data    = (program == 1'b0) ? prog_pm_data    : 128'd0;
 assign pm_address = (program == 1'b0) ? prog_pm_address : feeder_pm_address;
 assign pm_wren    = (program == 1'b0) ? prog_pm_wren    : 1'b0;
 
-assign wm_data_a    = (program == 1'b0) ? prog_wm_data_a    : 8'd0;
-assign wm_address_a = (program == 1'b0) ? prog_wm_address_a : 16'd0;
-assign wm_wren_a    = (program == 1'b0) ? prog_wm_wren_a    : 1'b0;
+// When program=HIGH, VP_A drives weight memory and 0x1 buffer port a
+assign wm_data_a    = (program == 1'b0) ? prog_wm_data_a    : vpa_wm_data;
+assign wm_address_a = (program == 1'b0) ? prog_wm_address_a : vpa_wm_address;
+assign wm_wren_a    = (program == 1'b0) ? prog_wm_wren_a    : vpa_wm_wren;
 
-assign buf_data_a    = (program == 1'b0) ? prog_buf_data_a    : 8'd0;
-assign buf_address_a = (program == 1'b0) ? prog_buf_address_a : 16'd0;
-assign buf_wren_a    = (program == 1'b0) ? prog_buf_wren_a    : 1'b0;
+assign buf_data_a    = (program == 1'b0) ? prog_buf_data_a    : vpa_buf_data;
+assign buf_address_a = (program == 1'b0) ? prog_buf_address_a : vpa_buf_address;
+assign buf_wren_a    = (program == 1'b0) ? prog_buf_wren_a    : vpa_buf_wren;
 
 Programmer prog (
     .i_clk          (i_clk),
@@ -159,9 +206,9 @@ Weight_Memory wm (
     .data_a   (wm_data_a),
     .address_a(wm_address_a),
     .wren_a   (wm_wren_a),
-    .data_b   (8'd0),    // connected to Vector_Processor B in build step 4
-    .address_b(16'd0),
-    .wren_b   (1'b0),
+    .data_b   (vpb_wm_data),
+    .address_b(vpb_wm_address),
+    .wren_b   (vpb_wm_wren),
     .q_a      (wm_q_a),
     .q_b      (wm_q_b)
 );
@@ -171,9 +218,9 @@ TPU_0x1_Buffer buff (
     .data_a   (buf_data_a),
     .address_a(buf_address_a),
     .wren_a   (buf_wren_a),
-    .data_b   (8'd0),    // connected to Vector_Processor B in build step 4
-    .address_b(16'd0),
-    .wren_b   (1'b0),
+    .data_b   (vpb_buf_data),
+    .address_b(vpb_buf_address),
+    .wren_b   (vpb_buf_wren),
     .q_a      (buf_q_a),
     .q_b      (buf_q_b)
 );
@@ -194,8 +241,8 @@ Controller ctrl (
     .i_trst                 (trst),
     .i_controller_start     (feeder_controller_start),
     .i_instruction          (feeder_instruction),
-    .i_vector_idle_a        (1'b1),   // stub: connected to Vector_Processor_A in step 4
-    .i_vector_idle_b        (1'b1),   // stub: connected to Vector_Processor_B in step 4
+    .i_vector_idle_a        (vpa_vector_idle),
+    .i_vector_idle_b        (vpb_vector_idle),
     .i_systolic_array_idle  (1'b1),   // stub: connected to Systolic_Array in step 7
     .o_controller_idle      (ctrl_controller_idle),
     .o_clear                (ctrl_clear),
@@ -217,6 +264,83 @@ Controller ctrl (
     .o_activator_funct      (ctrl_activator_funct),
     .o_alu_funct            (ctrl_alu_funct),
     .o_systolic_array_start (ctrl_systolic_array_start)
+);
+
+Vector_Processor vp_a (
+    .i_clk                 (i_clk),
+    .i_trst                (trst),
+    .i_vector_start        (ctrl_vector_start_a),
+    .i_vect_source         (ctrl_vect_source_a),
+    .i_vect_dest           (ctrl_vect_dest_a),
+    .i_mem_source_address  (ctrl_mem_source_address_a),
+    .i_mem_dest_address    (ctrl_mem_dest_address_a),
+    .i_length              (ctrl_length_a),
+    .i_dim0                (ctrl_dim0_a),
+    .i_dim1                (ctrl_dim1_a),
+    .o_vector_idle         (vpa_vector_idle),
+    .o_element_valid       (vpa_element_valid),
+    .o_wm_address          (vpa_wm_address),
+    .o_wm_wren             (vpa_wm_wren),
+    .o_wm_data             (vpa_wm_data),
+    .i_wm_q                (wm_q_a),
+    .o_buf_address         (vpa_buf_address),
+    .o_buf_wren            (vpa_buf_wren),
+    .o_buf_data            (vpa_buf_data),
+    .i_buf_q               (buf_q_a),
+    .o_vb_rdreq            (vpa_vb_rdreq),
+    .i_vb_q                (vb_q),
+    .o_data                (vpa_data),
+    .o_sa_top_data         (vpa_sa_top_data),
+    .o_sa_top_wrreq        (vpa_sa_top_wrreq),
+    .o_sa_left_data        (),          // VP_A does not write left SA buffers
+    .o_sa_left_wrreq       (),
+    .o_sa_row              (vpa_sa_row),
+    .o_sa_col              (vpa_sa_col),
+    .i_sa_c                (32'd0)      // stub: connected to Systolic_Array in step 7
+);
+
+Vector_Processor vp_b (
+    .i_clk                 (i_clk),
+    .i_trst                (trst),
+    .i_vector_start        (ctrl_vector_start_b),
+    .i_vect_source         (ctrl_vect_source_b),
+    .i_vect_dest           (ctrl_vect_dest_b),
+    .i_mem_source_address  (ctrl_mem_source_address_b),
+    .i_mem_dest_address    (16'd0),     // VP_B never writes to memory in current ISA
+    .i_length              (ctrl_length_b),
+    .i_dim0                (ctrl_dim0_b),
+    .i_dim1                (ctrl_dim1_b),
+    .o_vector_idle         (vpb_vector_idle),
+    .o_element_valid       (vpb_element_valid),
+    .o_wm_address          (vpb_wm_address),
+    .o_wm_wren             (vpb_wm_wren),
+    .o_wm_data             (vpb_wm_data),
+    .i_wm_q                (wm_q_b),
+    .o_buf_address         (vpb_buf_address),
+    .o_buf_wren            (vpb_buf_wren),
+    .o_buf_data            (vpb_buf_data),
+    .i_buf_q               (buf_q_b),
+    .o_vb_rdreq            (),          // VP_B never reads vector buffer
+    .i_vb_q                (8'd0),
+    .o_data                (vpb_data),
+    .o_sa_top_data         (),          // VP_B does not write top SA buffers
+    .o_sa_top_wrreq        (),
+    .o_sa_left_data        (vpb_sa_left_data),
+    .o_sa_left_wrreq       (vpb_sa_left_wrreq),
+    .o_sa_row              (),          // VP_B does not read SA outputs
+    .o_sa_col              (),
+    .i_sa_c                (32'd0)
+);
+
+Vector_Buffer vb (
+    .clock (i_clk),
+    .data  (vb_data_in),
+    .rdreq (vpa_vb_rdreq),
+    .sclr  (vb_sclr),
+    .wrreq (vb_wrreq),
+    .empty (),
+    .full  (),
+    .q     (vb_q)
 );
 
 // ---------- END CODE ---------- //
