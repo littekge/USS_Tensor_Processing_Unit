@@ -26,7 +26,7 @@ The *Tensor_Processing_Unit* folder contains the TPU hardware written in Verilog
 - Functional TPU ISA (v0.1 complete)
 - Message protocol (v0.1 complete)
 - Hardware Spec (v0.1 complete)
-- Verilog code for TPU (pending)
+- Verilog code for TPU (in progress)
 ## Tests
 The *Tests* folder contains code used to verify the functionality of systems in the project.
 
@@ -37,6 +37,6 @@ The *Tests* folder contains code used to verify the functionality of systems in 
 - The data buffer on the Arduino that connects the computer and FPGA has a fixed length of 256 bytes and could overflow if the serial input rate greatly exceeds the SPI send rate.
 
 ## Potential Long-Term Changes
-- Create soldered perfboard for SPI connection to allow for more reliable data transfer and faster transfer speed.
+- Create soldered perfboard for SPI connection to allow for more reliable data transfer and faster transfer speed (if necessary).
 - Attempt to package StableHLO binary and Python wheel in a single release to allow for full integration with Google Colab (makes long term access to script more reliable).
 - Create custom MLIR passes that handle partitioning of oversize operations.
