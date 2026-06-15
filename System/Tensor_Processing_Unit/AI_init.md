@@ -5,9 +5,10 @@
 
 ## Project Context
 
-- **Platform:** Terasic DE1-SoC FPGA
+- **Target Platform:** Terasic DE1-SoC FPGA
 - **Language:** Verilog HDL 2001
 - **Development Environment:** Quartus Prime Lite Edition
+- **Development Platform:** Windows 11
 - **Build Spec**: `main.md` — the single source of truth for what to build (includes 6-step build plan).
 - **Change Log**: `log.md` — append an entry every time you make a change.
 - **Instruction Set Architecture:** `Functional_TPU_ISA_v0.1.md` (TPU instruction set)

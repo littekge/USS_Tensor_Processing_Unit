@@ -5,9 +5,10 @@
 
 - **Name:** Functional TPU
 - **Version:** 0.1
-- **Platform:** Terasic DE1-SoC FPGA
+- **Target Platform:** Terasic DE1-SoC FPGA
 - **Language:** Verilog HDL 2001
 - **Development Environment:** Quartus Prime Lite Edition
+- **Development Platform:** Windows 11
 - **License:** MIT License
 - **Change Log:** `log.md`
 - **Instruction Set Architecture:** `Functional_TPU_ISA_v0.1.md` (TPU instruction set)
