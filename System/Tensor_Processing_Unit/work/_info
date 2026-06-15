@@ -1,27 +1,29 @@
 m255
 K4
 z2
-Z0 !s12c _opt
+Z0 !s12c _opt1
 Z1 !s99 nomlopt
+Z2 !s12c _opt
+R1
 !s12c _opt2
 R1
-Z2 !s12c _opt1
+R0
+R1
+R0
 R1
 R2
 R1
-R0
+R2
 R1
-R0
+R2
 R1
-R0
+R2
 R1
-R0
+R2
 R1
-R0
+R2
 R1
-R0
-R1
-R0
+R2
 R1
 !s11f MIXED_VERSIONS
 13
@@ -43,19 +45,19 @@ Z7 o-quiet -auto_acc_if_foreign -work work
 Z8 tCvgOpt 0
 n@_opt
 Z9 OL;O;2023.3;77
+R3
 T_opt1
-!s110 1781295863
-V=k4;K@CQ>C`8Hb6X@6@;i3
-04 19 4 work TB_Step1_Programmer fast 0
-=1-a83ca52cc348-6a2c6af6-3dd-2920
+!s110 1781536846
+V`zA_J^Vn86lPjEDElf:7K0
+04 19 4 work TB_Step3_Controller fast 0
+=1-a83ca52cc348-6a30184e-11d-3ba8
 R1
 R5
-!s124 OEM10U5 
-o-quiet -auto_acc_if_foreign -work work -L altera_mf_ver +acc
+R6
+o-quiet -auto_acc_if_foreign -work work +acc
 R8
 n@_opt1
 R9
-R3
 T_opt2
 !s110 1781533811
 VN0`<35BdT80RE2^o2hc1X3
@@ -69,20 +71,44 @@ R8
 n@_opt2
 R9
 R3
+vController
+2TPU/CONTROL/Controller.v
+!s110 1781536831
+!i10b 1
+!s100 <aZBOXGDJKA`10afhGBLL2
+IoedBgk=SV_1oIQbDfS;i]1
+Z10 dC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/system/tensor_processing_unit
+Z11 w1781536807
+8TPU/CONTROL/Controller.v
+FTPU/CONTROL/Controller.v
+!i122 30
+L0 13 336
+Z12 VDg1SIo80bB@j0V0VzS_@n1
+Z13 OL;L;2023.3;77
+r1
+!s85 0
+31
+!s108 1781536831.000000
+!s107 TPU/CONTROL/Controller.v|
+!s90 -work|work|TPU/CONTROL/Controller.v|
+!i113 0
+Z14 o-work work -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R8
+n@controller
 vFeeder
 2TPU/PROGRAMMER/Feeder.v
 !s110 1781534013
 !i10b 1
 !s100 d@VFam[J:mF^TUzoM7:a@1
 IE=S>[3OfObg[BaaZXU4Ih2
-Z10 dC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/system/tensor_processing_unit
-Z11 w1781533844
+R10
+Z15 w1781533844
 8TPU/PROGRAMMER/Feeder.v
 FTPU/PROGRAMMER/Feeder.v
 !i122 28
 L0 12 139
-Z12 VDg1SIo80bB@j0V0VzS_@n1
-Z13 OL;L;2023.3;77
+R12
+R13
 r1
 !s85 0
 31
@@ -90,7 +116,7 @@ r1
 !s107 TPU/PROGRAMMER/Feeder.v|
 !s90 -work|work|TPU/PROGRAMMER/Feeder.v|
 !i113 0
-Z14 o-work work -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R14
 R8
 n@feeder
 vProgrammer
@@ -220,7 +246,7 @@ vTB_Step2_Feeder
 !s100 hhLR;HM<]_S6EOz4]=X4h1
 IT<S@TJ[FmlfHjX:;@232Y3
 R10
-R11
+R15
 8tests/TB_Step2_Feeder.v
 Ftests/TB_Step2_Feeder.v
 !i122 29
@@ -237,3 +263,27 @@ r1
 R14
 R8
 n@t@b_@step2_@feeder
+vTB_Step3_Controller
+2tests/TB_Step3_Controller.v
+!s110 1781536835
+!i10b 1
+!s100 9ebV=2?j7MI];ETRlbCRl0
+IV[ULTNbd5h8TQmVgVj5Cj3
+R10
+R11
+8tests/TB_Step3_Controller.v
+Ftests/TB_Step3_Controller.v
+!i122 31
+L0 42 453
+R12
+R13
+r1
+!s85 0
+31
+!s108 1781536835.000000
+!s107 tests/TB_Step3_Controller.v|
+!s90 -work|work|tests/TB_Step3_Controller.v|
+!i113 0
+R14
+R8
+n@t@b_@step3_@controller

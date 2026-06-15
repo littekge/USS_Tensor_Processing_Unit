@@ -2,6 +2,41 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-06-15 — Build Step 3: Controller Module
+
+- Built `TPU/CONTROL/Controller.v` — 11-state FSM (START, IDLE, CLEAR,
+  EXEC_VP_START, EXEC_VP_WAIT, SA_START, SA_WAIT, WB_VP_START, WB_VP_WAIT,
+  STATE_ERROR, DECODE_ERROR) implementing the DECODE-EXECUTE-WRITEBACK steps
+  of the CPU instruction cycle.
+- State machine validates the opcode in CLEAR state (entering DECODE_ERROR for
+  invalid opcodes), latches the full 128-bit instruction register, then
+  proceeds to the execute phase.
+- Execute phase: pulses `o_vector_start_a` and (for mult/add) `o_vector_start_b`
+  HIGH during EXEC_VP_START; waits in EXEC_VP_WAIT for the required vector
+  processors to assert `vector_idle` HIGH. For mult, proceeds to SA_START/
+  SA_WAIT before writeback; for relu and add, skips directly to writeback.
+- Writeback phase: pulses `o_vector_start_a` in WB_VP_START and waits in
+  WB_VP_WAIT for VP_A idle, then reasserts `o_controller_idle` HIGH.
+- All VP control signals (`o_vect_source_a/b`, `o_vect_dest_a/b`,
+  `o_mem_source_address_a/b`, `o_mem_dest_address_a/b`, `o_length_a/b`,
+  `o_dim0_a/b`, `o_dim1_a/b`) are combinationally decoded from the latched
+  instruction and current state (execute vs. writeback phase).
+- `o_clear` is asserted HIGH for exactly one cycle (CLEAR state) to flush the
+  vector buffer, ALU, Activator, and Systolic_Array.
+- `o_activator_funct` and `o_alu_funct` are combinationally set based on opcode
+  (relu → FUNCT_RELU=3'd0 to Activator; add → FUNCT_ADD=3'd0 to ALU; all others
+  → FUNCT_NOOP=3'd7).
+- `elem_length` for add is computed as sz1 * sz2 (8x8 product, 16-bit result).
+- Updated `TPU/TPU.v` — declared all Controller interface wires (`ctrl_*`),
+  declared `vb_sclr = ctrl_clear | ~trst` for future vector buffer connection,
+  replaced Feeder's `i_controller_idle` stub with `ctrl_controller_idle`,
+  instantiated Controller with VP/SA idle inputs stubbed to 1'b1.
+- Created `tests/TB_Step3_Controller.v` — 7-test testbench. Tests: reset state
+  (idle HIGH, clear LOW), clear asserted for exactly one cycle, invalid opcode
+  → DECODE_ERROR, mult execute-phase VP_A/VP_B decode signals, relu execute-
+  phase VP_A signals and VP_B never started, add execute-phase signals with
+  correct elem_length=sz1*sz2, controller_idle returns HIGH after writeback.
+
 ## 2026-06-15 — Build Step 2: Feeder Module
 
 - Built `TPU/PROGRAMMER/Feeder.v` — 9-state FSM (START, FETCH, WAIT_PM, CHECK,
