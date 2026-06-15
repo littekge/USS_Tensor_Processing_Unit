@@ -21,7 +21,8 @@
 2. **Work in small increments** — one module or feature at a time.
 3. **After every change**, append a dated entry to `log.md` describing what was added, changed, or fixed.
 4. **Review code** after every build step, identifying and correcting syntax and logic errors from the initial build.
-5. **Generate tests** after every build step. Build Verilog testbenches and instructions on how to run them in the `/tests` folder, including what it looks like for each test to be successful and unsuccessful (test cases should evaluate the implementation of the most recent build step, so there should be 7 in total). Testbenches should NOT synthesize away any signals and log every signal waveform by default.
+5. **Generate tests** after every build step. Build Verilog testbenches and instructions on how to run them in the `/tests` folder, including what it looks like for each test to be successful and unsuccessful (test cases should evaluate the implementation of the most recent build step, so there should be 7 in total). **Testbenches should NOT synthesize away any signals and log every signal waveform by default.** An example vsim command that accomplishes this is shown below.
+`vsim -L altera_mf_ver -voptargs=+acc -gui work.TB_Step1_Programmer -do "add wave -r /*; run -all"`
 6. **Commit often** with descriptive messages: `git add . ; git commit -m "feat: ..."`. Stay on the same git branch for the duration of the build.
 7. **Mark completed build steps** in `main.md`.
 
