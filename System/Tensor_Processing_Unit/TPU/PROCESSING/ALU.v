@@ -12,7 +12,7 @@ module ALU(
 	input i_enable
 	output o_buffer_write
 	
-	//data IO
+	//data signals
 	input [7:0] i_data_a,
 	input [7:0] i_data_b,
 	output wire [7:0] o_data
