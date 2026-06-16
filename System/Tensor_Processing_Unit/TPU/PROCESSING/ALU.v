@@ -44,13 +44,16 @@ parameter [2:0]
 
 // Requantizes ALU output
 function automatic signed [7:0] requantize(input signed [31:0] value);
+
 	reg signed [31:0] val_signed;
 	reg signed [31:0] val_shifted;
+	begin
 	val_signed  = $signed(value);
 	val_shifted = val_signed >>> REQUANT_SHIFT;
 	requantize = (val_shifted > $signed(32'd127))  ? 8'h7F :
                 (val_shifted < $signed(-32'd128)) ? 8'h80 :
                 val_shifted[7:0];
+	end
 endfunction
 
 

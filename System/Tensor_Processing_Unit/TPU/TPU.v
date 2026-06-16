@@ -382,6 +382,6 @@ ALU alu (
 // ---------- END CODE ---------- //
 
 // ---------- DEBUG ---------- //
-assign o_debug_val = {vb_q[3:0], buf_q_a[3:0], buf_q_b[3:0], wm_q_a[3:0], wm_q_b[3:0], pm_q[127:116]};
+assign o_debug_val = {vb_q[3:0], buf_q_a[3:0], buf_q_b[3:0], wm_q_a[3:0], wm_q_b[3:0], pm_q[127:124], alu_data[3:0], act_data[3:0]};
 // ---------- END DEBUG ---------- //
 endmodule

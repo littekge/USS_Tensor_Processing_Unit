@@ -2,6 +2,11 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-06-16 — Debug: Tensor_Processing_Unit and TPU modules
+- Modified TPU to output a debug signal `o_debug_val` that concatenates relevant output signals to prevent removal of memory and logic during synthesis.
+- Instantiated `debug` module in `Tensor_Processing_Unit.v` to output `o_debug_val` to a monitor via VGA.
+- Created basic logic to connect FPGA external input `KEY[3]` to `i_write_next` in the debug module to trigger writing to the screen when `KEY[3]` is pressed.
+
 ## 2026-06-16 — Testbench: Activator Module
 
 - **Activator Debug Values:** added debug values to the activator module to indicate a default state (45), control error (29), or NOOP  function (98).
@@ -19,7 +24,6 @@
 - Defined `alu_write`, `act_write`, `alu_data`, and `act_data` to connect to write and data outputs (`alu_write` and `alu_data` are stubs to be connected in build step 6). 
 - `vb_wrreq` and `vb_data` updated to be driven by `act_write` and `alu_write`. 
 - `vb_data` is set combinationally based on `alu_write`.
-
 
 ## 2026-06-15 — Testbench: Added Tests 8–10 (0x1 Buffer and zero source coverage)
 

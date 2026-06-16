@@ -101,6 +101,8 @@ wire clk, rst;
 assign clk = CLOCK_50;
 assign rst = KEY[0];
 
+wire [31:0] debug_val;
+
 //ensure that Quartus knows that these GPIO pins are inputs
 assign GPIO_0[7] = 1'bz;
 assign GPIO_0[3] = 1'bz;
@@ -126,7 +128,6 @@ TPU tpu (
 
 // ---------- DEBUG ---------- //
 
-wire [31:0] debug_val;
 
 wire write_ready;
 assign LEDR[0] = write_ready;
@@ -141,9 +142,7 @@ begin
 	end
 	else
 	begin
-		if (write == 1'b1) begin
-			write <= 1'b0;
-		end else if (KEY[3] == 1'b0 && write_ready) begin
+		if (KEY[3] == 1'b0 && write_ready) begin
 			write <= 1'b1;
 		end else begin
 			write <= 1'b0;
