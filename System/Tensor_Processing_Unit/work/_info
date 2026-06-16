@@ -1,8 +1,10 @@
 m255
 K4
 z2
-Z0 !s12c _opt2
+Z0 !s12c _opt
 Z1 !s99 nomlopt
+R0
+R1
 R0
 R1
 R0
@@ -13,27 +15,45 @@ R0
 R1
 Z2 !s12c _opt1
 R1
-Z3 !s12c _opt
+R0
 R1
 R0
 R1
+R0
+R1
+Z3 !s12c _opt2
+R1
+R3
+R1
+R3
+R1
+R3
+R1
+R3
+R1
+R2
+R1
+R0
+R1
+R3
+R1
 R2
 R1
 R2
 R1
-R3
+R0
 R1
-R3
+R0
 R1
-R3
+R0
 R1
-R3
+R0
 R1
-R3
+R0
 R1
-R3
+R0
 R1
-R3
+R0
 R1
 !s11f MIXED_VERSIONS
 13
@@ -44,30 +64,29 @@ R1
 cModel Technology
 Z4 dC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_processing_unit
 T_opt
-!s110 1781534031
-Vhe@3H?6VV`l3n>6>[:U`>3
-04 15 4 work TB_Step2_Feeder fast 0
-=1-a83ca52cc348-6a300d4e-3ad-38f4
+!s110 1781626873
+V8>6YK^QSk@RJ8@bGCh0R03
+04 18 4 work TB_Step5_Activator fast 0
+=1-a83ca52cc348-6a3177f9-d6-32a4
 R1
 Z5 !s12b OEM100
 Z6 !s124 OEM10U2 
-o-quiet -auto_acc_if_foreign -work work
-Z7 tCvgOpt 0
+Z7 o-quiet -auto_acc_if_foreign -work work -L altera_mf_ver +acc
+Z8 tCvgOpt 0
 n@_opt
-Z8 OL;O;2023.3;77
-R4
+Z9 OL;O;2023.3;77
 T_opt1
-!s110 1781536846
-V`zA_J^Vn86lPjEDElf:7K0
+!s110 1781624339
+V:Hm65n_X2ad1A4H[7=bd`1
 04 19 4 work TB_Step3_Controller fast 0
-=1-a83ca52cc348-6a30184e-11d-3ba8
+=1-a83ca52cc348-6a316e13-1fa-4d1c
 R1
 R5
 R6
 o-quiet -auto_acc_if_foreign -work work +acc
-R7
-n@_opt1
 R8
+n@_opt1
+R9
 R4
 T_opt2
 !s110 1781543496
@@ -77,24 +96,49 @@ VW57_@LAE>A>O`FGTC=ol^3
 R1
 R5
 R6
-o-quiet -auto_acc_if_foreign -work work -L altera_mf_ver +acc
 R7
-n@_opt2
 R8
+n@_opt2
+R9
+R4
+vActivator
+2TPU/PROCESSING/Activator.v
+!s110 1781626866
+!i10b 1
+!s100 ]cGT;XQ]5LFNc6FBDo1zl1
+In4L0NfT115ZN4`=Y;_P[N2
+R4
+w1781625539
+8TPU/PROCESSING/Activator.v
+FTPU/PROCESSING/Activator.v
+!i122 60
+L0 9 54
+Z10 VDg1SIo80bB@j0V0VzS_@n1
+Z11 OL;L;2023.3;77
+r1
+!s85 0
+31
+!s108 1781626866.000000
+!s107 TPU/PROCESSING/Activator.v|
+!s90 -work|work|TPU/PROCESSING/Activator.v|
+!i113 0
+Z12 o-work work -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R8
+n@activator
 vController
 2TPU/CONTROL/Controller.v
 !s110 1781536831
 !i10b 1
 !s100 <aZBOXGDJKA`10afhGBLL2
 IoedBgk=SV_1oIQbDfS;i]1
-Z9 dC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/system/tensor_processing_unit
-Z10 w1781536807
+Z13 dC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/system/tensor_processing_unit
+Z14 w1781536807
 8TPU/CONTROL/Controller.v
 FTPU/CONTROL/Controller.v
 !i122 30
 L0 13 336
-Z11 VDg1SIo80bB@j0V0VzS_@n1
-Z12 OL;L;2023.3;77
+R10
+R11
 r1
 !s85 0
 31
@@ -102,8 +146,8 @@ r1
 !s107 TPU/CONTROL/Controller.v|
 !s90 -work|work|TPU/CONTROL/Controller.v|
 !i113 0
-Z13 o-work work -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
-R7
+R12
+R8
 n@controller
 vFeeder
 2TPU/PROGRAMMER/Feeder.v
@@ -111,14 +155,14 @@ vFeeder
 !i10b 1
 !s100 d@VFam[J:mF^TUzoM7:a@1
 IE=S>[3OfObg[BaaZXU4Ih2
-R9
-Z14 w1781533844
+R13
+Z15 w1781533844
 8TPU/PROGRAMMER/Feeder.v
 FTPU/PROGRAMMER/Feeder.v
 !i122 28
 L0 12 139
+R10
 R11
-R12
 r1
 !s85 0
 31
@@ -126,8 +170,8 @@ r1
 !s107 TPU/PROGRAMMER/Feeder.v|
 !s90 -work|work|TPU/PROGRAMMER/Feeder.v|
 !i113 0
-R13
-R7
+R12
+R8
 n@feeder
 vProgrammer
 2TPU/PROGRAMMER/Programmer.v
@@ -141,8 +185,8 @@ w1781294932
 FTPU/PROGRAMMER/Programmer.v
 !i122 24
 L0 10 297
+R10
 R11
-R12
 r1
 !s85 0
 31
@@ -150,8 +194,8 @@ r1
 !s107 TPU/PROGRAMMER/Programmer.v|
 !s90 -work|work|TPU/PROGRAMMER/Programmer.v|
 !i113 0
-R13
-R7
+R12
+R8
 n@programmer
 vSPI_Input_buffer
 2TPU/PROGRAMMER/SPI_LINK/SPI_INPUT_BUFFER/SPI_Input_buffer.v
@@ -165,8 +209,8 @@ w1780936010
 FTPU/PROGRAMMER/SPI_LINK/SPI_INPUT_BUFFER/SPI_Input_buffer.v
 !i122 22
 L0 40 54
+R10
 R11
-R12
 r1
 !s85 0
 31
@@ -174,8 +218,8 @@ r1
 !s107 TPU/PROGRAMMER/SPI_LINK/SPI_INPUT_BUFFER/SPI_Input_buffer.v|
 !s90 -work|work|TPU/PROGRAMMER/SPI_LINK/SPI_INPUT_BUFFER/SPI_Input_buffer.v|
 !i113 0
-R13
-R7
+R12
+R8
 n@s@p@i_@input_buffer
 vSPI_Interface
 2TPU/PROGRAMMER/SPI_LINK/SPI_Interface.v
@@ -189,8 +233,8 @@ w1781284051
 FTPU/PROGRAMMER/SPI_LINK/SPI_Interface.v
 !i122 23
 L0 8 50
+R10
 R11
-R12
 r1
 !s85 0
 31
@@ -198,8 +242,8 @@ r1
 !s107 TPU/PROGRAMMER/SPI_LINK/SPI_Interface.v|
 !s90 -work|work|TPU/PROGRAMMER/SPI_LINK/SPI_Interface.v|
 !i113 0
-R13
-R7
+R12
+R8
 n@s@p@i_@interface
 vSPI_Slave
 2TPU/PROGRAMMER/SPI_LINK/SPI_Slave.v
@@ -213,8 +257,8 @@ w1779300033
 FTPU/PROGRAMMER/SPI_LINK/SPI_Slave.v
 !i122 21
 L0 24 174
+R10
 R11
-R12
 r1
 !s85 0
 31
@@ -222,8 +266,8 @@ r1
 !s107 TPU/PROGRAMMER/SPI_LINK/SPI_Slave.v|
 !s90 -work|work|TPU/PROGRAMMER/SPI_LINK/SPI_Slave.v|
 !i113 0
-R13
-R7
+R12
+R8
 n@s@p@i_@slave
 vTB_Step1_Programmer
 2tests/TB_Step1_Programmer.v
@@ -237,8 +281,8 @@ w1781291444
 Ftests/TB_Step1_Programmer.v
 !i122 25
 L0 45 317
+R10
 R11
-R12
 r1
 !s85 0
 31
@@ -246,8 +290,8 @@ r1
 !s107 tests/TB_Step1_Programmer.v|
 !s90 -work|work|tests/TB_Step1_Programmer.v|
 !i113 0
-R13
-R7
+R12
+R8
 n@t@b_@step1_@programmer
 vTB_Step2_Feeder
 2tests/TB_Step2_Feeder.v
@@ -255,14 +299,14 @@ vTB_Step2_Feeder
 !i10b 1
 !s100 hhLR;HM<]_S6EOz4]=X4h1
 IT<S@TJ[FmlfHjX:;@232Y3
-R9
-R14
+R13
+R15
 8tests/TB_Step2_Feeder.v
 Ftests/TB_Step2_Feeder.v
 !i122 29
 L0 42 311
+R10
 R11
-R12
 r1
 !s85 0
 31
@@ -270,8 +314,8 @@ r1
 !s107 tests/TB_Step2_Feeder.v|
 !s90 -work|work|tests/TB_Step2_Feeder.v|
 !i113 0
-R13
-R7
+R12
+R8
 n@t@b_@step2_@feeder
 vTB_Step3_Controller
 2tests/TB_Step3_Controller.v
@@ -279,14 +323,14 @@ vTB_Step3_Controller
 !i10b 1
 !s100 9ebV=2?j7MI];ETRlbCRl0
 IV[ULTNbd5h8TQmVgVj5Cj3
-R9
-R10
+R13
+R14
 8tests/TB_Step3_Controller.v
 Ftests/TB_Step3_Controller.v
 !i122 31
 L0 42 453
+R10
 R11
-R12
 r1
 !s85 0
 31
@@ -294,8 +338,8 @@ r1
 !s107 tests/TB_Step3_Controller.v|
 !s90 -work|work|tests/TB_Step3_Controller.v|
 !i113 0
-R13
-R7
+R12
+R8
 n@t@b_@step3_@controller
 vTB_Step4_VectorProcessor
 2tests/TB_Step4_VectorProcessor.v
@@ -303,14 +347,14 @@ vTB_Step4_VectorProcessor
 !i10b 1
 !s100 k3gO0ElAA`>zLBIQ`k1=e2
 ITkOY7GfjCThlN]7k]J@;G2
-R9
+R13
 w1781543481
 8tests/TB_Step4_VectorProcessor.v
 Ftests/TB_Step4_VectorProcessor.v
 !i122 41
 L0 46 448
+R10
 R11
-R12
 r1
 !s85 0
 31
@@ -318,23 +362,47 @@ r1
 !s107 tests/TB_Step4_VectorProcessor.v|
 !s90 -work|work|tests/TB_Step4_VectorProcessor.v|
 !i113 0
-R13
-R7
+R12
+R8
 n@t@b_@step4_@vector@processor
+vTB_Step5_Activator
+2tests/TB_Step5_Activator.v
+!s110 1781626868
+!i10b 1
+!s100 j]<M]P4gfbm_nkIQ<<ZIi2
+Ij]jd`DWi@C7B0km<76`4c2
+R4
+w1781626859
+8tests/TB_Step5_Activator.v
+Ftests/TB_Step5_Activator.v
+!i122 61
+L0 41 176
+R10
+R11
+r1
+!s85 0
+31
+!s108 1781626868.000000
+!s107 tests/TB_Step5_Activator.v|
+!s90 -work|work|tests/TB_Step5_Activator.v|
+!i113 0
+R12
+R8
+n@t@b_@step5_@activator
 vVector_Processor
 2TPU/PROCESSING/Vector_Processor.v
 !s110 1781543488
 !i10b 1
 !s100 ?^5B:PjGUU7A04Z8jk5mf1
 I4UXK=ITaemofTCGZeRC`?3
-R9
+R13
 w1781542496
 8TPU/PROCESSING/Vector_Processor.v
 FTPU/PROCESSING/Vector_Processor.v
 !i122 40
 L0 27 463
+R10
 R11
-R12
 r1
 !s85 0
 31
@@ -342,6 +410,6 @@ r1
 !s107 TPU/PROCESSING/Vector_Processor.v|
 !s90 -work|work|TPU/PROCESSING/Vector_Processor.v|
 !i113 0
-R13
-R7
+R12
+R8
 n@vector_@processor

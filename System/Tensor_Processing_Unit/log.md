@@ -2,6 +2,11 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-06-16 — Testbench: Activator Module
+
+- **Activator Debug Values:** added debug values to the activator module to indicate a default state (45), control error (29), or NOOP  function (98).
+- Created `tests/TB_Step5_Activator.v` — 7-test testbench. Tests: o_data is forced to 45 when i_trst LOW, o_data is forced to 45 when i_clear HIGH, o_data is forced to 45 when i_enable LOW, i_enable routes to o_write, NOOP operation functions correctly, ReLu operation functions correctly.
+
 ## 2026-06-15 — Build Step 5: Activator Module
 
 - Built `/TPU/PROCESSING/Activator.v` — combinational activation function module that implements ReLu and NOOP function codes.

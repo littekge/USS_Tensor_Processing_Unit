@@ -3,11 +3,12 @@
  * Author: Gabe Litteken
  * Date: 6/15/2026
  * 
- * Insert module description here
+ * Combinational module to implement common activation functions used in
+ * neural network processing. 
  */
 module Activator(
 
-	input i_clk, //not connected
+	input i_clk, //intentionally not connected
 	input i_trst,
 	
 	//control signals
@@ -40,16 +41,16 @@ assign o_write = i_enable;
 
 always @ (*)
 begin
-	if ((i_trst == 1'b0) | (i_clear == 1'b1))
+	if ((i_trst == 1'b0) | (i_clear == 1'b1) | (i_enable == 1'b0))
 	begin
-		o_data = 8'd0;
+		o_data = 8'd45; //indicates a default state
 	end
 	else
 	begin
 		case (i_activator_op)
 			RELU: o_data =	($signed(i_data) > $signed(8'd0))?i_data:8'd0;
-			NOOP: o_data = 8'd0;
-			default: o_data = 8'd29;
+			NOOP: o_data = 8'd98; //indicates NOOP
+			default: o_data = 8'd29; //indicates control error
 		endcase 
 	end
 end
