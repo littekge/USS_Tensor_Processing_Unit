@@ -2,6 +2,20 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-06-15 — Build Step 5: Activator Module
+
+- Built `/TPU/PROCESSING/Activator.v` — combinational activation function module that implements ReLu and NOOP function codes.
+- Module input `i_clk` intentionally not connected.
+- `i_trst` and `i_clear` signals hold the module in a default state.
+- `i_enable` assigned to `o_write` to adhere to hardware spec while maintaining pure combinational logic.
+- Updated `TPU/TPU.v` to connect relevant control signals...
+- `ctrl_clear` and `ctrl_activator_funct` stubs connected to activator.
+- `vpa_data` stub connected to `i_data` in activator module.
+- Defined `alu_write`, `act_write`, `alu_data`, and `act_data` to connect to write and data outputs (`alu_write` and `alu_data` are stubs to be connected in build step 6). 
+- `vb_wrreq` and `vb_data` updated to be driven by `act_write` and `alu_write`. 
+- `vb_data` is set combinationally based on `alu_write`.
+
+
 ## 2026-06-15 — Testbench: Added Tests 8–10 (0x1 Buffer and zero source coverage)
 
 - **Test 8** (`VSRC_MEM src=0x0001 → VDST_ACT`): Exercises the 0x1 Buffer

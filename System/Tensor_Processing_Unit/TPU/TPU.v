@@ -145,18 +145,6 @@ wire [7:0]   vpb_sa_left_data;
 wire [3:0]   vpa_sa_row;
 wire [3:0]   vpa_sa_col;
 
-// Vector buffer data/control wires
-wire [7:0]   vb_q;
-wire         vb_wrreq;
-wire [7:0]   vb_data_in;
-assign vb_wrreq   = act_write | alu_write;
-assign vb_data_in = act_write ? act_data : alu_data;
-
-// VP_A vector buffer and downstream data wires
-wire         vpa_vb_rdreq;
-wire [7:0]   vpa_data;    // to Activator and ALU input A
-wire [7:0]   vpb_data;    // to ALU input B in step 6
-
 // ALU element_valid enable: both VP_A and VP_B must be valid simultaneously
 wire alu_enable;
 assign alu_enable = vpa_element_valid & vpb_element_valid;
@@ -172,6 +160,18 @@ wire alu_write; //driven by ALU in step 6
 // Activator and ALU data output signals
 wire [7:0] act_data;
 wire [7:0] alu_data; //driven by ALU in step 6
+
+// Vector buffer data/control wires
+wire         vb_wrreq;
+wire [7:0]   vb_data_in;
+assign vb_wrreq   = act_write | alu_write;
+assign vb_data_in = alu_write ? alu_data : act_data;
+
+// VP_A vector buffer and downstream data wires
+wire         vpa_vb_rdreq;
+wire [7:0]   vb_q;
+wire [7:0]   vpa_data;    // to Activator and ALU input A
+wire [7:0]   vpb_data;    // to ALU input B in step 6
 
 assign pm_data    = (program == 1'b0) ? prog_pm_data    : 128'd0;
 assign pm_address = (program == 1'b0) ? prog_pm_address : feeder_pm_address;
