@@ -21,9 +21,10 @@ module TPU (
     input       i_SPI_Clk,
     output wire o_SPI_MISO,
     input       i_SPI_MOSI,
-    input       i_SPI_SS
+    input       i_SPI_SS,
 
     // ---------- DEBUG ---------- //
+	 output wire [31:0] o_debug_val
     // ---------- END DEBUG ---------- //
 );
 
@@ -381,5 +382,6 @@ ALU alu (
 // ---------- END CODE ---------- //
 
 // ---------- DEBUG ---------- //
+assign o_debug_val = {vb_q[3:0], buf_q_a[3:0], buf_q_b[3:0], wm_q_a[3:0], wm_q_b[3:0], pm_q[127:116]};
 // ---------- END DEBUG ---------- //
 endmodule

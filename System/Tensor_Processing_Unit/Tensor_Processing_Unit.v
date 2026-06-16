@@ -107,18 +107,6 @@ assign GPIO_0[3] = 1'bz;
 assign GPIO_0[1] = 1'bz;
 
 // ---------- CODE ---------- //
-
-// Assign unused hardware outputs to safe defaults
-assign VGA_BLANK_N = 1'b1;
-assign VGA_CLK     = 1'b0;
-assign VGA_SYNC_N  = 1'b0;
-assign VGA_HS      = 1'b0;
-assign VGA_VS      = 1'b0;
-assign VGA_R       = 8'd0;
-assign VGA_G       = 8'd0;
-assign VGA_B       = 8'd0;
-//assign LEDR        = 10'd0;
-
 // SPI signals routed through GPIO_0 (same pins as prior SPI test)
 //   GPIO_0[7] = SPI_Clk (input)
 //   GPIO_0[5] = SPI_MISO (output, tri-stated when inactive)
@@ -130,11 +118,55 @@ TPU tpu (
 	.i_SPI_Clk(GPIO_0[7]),
 	.o_SPI_MISO(GPIO_0[5]),
 	.i_SPI_MOSI(GPIO_0[3]),
-	.i_SPI_SS (GPIO_0[1])
+	.i_SPI_SS (GPIO_0[1]),
+	.o_debug_val(debug_val)
 );
 
 // ---------- END CODE ---------- //
 
 // ---------- DEBUG ---------- //
+
+wire [31:0] debug_val;
+
+wire write_ready;
+assign LEDR[0] = write_ready;
+
+reg write;
+
+always @ (posedge clk or negedge rst)
+begin
+	if (rst == 1'b0)
+	begin
+		write <= 1'b0;
+	end
+	else
+	begin
+		if (write == 1'b1) begin
+			write <= 1'b0;
+		end else if (KEY[3] == 1'b0 && write_ready) begin
+			write <= 1'b1;
+		end else begin
+			write <= 1'b0;
+		end
+	end
+end
+
+debug dbg (
+   .i_clk(clk),
+	.i_rst(rst),
+	.i_data(debug_val),
+	.i_write_next(write), 
+	.o_write_ready(write_ready),
+	
+	//VGA signal passthrough
+	.vga_blank(VGA_BLANK_N),
+	.vga_b(VGA_B),
+	.vga_r(VGA_R),
+	.vga_g(VGA_G),
+	.vga_clk(VGA_CLK),
+	.vga_hs(VGA_HS),
+	.vga_vs(VGA_VS),
+	.vga_sync(VGA_SYNC_N)
+);
 // ---------- END DEBUG ---------- //
 endmodule
