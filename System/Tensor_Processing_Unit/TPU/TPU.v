@@ -155,11 +155,11 @@ assign act_enable = vpa_element_valid;
 
 // Activator and ALU write signals
 wire act_write;
-wire alu_write; //driven by ALU in step 6
+wire alu_write;
 
 // Activator and ALU data output signals
 wire [7:0] act_data;
-wire [7:0] alu_data; //driven by ALU in step 6
+wire [7:0] alu_data;
 
 // Vector buffer data/control wires
 wire         vb_wrreq;
@@ -171,7 +171,7 @@ assign vb_data_in = alu_write ? alu_data : act_data;
 wire         vpa_vb_rdreq;
 wire [7:0]   vb_q;
 wire [7:0]   vpa_data;    // to Activator and ALU input A
-wire [7:0]   vpb_data;    // to ALU input B in step 6
+wire [7:0]   vpb_data;    // to ALU input B
 
 assign pm_data    = (program == 1'b0) ? prog_pm_data    : 128'd0;
 assign pm_address = (program == 1'b0) ? prog_pm_address : feeder_pm_address;
@@ -364,6 +364,18 @@ Activator act (
 	.i_activator_op(ctrl_activator_funct),
 	.i_data(vpa_data),
 	.o_data(act_data)
+);
+
+ALU alu (
+	.i_clk(i_clk), //intentionally not connected
+	.i_trst(trst),
+	.i_enable(alu_enable),
+	.i_clear(ctrl_clear),
+	.o_write(alu_write),
+	.i_alu_op(ctrl_alu_funct), 
+	.i_data_a(vpa_data),
+	.i_data_b(vpb_data),
+	.o_data(alu_data)
 );
 
 // ---------- END CODE ---------- //

@@ -48,7 +48,7 @@ begin
 	else
 	begin
 		case (i_activator_op)
-			RELU: o_data =	($signed(i_data) > $signed(8'd0))?i_data:8'd0;
+			RELU: o_data = ($signed(i_data) > $signed(8'd0))?i_data:8'd0;
 			NOOP: o_data = 8'd98; //indicates NOOP
 			default: o_data = 8'd29; //indicates control error
 		endcase 
