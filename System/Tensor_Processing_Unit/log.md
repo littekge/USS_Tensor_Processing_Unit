@@ -2,6 +2,11 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-06-17 — Build Step 7: Multiply Accumulate Unit
+- Built `TPU/SYSTOLIC_ARRAY/Multiply_Accumulate_Unit.v` — single multiply accumulate unit that serves as one "tile" in the systolic array.
+- Performs one single multiply accumulate operation (c=c+a*b) every clock cycle.
+- Forwards `i_a` and `i_b` to `o_a` amd `o_b` respectively every clock cycle.
+
 ## 2026-06-17 — Testbench: ALU Module
 - Created `tests/TB_Step6_ALU.v` — 6-test testbench. Tests: o_data is forced to 45 when i_trst LOW, i_enable LOW, or i_clear HIGH, i_enable routes to o_write, NOOP operation functions correctly, ADD operation functions correctly, positive clamping functions correctly, negative clamping functions correctly.
 

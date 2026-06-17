@@ -3,7 +3,8 @@
  * Author: Gabe Litteken
  * Date: 6/15/2026
  * 
- * Insert module description here
+ * Combinational ALU that implements basic arithmetic operations. Output data
+ * is either requantized to 8-bit signed integer or clamped to [-128, 127].
  */
 module ALU(
 	
@@ -76,7 +77,7 @@ begin
 	else
 	begin
 		case (i_alu_op)
-			ADD: o_data = clamp($signed(i_data_a) + $signed(i_data_b));
+			ADD: o_data = clamp($signed(i_data_a) + $signed(i_data_b)); //data must be signed so that the input to the clamp function is also signed
 			NOOP: o_data = 8'd98; //indicates NOOP
 			default: o_data = 8'd29; //indicates control error
 		endcase 
