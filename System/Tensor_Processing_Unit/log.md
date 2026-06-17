@@ -2,15 +2,30 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-06-17 — Testbench: ALU Module
+- Created `tests/TB_Step6_ALU.v` — 6-test testbench. Tests: o_data is forced to 45 when i_trst LOW, i_enable LOW, or i_clear HIGH, i_enable routes to o_write, NOOP operation functions correctly, ADD operation functions correctly, positive clamping functions correctly, negative clamping functions correctly.
+
 ## 2026-06-16 — Debug: Tensor_Processing_Unit and TPU modules
 - Modified TPU to output a debug signal `o_debug_val` that concatenates relevant output signals to prevent removal of memory and logic during synthesis.
 - Instantiated `debug` module in `Tensor_Processing_Unit.v` to output `o_debug_val` to a monitor via VGA.
 - Created basic logic to connect FPGA external input `KEY[3]` to `i_write_next` in the debug module to trigger writing to the screen when `KEY[3]` is pressed.
 
+## 2026-06-16 — Build Step 6: ALU Module
+- Built `/TPU/PROCESSING/ALU.v` — combinational ALU that implements ADD and NOOP function codes.
+- Module input `i_clk` intentionally not connected.
+- `i_trst` and `i_clear` signals hold the module in a default state.
+- `i_enable` assigned to `o_write` to adhere to hardware spec while maintaining pure combinational logic.
+- Defined `clamp()` function to clamp output from the ADD operation to fit within an 8 bit signed integer.
+- Updated `TPU/TPU.v` to connect relevant control signals...
+- `ctrl_clear` and `ctrl_alu_funct` connected to ALU.
+- `vpa_data` and `vpb_data` connected to `i_data_a` and `i_data_b` respectively.
+- `alu_enable` stub from build step 4 connected to `i_enable`.
+- `alu_write` and `alu_data` from build step 5 connected to `o_write` and `o_data` respectively.
+
 ## 2026-06-16 — Testbench: Activator Module
 
 - **Activator Debug Values:** added debug values to the activator module to indicate a default state (45), control error (29), or NOOP  function (98).
-- Created `tests/TB_Step5_Activator.v` — 7-test testbench. Tests: o_data is forced to 45 when i_trst LOW, o_data is forced to 45 when i_clear HIGH, o_data is forced to 45 when i_enable LOW, i_enable routes to o_write, NOOP operation functions correctly, ReLu operation functions correctly.
+- Created `tests/TB_Step5_Activator.v` — 6-test testbench. Tests: o_data is forced to 45 when i_trst LOW, o_data is forced to 45 when i_clear HIGH, o_data is forced to 45 when i_enable LOW, i_enable routes to o_write, NOOP operation functions correctly, ReLu operation functions correctly.
 
 ## 2026-06-15 — Build Step 5: Activator Module
 

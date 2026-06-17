@@ -1,9 +1,9 @@
 /*
- * File: TB_Step5_Activator.v
- * Date: 2026-06-16
+ * File: TB_Step6_ALU.v
+ * Date: 2026-06-17
  *
- * Testbench for Build Step 5: Activator module.
- * Tests combinational implementation of activation functions and control
+ * Testbench for Build Step 6: ALU module.
+ * Tests combinational implementation of ALU functions and control
  * logic. This is a unit test; connections to other modules are not verified.
  *
  * -------------------------------------------------------------------------
@@ -14,11 +14,11 @@
  *
  *   2. Compile:
  *        vlib work
- *        vlog -work work TPU/PROCESSING/Activator.v
- *        vlog -work work tests/TB_Step5_Activator.v
+ *        vlog -work work TPU/PROCESSING/ALU.v
+ *        vlog -work work tests/TB_Step6_ALU.v
  *
  *   3. Simulate:
- *        vsim -L altera_mf_ver -voptargs=+acc -gui work.TB_Step5_Activator -do "add wave -r /*; run -all"
+ *        vsim -L altera_mf_ver -voptargs=+acc -gui work.TB_Step6_ALU -do "add wave -r /*; run -all"
  *
  * -------------------------------------------------------------------------
  * PASS / FAIL CRITERIA:
@@ -27,18 +27,18 @@
  *   All N tests should show PASS for a correct implementation.
  *
  * TEST CASES:
- *   Test 1: o_data is forced to 45 when i_trst LOW
- *   Test 2: o_data is forced to 45 when i_clear HIGH
- *   Test 3: o_data is forced to 45 when i_enable LOW
- *   Test 4: i_enable routes to o_write
- *   Test 5: NOOP operation functions correctly
- *   Test 6: ReLu operation functions correctly
+ *   Test 1: o_data is forced to 45 when i_trst LOW, i_enable LOW, or i_clear HIGH
+ *   Test 2: i_enable routes to o_write
+ *   Test 3: NOOP operation functions correctly
+ *   Test 4: ADD operation functions correctly
+ *   Test 5: positive clamping functions correctly
+ *   Test 6: negative clamping functions correctly
  * -------------------------------------------------------------------------
  */
  
 `timescale 1 ns / 1 ps
  
-module TB_Step5_Activator;
+module TB_Step6_ALU;
  
 // ---------------------------------------------------------------------------
 // Clock / reset
@@ -85,25 +85,27 @@ endtask
 // DUT signals
 // ---------------------------------------------------------------------------
 
-reg act_enable;
+reg alu_enable;
 reg clear;
 wire write;
-reg [2:0] activator_funct;
-reg signed [7:0] in_data;
+reg [2:0] alu_funct;
+reg signed [7:0] in_data_a;
+reg signed [7:0] in_data_b;
 wire signed [7:0] out_data;
 
 // ---------------------------------------------------------------------------
 // DUT instantiation
 // ---------------------------------------------------------------------------
 
-Activator dut (
-	.i_clk(clk),
+ALU dut (
+	.i_clk(clk), //intentionally not connected
 	.i_trst(trst),
-	.i_enable(act_enable),
+	.i_enable(alu_enable),
 	.i_clear(clear),
 	.o_write(write),
-	.i_activator_op(activator_funct),
-	.i_data(in_data),
+	.i_alu_op(alu_funct), 
+	.i_data_a(in_data_a),
+	.i_data_b(in_data_b),
 	.o_data(out_data)
 );
 
@@ -114,93 +116,96 @@ Activator dut (
 initial
 begin
 	clk = 1'b0;
-	act_enable = 1'b0;
-	clear = 1'b0;
 	trst = 1'b1;
-	activator_funct = 3'd7;
-	in_data = 8'd0;
+	alu_enable = 1'b1;
 	pass_count = 0;
-   fail_count = 0;
+	fail_count = 0;
+	in_data_a = 8'd0;
+	in_data_b = 8'd0;
+	alu_funct = 3'd7;
 	
 	// -----------------------------------------------------------------------
-   // Test 1: o_data is forced to 45 when i_trst LOW
+   // Test 1: o_data is forced to 45 when i_trst LOW, i_enable LOW, or i_clear HIGH
    // -----------------------------------------------------------------------
-	trst = 1'b0;
-	act_enable = 1'b1;
-	clear = 1'b0;
-	in_data = 8'd20; //should be overridden if test is successful
-	@(posedge clk); #1;
-	@(posedge clk); #1;
-	check(out_data === 8'd45, 1);
-	do_reset;
-	
-	// -----------------------------------------------------------------------
-   // Test 2: o_data is forced to 45 when i_clear HIGH
-   // -----------------------------------------------------------------------
-	trst = 1'b1;
-	act_enable = 1'b1;
-	clear = 1'b1;
-	in_data = 8'd20; //should be overridden if test is successful
-	@(posedge clk); #1;
-	@(posedge clk); #1;
-	check(out_data === 8'd45, 2);
-
-	// -----------------------------------------------------------------------
-   // Test 3: o_data is forced to 45 when i_enable LOW
-   // -----------------------------------------------------------------------
-	trst = 1'b1;
-	act_enable = 1'b0;
-	clear = 1'b0;
-	in_data = 8'd20; //should be overridden if test is successful
-	@(posedge clk); #1;
-	@(posedge clk); #1;
-	check(out_data === 8'd45, 3);
-	
-	// -----------------------------------------------------------------------
-   // Test 4: i_enable routes to o_write
-   // -----------------------------------------------------------------------
-	act_enable = 1'b1;
-	@(posedge clk); #1;
-	@(posedge clk); #1;
-	check(write === act_enable, 4);
-	
-	// -----------------------------------------------------------------------
-   // Test 5: NOOP operation functions correctly
-   // -----------------------------------------------------------------------
-	trst = 1'b1;
-	act_enable = 1'b1;
-	clear = 1'b0;
-	in_data = 8'd20;
-	activator_funct = 3'h7;
-	@(posedge clk); #1;
-	@(posedge clk); #1;
-	check(out_data === 8'd98, 5);
-	
-	// -----------------------------------------------------------------------
-   // Test 6: ReLu operation functions correctly
-   // -----------------------------------------------------------------------
-	trst = 1'b1;
-	act_enable = 1'b1;
-	clear = 1'b0;
-	begin : relu_test
-		integer relu_pass_count;
-		relu_pass_count = 0;
-		activator_funct = 3'h0;
-
-		//test positive integer
-		in_data = 8'd30;
-		@(posedge clk); #1;
-		@(posedge clk); #1;
-		if (out_data === 8'd30) relu_pass_count = relu_pass_count + 1;
+	begin : control_test
+		integer control_pass_count;
+		control_pass_count = 0;
+		trst = 1'b1;
+		clear = 1'b0;
+		alu_enable = 1'b1;
 		
-		//test negative integer
-		in_data = -8'd30;
+		trst = 1'b0;
 		@(posedge clk); #1;
-		@(posedge clk); #1;
-		if (out_data === 8'd0) relu_pass_count = relu_pass_count + 1;
+		if (out_data === 8'd45) control_pass_count = control_pass_count + 1;
+		trst = 1'b1;
 		
-		check(relu_pass_count === 2, 6);
+		clear = 1'b1;
+		@(posedge clk); #1;
+		if (out_data === 8'd45) control_pass_count = control_pass_count + 1;
+		clear = 1'b0;
+		
+		alu_enable = 1'b0;
+		@(posedge clk); #1;
+		if (out_data === 8'd45) control_pass_count = control_pass_count + 1;
+		alu_enable = 1'b1;
+		
+		check(control_pass_count === 3, 1);
 	end
+	
+	// -----------------------------------------------------------------------
+   // Test 2: i_enable routes to o_write
+   // -----------------------------------------------------------------------
+	alu_enable = 1'b1;
+	@(posedge clk); #1;
+	check(write === alu_enable, 2);
+
+	// -----------------------------------------------------------------------
+   // Test 3: NOOP operation functions correctly
+   // -----------------------------------------------------------------------
+	trst = 1'b1;
+	alu_enable = 1'b1;
+	clear = 1'b0;
+	in_data_a = 8'd20;
+	in_data_b = 8'd21;
+	alu_funct = 3'h7;
+	@(posedge clk); #1;
+	check(out_data === 8'd98, 3);
+	
+	// -----------------------------------------------------------------------
+   // Test 4: ADD operation functions correctly
+   // -----------------------------------------------------------------------
+	trst = 1'b1;
+	alu_enable = 1'b1;
+	clear = 1'b0;
+	in_data_a = -8'd1;
+	in_data_b = -8'd1;
+	alu_funct = 3'h0;
+	@(posedge clk); #1;
+	check(out_data === -8'd2, 4);
+	
+	// -----------------------------------------------------------------------
+   // Test 5: positive clamping functions correctly
+   // -----------------------------------------------------------------------
+	trst = 1'b1;
+	alu_enable = 1'b1;
+	clear = 1'b0;
+	in_data_a = 8'd127;
+	in_data_b = 8'd100;
+	alu_funct = 3'h0;
+	@(posedge clk); #1;
+	check(out_data === 8'd127, 5);
+	
+	// -----------------------------------------------------------------------
+   // Test 6: negative clamping functions correctly
+   // -----------------------------------------------------------------------
+	trst = 1'b1;
+	alu_enable = 1'b1;
+	clear = 1'b0;
+	in_data_a = -8'd127;
+	in_data_b = -8'd100;
+	alu_funct = 3'h0;
+	@(posedge clk); #1;
+	check(out_data === -8'd128, 6);
 	
 	// -----------------------------------------------------------------------
    // Summary
