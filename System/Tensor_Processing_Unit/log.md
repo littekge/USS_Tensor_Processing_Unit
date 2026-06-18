@@ -1,6 +1,19 @@
 # Functional TPU — Change Log
 
 > Append a new entry every time a change is made. Newest entries at the top.
+## 2026-06-18 — Build Step 7: Systolic Array module
+- Began building `TPU/SYSTOLIC_ARRAY/Systolic_Array.v` — top level module for the systolic array subsystem.
+- Generates a systolic array from `TPU/SYSTOLIC_ARRAY/Multiply_Accumulate_Buffer.v` modules by instantiating a grid of instances connected by wire nets.
+- Generates input buffers from `TPU/SYSTOLIC_ARRAY/Systolic_Array_Input_Buffer.v` and connects them to the top and left edges of the systolic array.
+- Combinationally decodes control signals from the two vector processors to write to the input buffers and read from the systolic array outputs.
+- Partially defined state machine to handle systolic array insertion timings and synchronous control signals from the controller.
+
+## 2026-06-18 — Build Step 7: Systolic Array Input Buffer
+- Built `TPU/SYSTOLIC_ARRAY/TEMPLATE/BUFFER_TEMPLATE.v` — template for directly instantiating a scfifo megafunction (unused in actual project).
+- Built `TPU/SYSTOLIC_ARRAY/Systolic_Array_Input_Buffer.v` — wrapper module for a scfifo megafunction FIFO buffer. 
+- Standard buffer control signals `wrreq`, `rdreq`, `empty`, `full`, and `sclr`.
+- Data input `data` and data output `q`.
+- Variable depth via the `DEPTH` parameter during module instantiation.
 
 ## 2026-06-17 — Build Step 7: Multiply Accumulate Unit
 - Built `TPU/SYSTOLIC_ARRAY/Multiply_Accumulate_Unit.v` — single multiply accumulate unit that serves as one "tile" in the systolic array.
