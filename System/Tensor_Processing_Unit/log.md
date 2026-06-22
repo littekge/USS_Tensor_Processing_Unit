@@ -2,6 +2,30 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-06-22 — Terminology update for the *end* instruction (docs + identifiers)
+
+- **Context:** ISA v0.2 / Hardware Spec v0.1.1 renamed the program-termination
+  instruction from *syscall* (an implicit terminate) to *end*. *end* reuses the
+  old *syscall* encoding (opcode `0000`, funct7 `0x0`); *syscall* moved to a new
+  encoding (opcode `0000`, funct7 `0x1`). Because the Feeder terminates on opcode
+  `0000`, no Verilog logic required modification — only comments/documentation.
+- **`TPU/PROGRAMMER/Feeder.v`** — updated the module-header description; renamed
+  the terminator parameter `SYSCALL_OPCODE` → `END_OPCODE` (and its use in the
+  CHECK next-state logic). Comment explains the shared `0000` encoding. The
+  detection value (`4'b0000`) is unchanged, so behavior is identical.
+- **`tests/TB_Step2_Feeder.v`** — renamed `OPCODE_SYSCALL` → `OPCODE_END` and the
+  `make_syscall` helper → `make_end` (all call sites updated); updated test-case
+  descriptions and inline comments from "syscall"/"non-syscall" to "end"/
+  "non-terminating"; corrected the ISA version reference to v0.2.
+- **`tests/TB_Step8_FullSystem.v`** — updated header, Test 2 description/messages,
+  and inline program comments to name the terminating instruction *end*.
+- **`main.md`** — Current State Feeder bullet now reads "*end* termination opcode".
+- **Verification:** recompiled the full TPU hierarchy + Step 8 testbench under
+  Questa (`-L altera_mf_ver -voptargs=+acc`) with 0 errors; `TB_Step8_FullSystem`
+  ran to completion with **7 PASS / 0 FAIL** (mult, relu, add, end termination,
+  add saturation, clean completion). No behavioral change from the rename.
+- Historical log entries below are left as-is as a dated record of prior work.
+
 ## 2026-06-22 — Build Step 8: Full-system integration test and bug fixes
 
 - **Created `tests/TB_Step8_FullSystem.v`** — full-system integration test that

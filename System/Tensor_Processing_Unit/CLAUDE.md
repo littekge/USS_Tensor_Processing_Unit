@@ -16,7 +16,7 @@
 - **Specifications:** — located at `../../Specifications/`
 	- **Instruction Set Architecture:** `Functional_TPU_ISA_v0.2.md` (TPU instruction set)
 	- **Messaging Protocol:** `Functional_TPU_Message_Protocol_v0.1.md` (defines byte format for communicating with the TPU)
-	- **Hardware Spec:** `Functional_TPU_Hardware_Specification_v0.1.md` (detailed description of Verilog module implementations)
+	- **Hardware Spec:** `Functional_TPU_Hardware_Specification_v0.1.1.md` (detailed description of Verilog module implementations)
 
 ## Iterative Build Workflow
 

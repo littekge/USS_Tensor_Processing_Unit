@@ -5,8 +5,8 @@
  * 
  * Implements the FETCH step of the CPU instruction cycle. Retrieves
  * instructions from Program_Memory one at a time using a program counter
- * register (pc), checks each instruction for the syscall termination
- * opcode, and forwards non-syscall instructions to the Controller,
+ * register (pc), checks each instruction for the end termination
+ * opcode, and forwards non-terminating instructions to the Controller,
  * synchronizing via the controller_idle handshake signal.
  */
 module Feeder (
@@ -46,8 +46,10 @@ parameter [3:0]
     FEED_ERROR  = 4'd8,
     WAIT_ACK    = 4'd9;
 
-// syscall opcode per ISA (bits 127:124 = 4'b0000)
-parameter [3:0] SYSCALL_OPCODE = 4'b0000;
+// end (program termination) opcode per ISA (bits 127:124 = 4'b0000).
+// The end instruction reuses the former syscall encoding (opcode 0000);
+// syscall now uses funct7 0x1, so opcode 0000 unambiguously means terminate.
+parameter [3:0] END_OPCODE = 4'b0000;
 // ---------- END PARAMETERS ---------- //
 
 // ---------- CODE ---------- //
@@ -85,7 +87,7 @@ begin
         WAIT_PM:
             NS = CHECK;
         CHECK:
-            NS = (i_pm_q[127:124] == SYSCALL_OPCODE) ? DONE : FORWARD;
+            NS = (i_pm_q[127:124] == END_OPCODE) ? DONE : FORWARD;
         FORWARD:
             NS = WAIT_ACK;
         WAIT_ACK:

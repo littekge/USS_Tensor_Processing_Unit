@@ -7,7 +7,7 @@
  * This testbench drives the top-level TPU module exactly as the real hardware
  * would be driven: a single SPI session (per the Functional TPU Message
  * Protocol) programs test weights and a program that exercises every ISA
- * instruction (mult, relu, add, syscall). After the STOP code the Programmer
+ * instruction (mult, relu, add, end). After the STOP code the Programmer
  * releases the TPU (program HIGH -> trst HIGH) and the Feeder/Controller run
  * the program to completion. Results are checked by snooping the (muxed)
  * weight-memory and 0x1-buffer write ports into shadow memories, which mirror
@@ -58,7 +58,7 @@
  *   Test 1: Programming completes — program returns HIGH after STOP and the
  *           programmed input weights land in weight memory (SPI -> Programmer
  *           -> Weight_Memory path).
- *   Test 2: syscall terminates fetch — the Feeder reaches its DONE state.
+ *   Test 2: end terminates fetch — the Feeder reaches its DONE state.
  *   Test 3: mult — C = rs1 * rs2 written row-major and requantized correctly.
  *   Test 4: relu — max(0, x) applied element-wise and written to dest.
  *   Test 5: add  — element-wise sum written to dest.
@@ -232,7 +232,7 @@ module TB_Step8_FullSystem;
     endfunction
 
     // -----------------------------------------------------------------------
-    // Wait helper: poll the Feeder until it reaches DONE (syscall fetched).
+    // Wait helper: poll the Feeder until it reaches DONE (end fetched).
     // Returns the number of cycles waited; caller checks for timeout.
     // -----------------------------------------------------------------------
     integer wait_cycles;
@@ -293,17 +293,17 @@ module TB_Step8_FullSystem;
         send_mem4(16'h0016, 8'h0A, 8'h14, 8'h9C, 8'h32);  // add  rs1 (10,20,-100,50)
         send_mem4(16'h001A, 8'h05, 8'hFD, 8'hCE, 8'h50);  // add  rs2 (5,-3,-50,80)
 
-        // Program: mult, relu, add, syscall
+        // Program: mult, relu, add, end
         send_program(mk_mul(16'h0002, 4'd2, 4'd2, 16'h0006, 4'd2, 4'd2, 16'h000A));
         send_program(mk_relu(16'h000E, 16'h0012, 16'd4));
         send_program(mk_add(16'h0016, 16'h001A, 8'd2, 8'd2, 16'h001E));
-        send_program(128'd0);   // syscall (opcode 0000)
+        send_program(128'd0);   // end (opcode 0000, funct7 0x0)
 
         send_spi_byte(STOP_CODE);
         spi_ss = 1;
 
         // -------------------------------------------------------------------
-        // Run the program to completion (Feeder reaches DONE at the syscall).
+        // Run the program to completion (Feeder reaches DONE at the end instr).
         // -------------------------------------------------------------------
         wait_feeder_done(200000);
         repeat (50) @(posedge clk);   // margin for final writeback to settle
@@ -337,11 +337,11 @@ module TB_Step8_FullSystem;
               "program HIGH after STOP and mult inputs in weight memory");
 
         // -------------------------------------------------------------------
-        // Test 2: syscall stops the Feeder
+        // Test 2: end stops the Feeder
         // -------------------------------------------------------------------
-        $display("Test 2: syscall terminates instruction fetch");
+        $display("Test 2: end terminates instruction fetch");
         check((dut.feeder.S === FEEDER_DONE) && (wait_cycles < 200000),
-              "Feeder reached DONE after syscall");
+              "Feeder reached DONE after end");
 
         // -------------------------------------------------------------------
         // Test 3: mult result

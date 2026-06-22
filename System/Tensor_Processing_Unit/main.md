@@ -14,7 +14,7 @@
 - **Specifications:** — located at `../../Specifications/`
     - **Instruction Set Architecture:** `Functional_TPU_ISA_v0.2.md` (TPU instruction set)
     - **Messaging Protocol:** `Functional_TPU_Message_Protocol_v0.1.md` (defines byte format for communicating with the TPU)
-    - **Hardware Spec:** `Functional_TPU_Hardware_Specification_v0.1.md` (detailed description of Verilog module implementations)
+    - **Hardware Spec:** `Functional_TPU_Hardware_Specification_v0.1.1.md` (detailed description of Verilog module implementations)
 
 ## General Project Description
 The Functional TPU is a tensor processing unit roughly based on Google's first generation TPU. This project aims to create Verilog HDL code that implements the instruction set detailed in `Functional_TPU_ISA_v0.2.md` in order to accelerate small neural networks using an FPGA.
@@ -57,17 +57,17 @@ The Functional TPU is a tensor processing unit roughly based on Google's first g
 ## Current State (v0.1 - What's Working)
 - **SPI Link:** `SPI_Slave.v` and `SPI_Input_buffer.v` are correctly wired together by `SPI_Interface.v` which is currently the top level module for the `TPU/PROGRAMMER/TPU_SPI_LINK/` subdirectory. The SPI input buffer has been verified to properly receive and store data from the SPI slave module.
 - **VGA Debugging:** `debug.v` can be successfully used to display 32 bit integers as hexadecimal values on a monitor connected to the FPGA via it's VGA port.
-- **TPU Memory Modules:** `Program_Memory.v`, `TPU_0x1_Buffer.v`, `Vector_Buffer.v`, and `Weight_Memory.v` have been generated using the Quartus IP Catalog as device RAMs or FIFO Buffers in accordance with the `Functional_TPU_Hardware_Specification_v0.1.md`.
+- **TPU Memory Modules:** `Program_Memory.v`, `TPU_0x1_Buffer.v`, `Vector_Buffer.v`, and `Weight_Memory.v` have been generated using the Quartus IP Catalog as device RAMs or FIFO Buffers in accordance with the `Functional_TPU_Hardware_Specification_v0.1.1.md`.
 - **Programmer:** `Programmer.v` implements the Functional TPU Messaging Protocol FSM. Verified to correctly decode START/MEM/PROGRAM/STOP function codes and write to Program_Memory, Weight_Memory port a, and TPU_0x1_Buffer port a.
 - **TPU Top Level (Steps 1–4):** `TPU.v` instantiates and wires together Programmer, Program_Memory, Weight_Memory, TPU_0x1_Buffer, Vector_Buffer, Feeder, Controller, and both Vector_Processor instances. The memory MUX, *trst* signal, and *vb_sclr* logic are all implemented.
-- **Feeder:** `Feeder.v` implements the FETCH step of the CPU instruction cycle. Verified to correctly retrieve and forward instructions from Program_Memory to the Controller, detect the *syscall* termination opcode, and increment the program counter.
+- **Feeder:** `Feeder.v` implements the FETCH step of the CPU instruction cycle. Verified to correctly retrieve and forward instructions from Program_Memory to the Controller, detect the *end* termination opcode, and increment the program counter.
 - **Controller:** `Controller.v` implements the DECODE-EXECUTE-WRITEBACK steps of the CPU instruction cycle. Verified to correctly decode *mult*, *relu*, and *add* instructions and drive all Vector_Processor and Systolic_Array control signals.
 - **Vector_Processor:** `Vector_Processor.v` handles all ISA-compliant memory accesses and data routing. Verified to correctly stream data from Weight_Memory and TPU_0x1_Buffer (including zero-source and strided column access), push rows/columns to systolic array input buffers, read and requantize systolic array outputs, and read from the Vector_Buffer. MEM_ERROR is correctly triggered on writes to reserved address 0x0000. 
 - **Activator:** `Activator.v` correctly implements the ReLu activation function. Debug values are correctly outputted when in a non-operational state.
 - **ALU:** `ALU.v` correctly implements addition, clamping outputs to an 8-bit signed integer. Debug values are correctly outputted when in a non-operational state.
 
 ## Architecture
-The project architecture is depicted below, with each .v file corresponding to a module in the `Functional_TPU_Hardware_Specification_v0.1.md`. Note that the VGA_DEBUG folder is not a part of the main project or hardware spec but may be used to debug the TPU.
+The project architecture is depicted below, with each .v file corresponding to a module in the `Functional_TPU_Hardware_Specification_v0.1.1.md`. Note that the VGA_DEBUG folder is not a part of the main project or hardware spec but may be used to debug the TPU.
 
 ```
 TPU/
@@ -110,7 +110,7 @@ TPU/
 
 ## Build Plan
 
-See `Functional_TPU_Hardware_Specification_v0.1.md` for detailed descriptions of each module.
+See `Functional_TPU_Hardware_Specification_v0.1.1.md` for detailed descriptions of each module.
 
 1. ~~Build and instantiate TPU and Programmer modules and MUX connections to the correct memory modules. Define the *trst* signal.~~
 2. ~~Build and instantiate the Feeder module. Update the TPU module to route connections from the program memory to the feeder.~~

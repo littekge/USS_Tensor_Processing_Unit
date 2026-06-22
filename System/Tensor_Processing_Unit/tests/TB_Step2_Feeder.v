@@ -28,12 +28,12 @@
  *
  * TEST CASES:
  *   Test 1: After reset — controller_start=LOW and pm_address=0
- *   Test 2: Syscall at address 0 → DONE; controller_start never asserts HIGH
- *   Test 3: Non-syscall at address 0 → controller_start asserts HIGH
+ *   Test 2: end at address 0 → DONE; controller_start never asserts HIGH
+ *   Test 3: Non-terminating instr at address 0 → controller_start asserts HIGH
  *   Test 4: controller_start is HIGH for exactly one clock cycle
  *   Test 5: PC increments to 1 after controller acknowledges first instruction
- *   Test 6: Correct instruction content forwarded (first of two non-syscall instr)
- *   Test 7: FEED_ERROR entered when all PM addresses exhausted (no syscall)
+ *   Test 6: Correct instruction content forwarded (first of two non-end instr)
+ *   Test 7: FEED_ERROR entered when all PM addresses exhausted (no end)
  * -------------------------------------------------------------------------
  */
 
@@ -61,16 +61,19 @@ end
 endtask
 
 // ---------------------------------------------------------------------------
-// ISA opcodes (from Functional_TPU_ISA_v0.1.md)
+// ISA opcodes (from Functional_TPU_ISA_v0.2.md)
 // ---------------------------------------------------------------------------
-localparam [3:0] OPCODE_SYSCALL = 4'b0000;
-localparam [3:0] OPCODE_MULT    = 4'b1000;
-localparam [3:0] OPCODE_ADD     = 4'b1010;
+// Opcode 0000 is the program-termination opcode, now named end per ISA v0.2.
+// end reuses the former syscall encoding (opcode 0000); syscall moved to
+// funct7 0x1.
+localparam [3:0] OPCODE_END  = 4'b0000;
+localparam [3:0] OPCODE_MULT = 4'b1000;
+localparam [3:0] OPCODE_ADD  = 4'b1010;
 
-// Build a syscall instruction: opcode=0000, reserved=0, funct3=000
-function [127:0] make_syscall;
+// Build an end (terminate) instruction: opcode=0000, reserved=0, funct7=0x0
+function [127:0] make_end;
     input dummy;
-    make_syscall = {OPCODE_SYSCALL, 124'd0};
+    make_end = {OPCODE_END, 124'd0};
 endfunction
 
 // Build a mult instruction
@@ -187,9 +190,9 @@ begin
     // Test 1: After reset — controller_start=LOW and pm_address=0
     // =======================================================================
     pmem[0] = make_mult(16'h0002, 16'h0003, 16'h0004);
-    pmem[1] = make_syscall(1'b0);
-    pmem[2] = make_syscall(1'b0);
-    pmem[3] = make_syscall(1'b0);
+    pmem[1] = make_end(1'b0);
+    pmem[2] = make_end(1'b0);
+    pmem[3] = make_end(1'b0);
 
     do_reset;
 
@@ -199,9 +202,9 @@ begin
     report_test((dut_ctrl_start == 1'b0 && pm_address == 10'd0), 1);
 
     // =======================================================================
-    // Test 2: Syscall at address 0 → DONE; controller_start never asserts HIGH
+    // Test 2: end at address 0 → DONE; controller_start never asserts HIGH
     // =======================================================================
-    pmem[0] = make_syscall(1'b0);
+    pmem[0] = make_end(1'b0);
     pmem[1] = make_mult(16'h0002, 16'h0003, 16'h0004);
     pmem[2] = make_mult(16'h0002, 16'h0003, 16'h0004);
     pmem[3] = make_mult(16'h0002, 16'h0003, 16'h0004);
@@ -220,12 +223,12 @@ begin
     report_test((ctrl_start_seen == 1'b0), 2);
 
     // =======================================================================
-    // Test 3: Non-syscall at address 0 → controller_start asserts HIGH
+    // Test 3: Non-terminating instr at address 0 → controller_start asserts HIGH
     // =======================================================================
     pmem[0] = make_mult(16'h0002, 16'h0003, 16'h0004);
-    pmem[1] = make_syscall(1'b0);
-    pmem[2] = make_syscall(1'b0);
-    pmem[3] = make_syscall(1'b0);
+    pmem[1] = make_end(1'b0);
+    pmem[2] = make_end(1'b0);
+    pmem[3] = make_end(1'b0);
 
     do_reset;
     ctrl_idle = 1'b0;
@@ -244,9 +247,9 @@ begin
     // Test 4: controller_start is HIGH for exactly one clock cycle
     // =======================================================================
     pmem[0] = make_mult(16'h0002, 16'h0003, 16'h0004);
-    pmem[1] = make_syscall(1'b0);
-    pmem[2] = make_syscall(1'b0);
-    pmem[3] = make_syscall(1'b0);
+    pmem[1] = make_end(1'b0);
+    pmem[2] = make_end(1'b0);
+    pmem[3] = make_end(1'b0);
 
     do_reset;
     ctrl_idle = 1'b0; // keep controller busy so feeder stays in WAIT_CTRL
@@ -265,9 +268,9 @@ begin
     // Test 5: PC increments to 1 after controller acknowledges first instr
     // =======================================================================
     pmem[0] = make_mult(16'h0002, 16'h0003, 16'h0004);
-    pmem[1] = make_syscall(1'b0);
-    pmem[2] = make_syscall(1'b0);
-    pmem[3] = make_syscall(1'b0);
+    pmem[1] = make_end(1'b0);
+    pmem[2] = make_end(1'b0);
+    pmem[3] = make_end(1'b0);
 
     do_reset;
     ctrl_idle = 1'b0;
@@ -285,12 +288,12 @@ begin
 
     // =======================================================================
     // Test 6: Correct instruction content forwarded to controller
-    // Verify the first of two non-syscall instructions has the expected opcode.
+    // Verify the first of two non-terminating instructions has the expected opcode.
     // =======================================================================
     pmem[0] = make_mult(16'h0002, 16'h0003, 16'h0004);
     pmem[1] = make_add_instr(16'h0002, 16'h0003, 16'h0004);
-    pmem[2] = make_syscall(1'b0);
-    pmem[3] = make_syscall(1'b0);
+    pmem[2] = make_end(1'b0);
+    pmem[3] = make_end(1'b0);
 
     do_reset;
     ctrl_idle = 1'b0;
@@ -304,8 +307,8 @@ begin
     report_test((captured_instr[127:124] == OPCODE_MULT), 6);
 
     // =======================================================================
-    // Test 7: FEED_ERROR entered when all PM addresses exhausted (no syscall)
-    // Fill all 4 addresses with non-syscall instructions and process them all.
+    // Test 7: FEED_ERROR entered when all PM addresses exhausted (no end)
+    // Fill all 4 addresses with non-terminating instructions and process them all.
     // After the last ack, the feeder should enter FEED_ERROR and freeze.
     // =======================================================================
     pmem[0] = make_mult(16'h0002, 16'h0003, 16'h0004);
@@ -316,7 +319,7 @@ begin
     do_reset;
     ctrl_idle = 1'b0;
 
-    // Process instructions at addresses 0, 1, 2, 3 (all non-syscall)
+    // Process instructions at addresses 0, 1, 2, 3 (all non-terminating)
     repeat (4)
     begin
         for (i = 0; i < 30 && dut_ctrl_start == 1'b0; i = i + 1)
