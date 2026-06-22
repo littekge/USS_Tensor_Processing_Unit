@@ -1,4 +1,4 @@
-# Github Copilot - Project Instructions
+# Claude - Project Instructions
 
 > These rules apply to every task in this project.
 > Github Copilot reads this file to begin the coding process.
