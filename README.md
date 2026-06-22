@@ -3,8 +3,15 @@ This repository contains research on the synthesis flow and hardware code requir
 
 # Folder Hierarchy and Project Log:
 This is a general overview of the project folder hierarchy and a log of what parts of the system have been implemented. Only relevant directories are included; further subdirectories are specific to components of an individual system; this is a high-level overview of the outermost systems.
+## Specifications
+The *Specifications* folder contains spec sheets related to the project.
+- Functional TPU ISA (v0.1 complete)
+- Functional TPU Message Protocol (v0.1 complete)
+- Functional TPU Hardware Spec (v0.1 complete)
+### Old
+The *Old* folder contains old revisions of spec sheets.
 ## System
-The system folder contains the entire TPU system, including data conversion, communication, and TPU hardware.
+The *system* folder contains the entire TPU system, including data conversion, communication, and TPU hardware.
 ### Neural_Networks
 The *Neural_Networks* folder contains neural network models (defined using PyTorch) and outermost application code.
 - Digit Recognition N.N. (LeNet_5) (complete)
@@ -23,9 +30,6 @@ The *Arduino_2_FPGA* folder contains an Arduino program to forward data from the
 - SPI Transmitter on Arduino (complete)
 ### Tensor_Processing_Unit
 The *Tensor_Processing_Unit* folder contains the TPU hardware written in Verilog HDL.
-- Functional TPU ISA (v0.1 complete)
-- Message protocol (v0.1 complete)
-- Hardware Spec (v0.1 complete)
 - Verilog code for TPU (v0.1 complete)
 ## Tests
 The *Tests* folder contains code used to verify the functionality of systems in the project.
