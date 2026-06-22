@@ -3,6 +3,8 @@
 > These rules apply to every task in this project.
 > Github Copilot reads this file to begin the coding process.
 
+> **NOTE:** All paths are described relative to the directory in which this file is located unless otherwise specified.
+
 ## Project Context
 
 - **Target Platform:** Terasic DE1-SoC FPGA
@@ -11,9 +13,10 @@
 - **Development Platform:** Windows 11
 - **Build Spec**: `main.md` — the single source of truth for what to build (includes 6-step build plan).
 - **Change Log**: `log.md` — append an entry every time you make a change.
-- **Instruction Set Architecture:** `Functional_TPU_ISA_v0.1.md` (TPU instruction set)
-- **Messaging Protocol:** `Functional_TPU_Message_Protocol_v0.1.md` (defines byte format for communicating with the TPU)
-- **Hardware Spec:** `Functional_TPU_Hardware_Specification_v0.1.md` (detailed description of Verilog module implementations)
+- **Specifications:** — located at `../../Specifications/`
+	- **Instruction Set Architecture:** `Functional_TPU_ISA_v0.1.md` (TPU instruction set)
+	- **Messaging Protocol:** `Functional_TPU_Message_Protocol_v0.1.md` (defines byte format for communicating with the TPU)
+	- **Hardware Spec:** `Functional_TPU_Hardware_Specification_v0.1.md` (detailed description of Verilog module implementations)
 
 ## Iterative Build Workflow
 
