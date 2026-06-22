@@ -35,7 +35,7 @@ module Multiply_Accumulate_Unit (
 // ---------- CODE ---------- //
 always @ (posedge i_clk or negedge i_trst)
 begin
-	if ((i_trst == 1'b0) || (i_clear == 1'b1))
+	if (i_trst == 1'b0)
 	begin
 		o_a <= 8'd0;
 		o_b <= 8'd0;
@@ -43,9 +43,18 @@ begin
 	end
 	else
 	begin
-		o_a <= i_a;
-		o_b <= i_b;
-		o_c <= o_c + (i_a * i_b);
+		if (i_clear == 1'b1)
+		begin
+			o_a <= 8'd0;
+			o_b <= 8'd0;
+			o_c <= 32'd0;
+		end
+		else
+		begin
+			o_a <= i_a;
+			o_b <= i_b;
+			o_c <= o_c + (i_a * i_b);
+		end
 	end
 end
 // ---------- END CODE ---------- //

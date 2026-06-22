@@ -13,33 +13,73 @@
 # //  is prohibited from disclosure under the Trade Secrets Act,
 # //  18 U.S.C. Section 1905.
 # //
-# vsim -L altera_mf_ver -voptargs="+acc" -gui work.TB_Step7_SystolicArray -do "add wave -r /*; run -all" 
-# Start time: 11:39:35 on Jun 22,2026
+# vsim -L altera_mf_ver -voptargs="+acc" -gui work.TB_Step8_FullSystem -do "add wave -r /*; run -all" 
+# Start time: 14:15:11 on Jun 22,2026
 # ** Note: (vsim-3812) Design is being optimized...
 # ** Warning: (vopt-10587) Some optimizations are turned off because the +acc switch is in effect. This will cause your simulation to run slowly. Please use -access/-debug to maintain needed visibility.
+# ** Note: (vopt-143) Recognized 1 FSM in module "Programmer(fast)".
+# ** Note: (vopt-143) Recognized 1 FSM in module "Controller(fast)".
+# ** Note: (vopt-143) Recognized 1 FSM in module "Feeder(fast)".
 # ** Note: (vopt-143) Recognized 1 FSM in module "Systolic_Array(fast)".
+# ** Note: (vopt-143) Recognized 1 FSM in module "Vector_Processor(fast)".
 # ** Note: (vsim-12126) Error and warning message counts have been restored: Errors=0, Warnings=1.
-# Loading work.TB_Step7_SystolicArray(fast)
-# Loading work.Systolic_Array(fast)
-# Loading work.Systolic_Array_Input_Buffer(fast)
+# Loading work.TB_Step8_FullSystem(fast)
+# Loading work.TPU(fast)
+# Loading work.Programmer(fast)
+# Loading work.SPI_Interface(fast)
+# Loading work.SPI_Input_buffer(fast)
 # Loading altera_mf_ver.scfifo(fast)
 # Loading altera_mf_ver.ALTERA_DEVICE_FAMILIES(fast)
+# Loading work.SPI_Slave(fast)
+# Loading work.Program_Memory(fast)
+# Loading altera_mf_ver.altsyncram(fast)
+# Loading altera_mf_ver.altsyncram_body(fast)
+# Loading altera_mf_ver.ALTERA_DEVICE_FAMILIES(fast__1)
+# Loading altera_mf_ver.ALTERA_MF_MEMORY_INITIALIZATION(fast)
+# Loading work.Weight_Memory(fast)
+# Loading altera_mf_ver.altsyncram(fast__1)
+# Loading altera_mf_ver.altsyncram_body(fast__1)
+# Loading work.TPU_0x1_Buffer(fast)
+# Loading work.Feeder(fast)
+# Loading work.Controller(fast)
+# Loading work.Vector_Processor(fast)
+# Loading work.Vector_Buffer(fast)
+# Loading altera_mf_ver.scfifo(fast__1)
+# Loading work.Activator(fast)
+# Loading work.ALU(fast)
+# Loading work.Systolic_Array(fast)
+# Loading work.Systolic_Array_Input_Buffer(fast)
+# Loading altera_mf_ver.scfifo(fast__2)
 # Loading work.Multiply_Accumulate_Unit(fast)
 # add wave -r /*
 #  run -all
-# Test 1: PASS
-# Test 2: PASS
-# Test 3: PASS
-# Test 4: PASS
-# Test 5: PASS
-# Test 6: PASS
-# Test 7: PASS
-# -----------------------------
+# 
+# feeder.S = 7 (DONE=7), ctrl.S = 2 (IDLE=2), program=1, wait=185
+# mult inputs  WM[0..3]  = 16 0 0 16
+# mult inputs  WM[4..7]  = 16 32 48 64
+# mult result  WM[8..11] = 1 2 3 4  (expect 1 2 3 4)
+# relu result  WM[16..19]= 0 7 0 100  (expect 0 7 0 100)
+# add  result  WM[28..31]= 15 17 -128 127  (expect 15 17 -128 127)
+# 
+# Test 1: programming over SPI completes and weights stored
+#   PASS: and mult inputs in weight memory
+# Test 2: syscall terminates instruction fetch
+#   PASS: eeder reached DONE after syscall
+# Test 3: mult result C = rs1 * rs2 (requantized)
+#   PASS: mult result [1,2,3,4]
+# Test 4: relu result max(0,x)
+#   PASS: relu result [0,7,0,100]
+# Test 5: add result element-wise sum
+#   PASS: esult first two elements [15,17]
+# Test 6: add saturation clamps to int8 range
+#   PASS: add saturates [-128, 127]
+# Test 7: program ran to completion with no fault states
+#   PASS: ller IDLE and Feeder DONE at end
+# 
+# ================================
 # Results: 7 PASS, 0 FAIL
-# -----------------------------
-# ** Note: $finish    : tests/TB_Step7_SystolicArray.v(338)
-#    Time: 1393 ns  Iteration: 0  Instance: /TB_Step7_SystolicArray
-# 1
-# Break in Module TB_Step7_SystolicArray at tests/TB_Step7_SystolicArray.v line 338
-# End time: 11:42:43 on Jun 22,2026, Elapsed time: 0:03:08
+# ================================
+# ** Note: $finish    : tests/TB_Step8_FullSystem.v(390)
+#    Time: 188830 ns  Iteration: 1  Instance: /TB_Step8_FullSystem
+# End time: 14:15:58 on Jun 22,2026, Elapsed time: 0:00:47
 # Errors: 0, Warnings: 1
