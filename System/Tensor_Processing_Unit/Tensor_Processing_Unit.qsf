@@ -319,82 +319,17 @@ set_location_assignment PIN_C10 -to VGA_SYNC_N
 set_location_assignment PIN_D11 -to VGA_VS
 set_global_assignment -name ENABLE_SIGNALTAP ON
 set_global_assignment -name USE_SIGNALTAP_FILE output_files/stp1.stp
-set_global_assignment -name SLD_NODE_CREATOR_ID 110 -section_id SPI_Buffer_Output
-set_global_assignment -name SLD_NODE_ENTITY_NAME sld_signaltap -section_id SPI_Buffer_Output
-set_instance_assignment -name CONNECT_TO_SLD_NODE_ENTITY_PORT acq_clk -to CLOCK_50 -section_id SPI_Buffer_Output
-set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_RAM_BLOCK_TYPE=AUTO" -section_id SPI_Buffer_Output
-set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_NODE_INFO=805334530" -section_id SPI_Buffer_Output
-set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_POWER_UP_TRIGGER=0" -section_id SPI_Buffer_Output
-set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_STORAGE_QUALIFIER_INVERSION_MASK_LENGTH=0" -section_id SPI_Buffer_Output
-set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_SEGMENT_SIZE=256" -section_id SPI_Buffer_Output
-set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_ATTRIBUTE_MEM_MODE=OFF" -section_id SPI_Buffer_Output
-set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_STATE_FLOW_USE_GENERATED=0" -section_id SPI_Buffer_Output
-set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_STATE_BITS=11" -section_id SPI_Buffer_Output
-set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_BUFFER_FULL_STOP=1" -section_id SPI_Buffer_Output
-set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_CURRENT_RESOURCE_WIDTH=1" -section_id SPI_Buffer_Output
-set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_INCREMENTAL_ROUTING=1" -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[0] -to SPI_Buffer_Output|gnd -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[2] -to SPI_Buffer_Output|gnd -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[3] -to SPI_Buffer_Output|gnd -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[10] -to SPI_Buffer_Output|gnd -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[16] -to SPI_Buffer_Output|vcc -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[18] -to SPI_Buffer_Output|vcc -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[19] -to SPI_Buffer_Output|vcc -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[21] -to SPI_Buffer_Output|gnd -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[24] -to SPI_Buffer_Output|gnd -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[25] -to SPI_Buffer_Output|vcc -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[26] -to SPI_Buffer_Output|gnd -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[27] -to SPI_Buffer_Output|vcc -section_id SPI_Buffer_Output
-set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_TRIGGER_LEVEL=1" -section_id SPI_Buffer_Output
-set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_SAMPLE_DEPTH=256" -section_id SPI_Buffer_Output
-set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_TRIGGER_IN_ENABLED=0" -section_id SPI_Buffer_Output
-set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_TRIGGER_PIPELINE=0" -section_id SPI_Buffer_Output
-set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_RAM_PIPELINE=0" -section_id SPI_Buffer_Output
-set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_COUNTER_PIPELINE=0" -section_id SPI_Buffer_Output
-set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_ADVANCED_TRIGGER_ENTITY=basic,1," -section_id SPI_Buffer_Output
-set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_TRIGGER_LEVEL_PIPELINE=1" -section_id SPI_Buffer_Output
-set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_ENABLE_ADVANCED_TRIGGER=0" -section_id SPI_Buffer_Output
-set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_TRIGGER_BITS=1" -section_id SPI_Buffer_Output
-set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_INVERSION_MASK=0000000000000000000000000" -section_id SPI_Buffer_Output
-set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_INVERSION_MASK_LENGTH=25" -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[1] -to SPI_Buffer_Output|vcc -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[13] -to SPI_Buffer_Output|gnd -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[20] -to SPI_Buffer_Output|vcc -section_id SPI_Buffer_Output
-set_instance_assignment -name CONNECT_TO_SLD_NODE_ENTITY_PORT acq_trigger_in[0] -to "SPI_Interface:SPI_int|SPI_Input_buffer:inbuf|rdreq" -section_id SPI_Buffer_Output
-set_instance_assignment -name CONNECT_TO_SLD_NODE_ENTITY_PORT acq_data_in[0] -to "SPI_Interface:SPI_int|SPI_Input_buffer:inbuf|clock" -section_id SPI_Buffer_Output
-set_instance_assignment -name CONNECT_TO_SLD_NODE_ENTITY_PORT acq_data_in[1] -to "SPI_Interface:SPI_int|SPI_Input_buffer:inbuf|empty" -section_id SPI_Buffer_Output
-set_instance_assignment -name CONNECT_TO_SLD_NODE_ENTITY_PORT acq_data_in[2] -to "SPI_Interface:SPI_int|SPI_Input_buffer:inbuf|full" -section_id SPI_Buffer_Output
-set_instance_assignment -name CONNECT_TO_SLD_NODE_ENTITY_PORT acq_data_in[3] -to "SPI_Interface:SPI_int|SPI_Input_buffer:inbuf|q[0]" -section_id SPI_Buffer_Output
-set_instance_assignment -name CONNECT_TO_SLD_NODE_ENTITY_PORT acq_data_in[4] -to "SPI_Interface:SPI_int|SPI_Input_buffer:inbuf|q[1]" -section_id SPI_Buffer_Output
-set_instance_assignment -name CONNECT_TO_SLD_NODE_ENTITY_PORT acq_data_in[5] -to "SPI_Interface:SPI_int|SPI_Input_buffer:inbuf|q[2]" -section_id SPI_Buffer_Output
-set_instance_assignment -name CONNECT_TO_SLD_NODE_ENTITY_PORT acq_data_in[6] -to "SPI_Interface:SPI_int|SPI_Input_buffer:inbuf|q[3]" -section_id SPI_Buffer_Output
-set_instance_assignment -name CONNECT_TO_SLD_NODE_ENTITY_PORT acq_data_in[7] -to "SPI_Interface:SPI_int|SPI_Input_buffer:inbuf|q[4]" -section_id SPI_Buffer_Output
-set_instance_assignment -name CONNECT_TO_SLD_NODE_ENTITY_PORT acq_data_in[8] -to "SPI_Interface:SPI_int|SPI_Input_buffer:inbuf|q[5]" -section_id SPI_Buffer_Output
-set_instance_assignment -name CONNECT_TO_SLD_NODE_ENTITY_PORT acq_data_in[9] -to "SPI_Interface:SPI_int|SPI_Input_buffer:inbuf|q[6]" -section_id SPI_Buffer_Output
-set_instance_assignment -name CONNECT_TO_SLD_NODE_ENTITY_PORT acq_data_in[10] -to "SPI_Interface:SPI_int|SPI_Input_buffer:inbuf|q[7]" -section_id SPI_Buffer_Output
-set_instance_assignment -name CONNECT_TO_SLD_NODE_ENTITY_PORT acq_data_in[11] -to "SPI_Interface:SPI_int|SPI_Input_buffer:inbuf|rdreq" -section_id SPI_Buffer_Output
-set_instance_assignment -name CONNECT_TO_SLD_NODE_ENTITY_PORT acq_data_in[12] -to "SPI_Interface:SPI_int|SPI_Input_buffer:inbuf|sclr" -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[9] -to SPI_Buffer_Output|vcc -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[12] -to SPI_Buffer_Output|vcc -section_id SPI_Buffer_Output
-set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_DATA_BITS=13" -section_id SPI_Buffer_Output
-set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_STORAGE_QUALIFIER_BITS=13" -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[4] -to SPI_Buffer_Output|vcc -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[5] -to SPI_Buffer_Output|vcc -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[6] -to SPI_Buffer_Output|gnd -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[7] -to SPI_Buffer_Output|gnd -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[8] -to SPI_Buffer_Output|gnd -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[11] -to SPI_Buffer_Output|gnd -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[14] -to SPI_Buffer_Output|gnd -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[15] -to SPI_Buffer_Output|gnd -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[17] -to SPI_Buffer_Output|gnd -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[22] -to SPI_Buffer_Output|gnd -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[23] -to SPI_Buffer_Output|vcc -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[28] -to SPI_Buffer_Output|gnd -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[29] -to SPI_Buffer_Output|vcc -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[30] -to SPI_Buffer_Output|vcc -section_id SPI_Buffer_Output
-set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[31] -to SPI_Buffer_Output|gnd -section_id SPI_Buffer_Output
-set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top
-set_global_assignment -name SLD_FILE db/stp1_auto_stripped.stp
+set_global_assignment -name VERILOG_FILE TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_rom/Char_ROM.v
+set_global_assignment -name QIP_FILE TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_rom/Char_ROM.qip
+set_global_assignment -name MIF_FILE TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_rom/ASCII_Encode.mif
+set_global_assignment -name VERILOG_FILE TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_master/ascii_master.v
+set_global_assignment -name QIP_FILE TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_master/ascii_master.qip
+set_global_assignment -name MIF_FILE TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_master/ascii_master.mif
+set_global_assignment -name VERILOG_FILE TPU/VGA_DEBUG/VGA_CONTROLLER/vga_driver.v
+set_global_assignment -name VERILOG_FILE TPU/VGA_DEBUG/VGA_CONTROLLER/vga_controller.v
+set_global_assignment -name VERILOG_FILE TPU/VGA_DEBUG/VGA_CONTROLLER/clock_divider.v
+set_global_assignment -name VERILOG_FILE TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_master_controller.v
+set_global_assignment -name VERILOG_FILE TPU/VGA_DEBUG/debug.v
 set_global_assignment -name VERILOG_FILE TPU/MEMORY/VECTOR_BUFFER/Vector_Buffer.v
 set_global_assignment -name VERILOG_FILE TPU/TPU.v
 set_global_assignment -name QIP_FILE TPU/MEMORY/VECTOR_BUFFER/Vector_Buffer.qip
@@ -416,3 +351,67 @@ set_global_assignment -name SIGNALTAP_FILE output_files/stp1.stp
 set_global_assignment -name QIP_FILE TPU/MEMORY/WEIGHT_MEMORY/Weight_Memory.qip
 set_global_assignment -name QIP_FILE TPU/MEMORY/0X1_BUFFER/TPU_0x1_Buffer.qip
 set_global_assignment -name QIP_FILE TPU/PROGRAMMER/PROGRAM_MEMORY/Program_Memory.qip
+set_global_assignment -name SLD_NODE_CREATOR_ID 110 -section_id ALU_Enable_Check
+set_global_assignment -name SLD_NODE_ENTITY_NAME sld_signaltap -section_id ALU_Enable_Check
+set_instance_assignment -name CONNECT_TO_SLD_NODE_ENTITY_PORT acq_trigger_in[0] -to "TPU:tpu|alu_enable" -section_id ALU_Enable_Check
+set_instance_assignment -name CONNECT_TO_SLD_NODE_ENTITY_PORT acq_data_in[0] -to "TPU:tpu|alu_enable" -section_id ALU_Enable_Check
+set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_RAM_BLOCK_TYPE=AUTO" -section_id ALU_Enable_Check
+set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_DATA_BITS=1" -section_id ALU_Enable_Check
+set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_TRIGGER_BITS=1" -section_id ALU_Enable_Check
+set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_STORAGE_QUALIFIER_BITS=1" -section_id ALU_Enable_Check
+set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_NODE_INFO=805334531" -section_id ALU_Enable_Check
+set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_POWER_UP_TRIGGER=0" -section_id ALU_Enable_Check
+set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_INVERSION_MASK=000000000000000000000000" -section_id ALU_Enable_Check
+set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_INVERSION_MASK_LENGTH=24" -section_id ALU_Enable_Check
+set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_STORAGE_QUALIFIER_INVERSION_MASK_LENGTH=0" -section_id ALU_Enable_Check
+set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_SEGMENT_SIZE=128" -section_id ALU_Enable_Check
+set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_ATTRIBUTE_MEM_MODE=OFF" -section_id ALU_Enable_Check
+set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_STATE_FLOW_USE_GENERATED=0" -section_id ALU_Enable_Check
+set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_STATE_BITS=11" -section_id ALU_Enable_Check
+set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_BUFFER_FULL_STOP=1" -section_id ALU_Enable_Check
+set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_CURRENT_RESOURCE_WIDTH=1" -section_id ALU_Enable_Check
+set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_INCREMENTAL_ROUTING=1" -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[0] -to ALU_Enable_Check|gnd -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[4] -to ALU_Enable_Check|gnd -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[5] -to ALU_Enable_Check|gnd -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[6] -to ALU_Enable_Check|vcc -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[7] -to ALU_Enable_Check|gnd -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[8] -to ALU_Enable_Check|gnd -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[9] -to ALU_Enable_Check|vcc -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[11] -to ALU_Enable_Check|gnd -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[13] -to ALU_Enable_Check|gnd -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[14] -to ALU_Enable_Check|gnd -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[15] -to ALU_Enable_Check|vcc -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[16] -to ALU_Enable_Check|gnd -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[17] -to ALU_Enable_Check|vcc -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[18] -to ALU_Enable_Check|gnd -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[19] -to ALU_Enable_Check|vcc -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[20] -to ALU_Enable_Check|gnd -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[21] -to ALU_Enable_Check|vcc -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[22] -to ALU_Enable_Check|gnd -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[23] -to ALU_Enable_Check|gnd -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[24] -to ALU_Enable_Check|vcc -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[25] -to ALU_Enable_Check|gnd -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[26] -to ALU_Enable_Check|vcc -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[27] -to ALU_Enable_Check|gnd -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[28] -to ALU_Enable_Check|vcc -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[29] -to ALU_Enable_Check|vcc -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[30] -to ALU_Enable_Check|gnd -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[31] -to ALU_Enable_Check|gnd -section_id ALU_Enable_Check
+set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_TRIGGER_LEVEL=1" -section_id ALU_Enable_Check
+set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_SAMPLE_DEPTH=128" -section_id ALU_Enable_Check
+set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_TRIGGER_IN_ENABLED=0" -section_id ALU_Enable_Check
+set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_TRIGGER_PIPELINE=0" -section_id ALU_Enable_Check
+set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_RAM_PIPELINE=0" -section_id ALU_Enable_Check
+set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_COUNTER_PIPELINE=0" -section_id ALU_Enable_Check
+set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_ADVANCED_TRIGGER_ENTITY=basic,1," -section_id ALU_Enable_Check
+set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_TRIGGER_LEVEL_PIPELINE=1" -section_id ALU_Enable_Check
+set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_ENABLE_ADVANCED_TRIGGER=0" -section_id ALU_Enable_Check
+set_instance_assignment -name CONNECT_TO_SLD_NODE_ENTITY_PORT acq_clk -to CLOCK_50 -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[1] -to ALU_Enable_Check|gnd -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[2] -to ALU_Enable_Check|vcc -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[3] -to ALU_Enable_Check|vcc -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[10] -to ALU_Enable_Check|vcc -section_id ALU_Enable_Check
+set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[12] -to ALU_Enable_Check|vcc -section_id ALU_Enable_Check
+set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top
+set_global_assignment -name SLD_FILE db/stp1_auto_stripped.stp

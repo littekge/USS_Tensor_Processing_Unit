@@ -3,12 +3,12 @@
 > These rules apply to every task in this project.
 > Github Copilot reads this file to begin the coding process.
 
-
 ## Project Context
 
-- **Platform:** Terasic DE1-SoC FPGA
+- **Target Platform:** Terasic DE1-SoC FPGA
 - **Language:** Verilog HDL 2001
 - **Development Environment:** Quartus Prime Lite Edition
+- **Development Platform:** Windows 11
 - **Build Spec**: `main.md` — the single source of truth for what to build (includes 6-step build plan).
 - **Change Log**: `log.md` — append an entry every time you make a change.
 - **Instruction Set Architecture:** `Functional_TPU_ISA_v0.1.md` (TPU instruction set)
@@ -20,9 +20,11 @@
 1. **Before starting work**, read `main.md` to understand the build spec and `log.md` to see what's already been done.
 2. **Work in small increments** — one module or feature at a time.
 3. **After every change**, append a dated entry to `log.md` describing what was added, changed, or fixed.
-4. **Generate tests** after every build step. Build test cases and instructions on how to run them in the `/tests` folder, including what it looks like for each test to be successful and unsuccessful (test cases should evaluate the implementation of the most recent build step, so there should be 6 in total).
-5. **Commit often** with descriptive messages: `git add . ; git commit -m "feat: ..."`. Stay on the same git branch for the duration of the build.
-6. **Mark completed build steps** in `main.md`.
+4. **Review code** after every build step, identifying and correcting syntax and logic errors from the initial build.
+5. **Generate tests** after every build step. Build Verilog testbenches and instructions on how to run them in the `/tests` folder, including what it looks like for each test to be successful and unsuccessful (test cases should evaluate the implementation of the most recent build step, so there should be 7 in total). **Testbenches should NOT synthesize away any signals and log every signal waveform by default.** An example vsim command that accomplishes this is shown below.
+`vsim -L altera_mf_ver -voptargs=+acc -gui work.TB_Step1_Programmer -do "add wave -r /*; run -all"`
+6. **Commit often** with descriptive messages: `git add . ; git commit -m "feat: ..."`. Stay on the same git branch for the duration of the build.
+7. **Mark completed build steps** in `main.md`.
 
 ## Coding Practices for Verilog Files
 
@@ -186,11 +188,12 @@ Follow three rules for comments:
 - **Named Instantiation:** When instantiating a Verilog module connect inputs and outputs explicitly using named instantiation.
 - **Nested Ternary Operators:** Nested ternary operators are not encouraged, but permissible if absolutely necessary.
 - **Code Simplicity:** Code should be simple and readable. No single line of code should implement an excessive amount of operations (combinational logic can be especially difficult to read if implemented on one line).
+- **DO NOT** modify the debug sections of modules. I will edit those sections and use them for debug signals when synthesizing to the FPGA hardware.
 
 ## Architecture Rules
 
 - **Predefined Architecture:** All files in the `/TPU` subdirectory are already defined. Do not generate any new Verilog (.v) files.
-- **Markdown File Modification:** Do not modify existing markdown files unless explicitly specified by another instruction.
+- **Markdown File Modification:** Do not modify existing markdown files unless explicitly specified by another instruction. Do not generate any new markdown files. All changes can be sufficiently recorded in `log.md`
 
 ## Log Format
 

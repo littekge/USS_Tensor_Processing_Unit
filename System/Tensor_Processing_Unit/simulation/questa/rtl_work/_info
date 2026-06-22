@@ -1,0 +1,555 @@
+m255
+K4
+z2
+!s11f vlog 2023.3 2023.07, Jul 17 2023
+13
+!s112 1.1
+!i10d 8192
+!i10e 25
+!i10f 100
+cModel Technology
+Z0 dC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/simulation/questa
+vActivator
+2C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING/Activator.v
+Z1 !s110 1781642517
+!i10b 1
+!s100 nm=g@D2IR4IF8HBDOR1_b3
+IdV?S0MicCI`NVSBTQ]NTI1
+R0
+w1781635314
+8C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING/Activator.v
+FC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING/Activator.v
+!i122 16
+L0 9 54
+Z2 VDg1SIo80bB@j0V0VzS_@n1
+Z3 OL;L;2023.3;77
+r1
+!s85 0
+31
+Z4 !s108 1781642517.000000
+!s107 C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING/Activator.v|
+!s90 -reportprogress|300|-vlog01compat|-work|work|+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING|C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING/Activator.v|
+!i113 0
+Z5 o-vlog01compat -work work -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+Z6 !s92 -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+Z7 tCvgOpt 0
+n@activator
+vALU
+2C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING/ALU.v
+R1
+!i10b 1
+!s100 7dA6bRLF`3E1<8@1he3XT2
+I]O@OYYz1W52h]7Ec;`F6F1
+R0
+w1781642409
+8C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING/ALU.v
+FC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING/ALU.v
+!i122 9
+L0 8 75
+R2
+R3
+r1
+!s85 0
+31
+R4
+!s107 C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING/ALU.v|
+!s90 -reportprogress|300|-vlog01compat|-work|work|+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING|C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING/ALU.v|
+!i113 0
+R5
+R6
+R7
+n@a@l@u
+vascii_master
+2C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_master/ascii_master.v
+Z8 !s110 1781642516
+!i10b 1
+!s100 d741KEiaKBeTn<nLONM<f0
+I=^00MhIbQQ:`h>Y2zoYYE2
+R0
+w1779200747
+8C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_master/ascii_master.v
+FC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_master/ascii_master.v
+!i122 1
+L0 40 74
+R2
+R3
+r1
+!s85 0
+31
+Z9 !s108 1781642516.000000
+!s107 C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_master/ascii_master.v|
+!s90 -reportprogress|300|-vlog01compat|-work|work|+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_master|C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_master/ascii_master.v|
+!i113 0
+R5
+!s92 -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_master -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R7
+vascii_master_controller
+2C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_master_controller.v
+R8
+!i10b 1
+!s100 ]ncia:G@@:Z?1j67G]?L;2
+IkXc5BT[?>Jj3RN0[EHd<g1
+R0
+w1779220391
+8C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_master_controller.v
+FC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_master_controller.v
+!i122 5
+L0 9 95
+R2
+R3
+r1
+!s85 0
+31
+R9
+!s107 C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_master_controller.v|
+!s90 -reportprogress|300|-vlog01compat|-work|work|+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER|C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_master_controller.v|
+!i113 0
+R5
+Z10 !s92 -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R7
+vChar_ROM
+2C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_rom/Char_ROM.v
+R8
+!i10b 1
+!s100 Jnb[g7z<fUDH>9ZPAi_io3
+IdAVYWYh96XC30:ladUGSe1
+R0
+w1779200708
+8C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_rom/Char_ROM.v
+FC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_rom/Char_ROM.v
+!i122 0
+L0 40 61
+R2
+R3
+r1
+!s85 0
+31
+R9
+!s107 C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_rom/Char_ROM.v|
+!s90 -reportprogress|300|-vlog01compat|-work|work|+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_rom|C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_rom/Char_ROM.v|
+!i113 0
+R5
+!s92 -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_rom -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R7
+n@char_@r@o@m
+vclock_divider
+2C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/clock_divider.v
+R8
+!i10b 1
+!s100 B=Tf`Z:ikUKO:hTQXVf>c0
+IO4mk=TOVgbQJmXhmdShle2
+R0
+w1779206555
+8C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/clock_divider.v
+FC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/clock_divider.v
+!i122 4
+L0 8 19
+R2
+R3
+r1
+!s85 0
+31
+R9
+!s107 C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/clock_divider.v|
+!s90 -reportprogress|300|-vlog01compat|-work|work|+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER|C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/clock_divider.v|
+!i113 0
+R5
+R10
+R7
+vController
+2C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/CONTROL/Controller.v
+R1
+!i10b 1
+!s100 MLG05gYFJ>YaoRP9h?LnX0
+I9A^d`Y[R]19BZlIXbFP9K0
+R0
+Z11 w1781553746
+8C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/CONTROL/Controller.v
+FC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/CONTROL/Controller.v
+!i122 17
+L0 13 336
+R2
+R3
+r1
+!s85 0
+31
+R4
+!s107 C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/CONTROL/Controller.v|
+!s90 -reportprogress|300|-vlog01compat|-work|work|+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/CONTROL|C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/CONTROL/Controller.v|
+!i113 0
+R5
+!s92 -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/CONTROL -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R7
+n@controller
+vdebug
+2C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/debug.v
+R8
+!i10b 1
+!s100 Ge3N6GWFhm4==e=ln;bJ22
+IcoRLI?FDPgQjJY4;HYW6j1
+R0
+w1781642363
+8C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/debug.v
+FC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/debug.v
+!i122 6
+L0 10 207
+R2
+R3
+r1
+!s85 0
+31
+R9
+!s107 C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/debug.v|
+!s90 -reportprogress|300|-vlog01compat|-work|work|+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG|C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/debug.v|
+!i113 0
+R5
+!s92 -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R7
+vFeeder
+2C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/Feeder.v
+R1
+!i10b 1
+!s100 >e3ZI`YVe[R0fA3gAEBVg1
+I=gM>O:^2S8:A=VH4Nd]lg0
+R0
+R11
+8C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/Feeder.v
+FC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/Feeder.v
+!i122 14
+L0 12 139
+R2
+R3
+r1
+!s85 0
+31
+R4
+!s107 C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/Feeder.v|
+!s90 -reportprogress|300|-vlog01compat|-work|work|+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER|C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/Feeder.v|
+!i113 0
+R5
+Z12 !s92 -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R7
+n@feeder
+vProgram_Memory
+2C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/PROGRAM_MEMORY/Program_Memory.v
+Z13 !s110 1781642518
+!i10b 1
+!s100 Y8o<@;^zcXcZojSkEege62
+ICP2>;JizFObgOM7Wcb]9X0
+R0
+w1780685630
+8C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/PROGRAM_MEMORY/Program_Memory.v
+FC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/PROGRAM_MEMORY/Program_Memory.v
+!i122 21
+L0 40 65
+R2
+R3
+r1
+!s85 0
+31
+Z14 !s108 1781642518.000000
+!s107 C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/PROGRAM_MEMORY/Program_Memory.v|
+!s90 -reportprogress|300|-vlog01compat|-work|work|+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/PROGRAM_MEMORY|C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/PROGRAM_MEMORY/Program_Memory.v|
+!i113 0
+R5
+!s92 -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/PROGRAM_MEMORY -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R7
+n@program_@memory
+vProgrammer
+2C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/Programmer.v
+R1
+!i10b 1
+!s100 DD04>iO4o4TQlA;XAPfPd1
+IaQ590@a0S2Qf7X5OQ1Y:L0
+R0
+R11
+8C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/Programmer.v
+FC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/Programmer.v
+!i122 13
+L0 10 297
+R2
+R3
+r1
+!s85 0
+31
+R4
+!s107 C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/Programmer.v|
+!s90 -reportprogress|300|-vlog01compat|-work|work|+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER|C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/Programmer.v|
+!i113 0
+R5
+R12
+R7
+n@programmer
+vSPI_Input_buffer
+2C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK/SPI_INPUT_BUFFER/SPI_Input_buffer.v
+R1
+!i10b 1
+!s100 7`m_mLUDkEdBaz^Diz^Eg2
+IlZ;aaYT<9bYaNSi0V9FVe0
+R0
+w1780936010
+8C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK/SPI_INPUT_BUFFER/SPI_Input_buffer.v
+FC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK/SPI_INPUT_BUFFER/SPI_Input_buffer.v
+!i122 10
+Z15 L0 40 54
+R2
+R3
+r1
+!s85 0
+31
+R4
+!s107 C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK/SPI_INPUT_BUFFER/SPI_Input_buffer.v|
+!s90 -reportprogress|300|-vlog01compat|-work|work|+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK/SPI_INPUT_BUFFER|C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK/SPI_INPUT_BUFFER/SPI_Input_buffer.v|
+!i113 0
+R5
+!s92 -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK/SPI_INPUT_BUFFER -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R7
+n@s@p@i_@input_buffer
+vSPI_Interface
+2C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK/SPI_Interface.v
+R1
+!i10b 1
+!s100 o<1TYnAAiPKcVgmG7K?hl0
+IAM47NhF<Uh9<?^aWYoOGo3
+R0
+R11
+8C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK/SPI_Interface.v
+FC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK/SPI_Interface.v
+!i122 12
+L0 8 50
+R2
+R3
+r1
+!s85 0
+31
+R4
+!s107 C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK/SPI_Interface.v|
+!s90 -reportprogress|300|-vlog01compat|-work|work|+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK|C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK/SPI_Interface.v|
+!i113 0
+R5
+Z16 !s92 -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R7
+n@s@p@i_@interface
+vSPI_Slave
+2C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK/SPI_Slave.v
+R1
+!i10b 1
+!s100 UIdDV^BGg[?W3?kb]X@0m2
+IRSPUCKo5^gXCcf4U?E@`V0
+R0
+w1779300033
+8C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK/SPI_Slave.v
+FC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK/SPI_Slave.v
+!i122 11
+L0 24 174
+R2
+R3
+r1
+!s85 0
+31
+R4
+!s107 C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK/SPI_Slave.v|
+!s90 -reportprogress|300|-vlog01compat|-work|work|+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK|C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK/SPI_Slave.v|
+!i113 0
+R5
+R16
+R7
+n@s@p@i_@slave
+vTensor_Processing_Unit
+2C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/Tensor_Processing_Unit.v
+R13
+!i10b 1
+!s100 80o6O0?l2GQ9Tjif52DX[1
+Ibk1:h;E2k6YmTn_4Mg7Ig3
+R0
+w1781642505
+8C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/Tensor_Processing_Unit.v
+FC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/Tensor_Processing_Unit.v
+!i122 18
+L0 10 164
+R2
+R3
+r1
+!s85 0
+31
+R14
+!s107 C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/Tensor_Processing_Unit.v|
+!s90 -reportprogress|300|-vlog01compat|-work|work|+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit|C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/Tensor_Processing_Unit.v|
+!i113 0
+R5
+!s92 -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R7
+n@tensor_@processing_@unit
+vTPU
+2C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/TPU.v
+R8
+!i10b 1
+!s100 RT:U[IIDRN74a[;c]_j[g2
+IW]mBBLmR;k?[MdR0AUO:Z1
+R0
+w1781641751
+8C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/TPU.v
+FC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/TPU.v
+!i122 8
+L0 12 376
+R2
+R3
+r1
+!s85 0
+31
+R9
+!s107 C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/TPU.v|
+!s90 -reportprogress|300|-vlog01compat|-work|work|+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU|C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/TPU.v|
+!i113 0
+R5
+!s92 -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R7
+n@t@p@u
+vTPU_0x1_Buffer
+2C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/0X1_BUFFER/TPU_0x1_Buffer.v
+R13
+!i10b 1
+!s100 E1<j>3IQoUEe`nJk[>gE62
+I0>Q`Jc;2fJagZjaJV=goT2
+R0
+w1781035698
+8C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/0X1_BUFFER/TPU_0x1_Buffer.v
+FC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/0X1_BUFFER/TPU_0x1_Buffer.v
+!i122 20
+Z17 L0 40 89
+R2
+R3
+r1
+!s85 0
+31
+R14
+!s107 C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/0X1_BUFFER/TPU_0x1_Buffer.v|
+!s90 -reportprogress|300|-vlog01compat|-work|work|+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/0X1_BUFFER|C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/0X1_BUFFER/TPU_0x1_Buffer.v|
+!i113 0
+R5
+!s92 -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/0X1_BUFFER -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R7
+n@t@p@u_0x1_@buffer
+vVector_Buffer
+2C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/VECTOR_BUFFER/Vector_Buffer.v
+R8
+!i10b 1
+!s100 GBCWUm:WkkdX0<z_hS3lP2
+IDgaXA4e<K8:d8DXQiMI@c0
+R0
+w1781036323
+8C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/VECTOR_BUFFER/Vector_Buffer.v
+FC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/VECTOR_BUFFER/Vector_Buffer.v
+!i122 7
+R15
+R2
+R3
+r1
+!s85 0
+31
+R9
+!s107 C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/VECTOR_BUFFER/Vector_Buffer.v|
+!s90 -reportprogress|300|-vlog01compat|-work|work|+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/VECTOR_BUFFER|C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/VECTOR_BUFFER/Vector_Buffer.v|
+!i113 0
+R5
+!s92 -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/VECTOR_BUFFER -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R7
+n@vector_@buffer
+vVector_Processor
+2C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING/Vector_Processor.v
+R1
+!i10b 1
+!s100 ]3jA:gCgPSf`1]0NJO`P?3
+I[eVz:QDLL9>>Y=AQkXOEJ3
+R0
+w1781634476
+8C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING/Vector_Processor.v
+FC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING/Vector_Processor.v
+!i122 15
+L0 27 463
+R2
+R3
+r1
+!s85 0
+31
+R4
+!s107 C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING/Vector_Processor.v|
+!s90 -reportprogress|300|-vlog01compat|-work|work|+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING|C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING/Vector_Processor.v|
+!i113 0
+R5
+R6
+R7
+n@vector_@processor
+vvga_controller
+2C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/vga_controller.v
+R8
+!i10b 1
+!s100 zA7Ve8a2=kUWeD?jTzELh0
+IH`kCcLU<Z3IBQgCEi5<nK0
+R0
+w1779299917
+8C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/vga_controller.v
+FC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/vga_controller.v
+!i122 3
+L0 11 123
+R2
+R3
+r1
+!s85 0
+31
+R9
+!s107 C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/vga_controller.v|
+!s90 -reportprogress|300|-vlog01compat|-work|work|+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER|C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/vga_controller.v|
+!i113 0
+R5
+R10
+R7
+vvga_driver
+2C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/vga_driver.v
+R8
+!i10b 1
+!s100 GWFoFLSdVm`UR<nDonBz^3
+Il=9AS]ZHz[DVWKGGhTidK2
+R0
+w1779219366
+8C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/vga_driver.v
+FC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/vga_driver.v
+!i122 2
+L0 9 283
+R2
+R3
+r1
+!s85 0
+31
+R9
+!s107 C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/vga_driver.v|
+!s90 -reportprogress|300|-vlog01compat|-work|work|+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER|C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/vga_driver.v|
+!i113 0
+R5
+R10
+R7
+vWeight_Memory
+2C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/WEIGHT_MEMORY/Weight_Memory.v
+R13
+!i10b 1
+!s100 cA_La3I06b3:AfGnQ4_@m0
+IA<D:bfm7Y5ODL=9NbbJgZ1
+R0
+w1781016574
+8C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/WEIGHT_MEMORY/Weight_Memory.v
+FC:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/WEIGHT_MEMORY/Weight_Memory.v
+!i122 19
+R17
+R2
+R3
+r1
+!s85 0
+31
+R14
+!s107 C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/WEIGHT_MEMORY/Weight_Memory.v|
+!s90 -reportprogress|300|-vlog01compat|-work|work|+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/WEIGHT_MEMORY|C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/WEIGHT_MEMORY/Weight_Memory.v|
+!i113 0
+R5
+!s92 -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/WEIGHT_MEMORY -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R7
+n@weight_@memory

@@ -56,6 +56,12 @@ reg [31:0] data; //register to store input data
 //State machine variables
 reg [2:0]S, NS;
 
+//ASCII VGA Controller variables
+reg [7:0]ascii_code;
+reg ascii_wren;
+wire [31:0]ascii_data;
+wire [12:0]ascii_addr;
+
 //State machine driver
 always @ (posedge i_clk or negedge i_rst)
 begin
@@ -167,11 +173,7 @@ begin
 	end
 end
 
-//ASCII VGA Controller variables
-reg [7:0]ascii_code;
-reg ascii_wren;
-wire [31:0]ascii_data;
-wire [12:0]ascii_addr;
+
 
 assign ascii_data = {ascii_code, 24'hFFFFFF}; //assign color of text to be white
 

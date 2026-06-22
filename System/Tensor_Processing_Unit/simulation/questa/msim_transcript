@@ -1,0 +1,247 @@
+# Reading pref.tcl
+# //  Questa Intel Starter FPGA Edition-64
+# //  Version 2023.3 win64 Jul 17 2023
+# //
+# //  Copyright 1991-2023 Mentor Graphics Corporation
+# //  All Rights Reserved.
+# //
+# //  QuestaSim and its associated documentation contain trade
+# //  secrets and commercial or financial information that are the property of
+# //  Mentor Graphics Corporation and are privileged, confidential,
+# //  and exempt from disclosure under the Freedom of Information Act,
+# //  5 U.S.C. Section 552. Furthermore, this information
+# //  is prohibited from disclosure under the Trade Secrets Act,
+# //  18 U.S.C. Section 1905.
+# //
+# do Tensor_Processing_Unit_run_msim_rtl_verilog.do
+# if {[file exists rtl_work]} {
+# 	vdel -lib rtl_work -all
+# }
+# vlib rtl_work
+# vmap work rtl_work
+# Questa Intel Starter FPGA Edition-64 vmap 2023.3 Lib Mapping Utility 2023.07 Jul 17 2023
+# vmap work rtl_work 
+# Copying c:/intelfpga_lite/23.1std/questa_fse/win64/../modelsim.ini to modelsim.ini
+# Modifying modelsim.ini
+# 
+# vlog -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_rom {C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_rom/Char_ROM.v}
+# Questa Intel Starter FPGA Edition-64 vlog 2023.3 Compiler 2023.07 Jul 17 2023
+# Start time: 16:41:56 on Jun 16,2026
+# vlog -reportprogress 300 -vlog01compat -work work "+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_rom" C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_rom/Char_ROM.v 
+# -- Compiling module Char_ROM
+# 
+# Top level modules:
+# 	Char_ROM
+# End time: 16:41:56 on Jun 16,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# vlog -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_master {C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_master/ascii_master.v}
+# Questa Intel Starter FPGA Edition-64 vlog 2023.3 Compiler 2023.07 Jul 17 2023
+# Start time: 16:41:56 on Jun 16,2026
+# vlog -reportprogress 300 -vlog01compat -work work "+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_master" C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_master/ascii_master.v 
+# -- Compiling module ascii_master
+# 
+# Top level modules:
+# 	ascii_master
+# End time: 16:41:56 on Jun 16,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# vlog -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER {C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/vga_driver.v}
+# Questa Intel Starter FPGA Edition-64 vlog 2023.3 Compiler 2023.07 Jul 17 2023
+# Start time: 16:41:56 on Jun 16,2026
+# vlog -reportprogress 300 -vlog01compat -work work "+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER" C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/vga_driver.v 
+# -- Compiling module vga_driver
+# 
+# Top level modules:
+# 	vga_driver
+# End time: 16:41:56 on Jun 16,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# vlog -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER {C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/vga_controller.v}
+# Questa Intel Starter FPGA Edition-64 vlog 2023.3 Compiler 2023.07 Jul 17 2023
+# Start time: 16:41:56 on Jun 16,2026
+# vlog -reportprogress 300 -vlog01compat -work work "+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER" C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/vga_controller.v 
+# -- Compiling module vga_controller
+# 
+# Top level modules:
+# 	vga_controller
+# End time: 16:41:56 on Jun 16,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# vlog -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER {C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/clock_divider.v}
+# Questa Intel Starter FPGA Edition-64 vlog 2023.3 Compiler 2023.07 Jul 17 2023
+# Start time: 16:41:56 on Jun 16,2026
+# vlog -reportprogress 300 -vlog01compat -work work "+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER" C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/clock_divider.v 
+# -- Compiling module clock_divider
+# 
+# Top level modules:
+# 	clock_divider
+# End time: 16:41:56 on Jun 16,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# vlog -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER {C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_master_controller.v}
+# Questa Intel Starter FPGA Edition-64 vlog 2023.3 Compiler 2023.07 Jul 17 2023
+# Start time: 16:41:56 on Jun 16,2026
+# vlog -reportprogress 300 -vlog01compat -work work "+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER" C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_master_controller.v 
+# -- Compiling module ascii_master_controller
+# 
+# Top level modules:
+# 	ascii_master_controller
+# End time: 16:41:56 on Jun 16,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# vlog -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG {C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/debug.v}
+# Questa Intel Starter FPGA Edition-64 vlog 2023.3 Compiler 2023.07 Jul 17 2023
+# Start time: 16:41:56 on Jun 16,2026
+# vlog -reportprogress 300 -vlog01compat -work work "+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG" C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/VGA_DEBUG/debug.v 
+# -- Compiling module debug
+# 
+# Top level modules:
+# 	debug
+# End time: 16:41:56 on Jun 16,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# vlog -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/VECTOR_BUFFER {C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/VECTOR_BUFFER/Vector_Buffer.v}
+# Questa Intel Starter FPGA Edition-64 vlog 2023.3 Compiler 2023.07 Jul 17 2023
+# Start time: 16:41:56 on Jun 16,2026
+# vlog -reportprogress 300 -vlog01compat -work work "+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/VECTOR_BUFFER" C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/VECTOR_BUFFER/Vector_Buffer.v 
+# -- Compiling module Vector_Buffer
+# 
+# Top level modules:
+# 	Vector_Buffer
+# End time: 16:41:56 on Jun 16,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# vlog -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU {C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/TPU.v}
+# Questa Intel Starter FPGA Edition-64 vlog 2023.3 Compiler 2023.07 Jul 17 2023
+# Start time: 16:41:56 on Jun 16,2026
+# vlog -reportprogress 300 -vlog01compat -work work "+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU" C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/TPU.v 
+# -- Compiling module TPU
+# 
+# Top level modules:
+# 	TPU
+# End time: 16:41:56 on Jun 16,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# vlog -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING {C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING/ALU.v}
+# Questa Intel Starter FPGA Edition-64 vlog 2023.3 Compiler 2023.07 Jul 17 2023
+# Start time: 16:41:57 on Jun 16,2026
+# vlog -reportprogress 300 -vlog01compat -work work "+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING" C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING/ALU.v 
+# -- Compiling module ALU
+# 
+# Top level modules:
+# 	ALU
+# End time: 16:41:57 on Jun 16,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# vlog -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK/SPI_INPUT_BUFFER {C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK/SPI_INPUT_BUFFER/SPI_Input_buffer.v}
+# Questa Intel Starter FPGA Edition-64 vlog 2023.3 Compiler 2023.07 Jul 17 2023
+# Start time: 16:41:57 on Jun 16,2026
+# vlog -reportprogress 300 -vlog01compat -work work "+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK/SPI_INPUT_BUFFER" C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK/SPI_INPUT_BUFFER/SPI_Input_buffer.v 
+# -- Compiling module SPI_Input_buffer
+# 
+# Top level modules:
+# 	SPI_Input_buffer
+# End time: 16:41:57 on Jun 16,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# vlog -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK {C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK/SPI_Slave.v}
+# Questa Intel Starter FPGA Edition-64 vlog 2023.3 Compiler 2023.07 Jul 17 2023
+# Start time: 16:41:57 on Jun 16,2026
+# vlog -reportprogress 300 -vlog01compat -work work "+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK" C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK/SPI_Slave.v 
+# -- Compiling module SPI_Slave
+# 
+# Top level modules:
+# 	SPI_Slave
+# End time: 16:41:57 on Jun 16,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# vlog -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK {C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK/SPI_Interface.v}
+# Questa Intel Starter FPGA Edition-64 vlog 2023.3 Compiler 2023.07 Jul 17 2023
+# Start time: 16:41:57 on Jun 16,2026
+# vlog -reportprogress 300 -vlog01compat -work work "+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK" C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/SPI_LINK/SPI_Interface.v 
+# -- Compiling module SPI_Interface
+# 
+# Top level modules:
+# 	SPI_Interface
+# End time: 16:41:57 on Jun 16,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# vlog -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER {C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/Programmer.v}
+# Questa Intel Starter FPGA Edition-64 vlog 2023.3 Compiler 2023.07 Jul 17 2023
+# Start time: 16:41:57 on Jun 16,2026
+# vlog -reportprogress 300 -vlog01compat -work work "+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER" C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/Programmer.v 
+# -- Compiling module Programmer
+# 
+# Top level modules:
+# 	Programmer
+# End time: 16:41:57 on Jun 16,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# vlog -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER {C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/Feeder.v}
+# Questa Intel Starter FPGA Edition-64 vlog 2023.3 Compiler 2023.07 Jul 17 2023
+# Start time: 16:41:57 on Jun 16,2026
+# vlog -reportprogress 300 -vlog01compat -work work "+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER" C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/Feeder.v 
+# -- Compiling module Feeder
+# 
+# Top level modules:
+# 	Feeder
+# End time: 16:41:57 on Jun 16,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# vlog -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING {C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING/Vector_Processor.v}
+# Questa Intel Starter FPGA Edition-64 vlog 2023.3 Compiler 2023.07 Jul 17 2023
+# Start time: 16:41:57 on Jun 16,2026
+# vlog -reportprogress 300 -vlog01compat -work work "+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING" C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING/Vector_Processor.v 
+# -- Compiling module Vector_Processor
+# 
+# Top level modules:
+# 	Vector_Processor
+# End time: 16:41:57 on Jun 16,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# vlog -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING {C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING/Activator.v}
+# Questa Intel Starter FPGA Edition-64 vlog 2023.3 Compiler 2023.07 Jul 17 2023
+# Start time: 16:41:57 on Jun 16,2026
+# vlog -reportprogress 300 -vlog01compat -work work "+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING" C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROCESSING/Activator.v 
+# -- Compiling module Activator
+# 
+# Top level modules:
+# 	Activator
+# End time: 16:41:57 on Jun 16,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# vlog -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/CONTROL {C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/CONTROL/Controller.v}
+# Questa Intel Starter FPGA Edition-64 vlog 2023.3 Compiler 2023.07 Jul 17 2023
+# Start time: 16:41:57 on Jun 16,2026
+# vlog -reportprogress 300 -vlog01compat -work work "+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/CONTROL" C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/CONTROL/Controller.v 
+# -- Compiling module Controller
+# 
+# Top level modules:
+# 	Controller
+# End time: 16:41:57 on Jun 16,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# vlog -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit {C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/Tensor_Processing_Unit.v}
+# Questa Intel Starter FPGA Edition-64 vlog 2023.3 Compiler 2023.07 Jul 17 2023
+# Start time: 16:41:58 on Jun 16,2026
+# vlog -reportprogress 300 -vlog01compat -work work "+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit" C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/Tensor_Processing_Unit.v 
+# -- Compiling module Tensor_Processing_Unit
+# 
+# Top level modules:
+# 	Tensor_Processing_Unit
+# End time: 16:41:58 on Jun 16,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# vlog -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/WEIGHT_MEMORY {C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/WEIGHT_MEMORY/Weight_Memory.v}
+# Questa Intel Starter FPGA Edition-64 vlog 2023.3 Compiler 2023.07 Jul 17 2023
+# Start time: 16:41:58 on Jun 16,2026
+# vlog -reportprogress 300 -vlog01compat -work work "+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/WEIGHT_MEMORY" C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/WEIGHT_MEMORY/Weight_Memory.v 
+# -- Compiling module Weight_Memory
+# 
+# Top level modules:
+# 	Weight_Memory
+# End time: 16:41:58 on Jun 16,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# vlog -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/0X1_BUFFER {C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/0X1_BUFFER/TPU_0x1_Buffer.v}
+# Questa Intel Starter FPGA Edition-64 vlog 2023.3 Compiler 2023.07 Jul 17 2023
+# Start time: 16:41:58 on Jun 16,2026
+# vlog -reportprogress 300 -vlog01compat -work work "+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/0X1_BUFFER" C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/MEMORY/0X1_BUFFER/TPU_0x1_Buffer.v 
+# -- Compiling module TPU_0x1_Buffer
+# 
+# Top level modules:
+# 	TPU_0x1_Buffer
+# End time: 16:41:58 on Jun 16,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# vlog -vlog01compat -work work +incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/PROGRAM_MEMORY {C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/PROGRAM_MEMORY/Program_Memory.v}
+# Questa Intel Starter FPGA Edition-64 vlog 2023.3 Compiler 2023.07 Jul 17 2023
+# Start time: 16:41:58 on Jun 16,2026
+# vlog -reportprogress 300 -vlog01compat -work work "+incdir+C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/PROGRAM_MEMORY" C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/TPU/PROGRAMMER/PROGRAM_MEMORY/Program_Memory.v 
+# -- Compiling module Program_Memory
+# 
+# Top level modules:
+# 	Program_Memory
+# End time: 16:41:58 on Jun 16,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# 
