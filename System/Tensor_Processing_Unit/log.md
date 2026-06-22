@@ -1,6 +1,10 @@
 # Functional TPU — Change Log
 
 > Append a new entry every time a change is made. Newest entries at the top.
+
+## 2026-06-22 — Build Step 7: Systolic Array module
+
+
 ## 2026-06-18 — Build Step 7: Systolic Array module
 - Began building `TPU/SYSTOLIC_ARRAY/Systolic_Array.v` — top level module for the systolic array subsystem.
 - Generates a systolic array from `TPU/SYSTOLIC_ARRAY/Multiply_Accumulate_Buffer.v` modules by instantiating a grid of instances connected by wire nets.
