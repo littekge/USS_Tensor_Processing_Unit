@@ -1,7 +1,6 @@
 # Functional TPU Instruction Set Architecture (ISA)
 > **Purpose:** This document contains the *Functional TPU* instruction set architecture specification. 
 
-
 ## Memory
 This section describes memory expectations of the *Functional TPU instruction set architecture*. The ISA has an address space of 2^16=65536 words of length XLEN. The memory address space is non-cyclic.
 
@@ -55,10 +54,10 @@ Each instruction format is described below:
 ### SYSTEM Format
 **Description by Bit:**
 
-| 127-124 | 123-3 | 2-0 |
+| 127-124 | 123-7 | 6-0 |
 | --- | --- | --- |
-| 4 | 121 | 3 |
-| opcode | reserved | funct3 |
+| 4 | 117 | 7 |
+| opcode | reserved | funct7 |
 
 --------------------------------------------------
 
@@ -104,11 +103,16 @@ This section describes individual instructions available in the *Functional TPU*
 ### System Instructions
 **Description by Bit:**
 
-| 127-124 | 123-3 | 2-0 |
+| 127-124 | 123-7 | 6-0 |
 | --- | --- | --- |
-| 4 | 121 | 3 |
-| opcode | reserved | funct3 |
+| 4 | 117 | 7 |
+| opcode | reserved | funct7 |
+| SYSTEM | 0 | END |
 | SYSTEM | PRIVATE | SYSCALL |
+
+
+#### end
+The *end* instruction terminates the current program.
 
 #### syscall
 The *syscall* instruction is used to make a service request to the supporting system hardware. The system will define how parameters for the service request are passed.
@@ -123,4 +127,8 @@ This section defines the concrete binary layouts for all instructions in the *Fu
 | mult | 1000 | 0x0 |
 | relu | 1001 | 0x0 |
 | add | 1010 | 0x0 |
-| syscall | 0000 | 0x0 | 
+
+| Instruction | opcode | funct7 |
+| --- | --- | --- |
+| end | 0000 | 0x0 |
+| syscall | 0000 | 0x1 |
