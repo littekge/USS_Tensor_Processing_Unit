@@ -188,6 +188,7 @@ Follow three rules for comments:
 - **Named Instantiation:** When instantiating a Verilog module connect inputs and outputs explicitly using named instantiation.
 - **Nested Ternary Operators:** Nested ternary operators are not encouraged, but permissible if absolutely necessary.
 - **Code Simplicity:** Code should be simple and readable. No single line of code should implement an excessive amount of operations (combinational logic can be especially difficult to read if implemented on one line).
+- **DO NOT** modify the debug sections of modules. I will edit those sections and use them for debug signals when synthesizing to the FPGA hardware.
 
 ## Architecture Rules
 

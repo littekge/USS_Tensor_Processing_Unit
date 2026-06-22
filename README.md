@@ -32,11 +32,11 @@ The *Tests* folder contains code used to verify the functionality of systems in 
 
 ## Current Possible Failure Points
 - The resistor divider between the Arduino and FPGA used to rectify voltage levels between the two devices rounds off the corners of the SPI bus waveform. If issues begin to arise, a proper logic level converter may be needed.
-- The SPI_Slave.v file I found on Github explicitly requires a timing constraint when crossing clock domains, but I do not currently have one. 
+- The SPI_Slave.v file I found on Github explicitly requires a timing constraint when crossing clock domains, but I do not currently have one. Will probably not be an issue.
 - The compilation pipeline a version of StableHLO that I built locally. A wheel for the Python bindings is available in the Github releases, but it does not contain the necessary StableHLO pass to run the program without a local build. Currently, this makes the compilation flow difficult to recreate on other machines.
-- The data buffer on the Arduino that connects the computer and FPGA has a fixed length of 256 bytes and could overflow if the serial input rate greatly exceeds the SPI send rate.
+- The data buffer on the Arduino that connects the computer and FPGA has a fixed length of 256 bytes and will eventually overflow if the serial input rate exceeds the SPI send rate.
 
 ## Potential Long-Term Changes
-- Create soldered perfboard for SPI connection to allow for more reliable data transfer and faster transfer speed.
+- Create soldered perfboard for SPI connection to allow for more reliable data transfer and faster transfer speed. Probably will not be needed.
 - Attempt to package StableHLO binary and Python wheel in a single release to allow for full integration with Google Colab (makes long term access to script more reliable).
 - Create custom MLIR passes that handle partitioning of oversize operations.
