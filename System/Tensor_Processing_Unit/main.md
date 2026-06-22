@@ -118,3 +118,7 @@ See `Functional_TPU_Hardware_Specification_v0.1.md` for detailed descriptions of
 5. ~~Build and instantiate the Activator module. Update the TPU module to route input and control signals from vector processor *a* to the activator and output from the activator to the vector buffer, implementing intermediate combinational logic and quantization in the process.~~
 6. ~~Build and instantiate the ALU module. Update the TPU module to appropriately route inputs and control signals from both vector processors to the ALU and outputs from the ALU to the vector buffer, implementing intermediate combinational logic and quantization in the process. Ensure that the *element_valid* signals of the two vector processors are properly connected to the *enable* signal of the ALU.~~ 
 7. ~~Build and instantiate the Systolic_Array module and submodules (Systolic_Array_Input_Buffer and Multiply_Accumulate_Unit). Update the TPU module to route control signals from the controller to the systolic array.~~
+8. Test the entire TPU by
+    1. Creating a basic Functional TPU ISA program that uses each instruction at least once.
+    2. Formatting the program and relevant test weights into the Functional TPU message protocol.
+    3. Simulating programming over SPI and checking that each instruction functions as expected.
