@@ -5,7 +5,8 @@
  * 
  * Top level systolic array module. Generates the systolic array using generate
  * blocks that instantiate and connect the multiply accumulate units and
- * systolic array input buffers. Also implements a state machine that 
+ * systolic array input buffers. Also implements a state machine that loads
+ * data to the systolic array from the input buffers in the correct order.
  */
 module Systolic_Array #(parameter N = 8) (
 
@@ -15,7 +16,7 @@ module Systolic_Array #(parameter N = 8) (
 	//synchronous control signals
 	input i_clear,
 	input i_systolic_array_start,
-	output reg o_systolic_array_idle,
+	output wire o_systolic_array_idle,
 	
 	//systolic array top input buffer signals
 	input [7:0] i_top_data,
@@ -41,7 +42,10 @@ module Systolic_Array #(parameter N = 8) (
 parameter [2:0]
 	STATE_ERROR = 3'd0,
 	START = 3'd1,
-	IDLE = 3'd2;
+	IDLE = 3'd2,
+	LOAD_FOR_CHECK = 3'd3,
+	LOAD_FOR_EXECUTE = 3'd4,
+	LOAD_FOR_INCREMENT = 3'd5;
 // ---------- END PARAMETERS ---------- //
 
 // ---------- CODE ---------- //
@@ -59,6 +63,9 @@ assign buf_sclr = ~i_trst | i_clear;
 wire [7:0] h_interconnect[0:N-1][0:N-1];
 wire [7:0] v_interconnect[0:N-1][0:N-1];
 wire [31:0] unit_out[0:N-1][0:N-1];
+wire left_rdreq[0:N-1];
+wire top_rdreq[0:N-1];
+wire all_empty;
 
 //decodes output
 assign o_c = unit_out[i_col][i_row];
@@ -70,10 +77,10 @@ generate
 		Systolic_Array_Input_Buffer #(.DEPTH(N)) SAIB_left (
 			.clock(i_clk),
 			.data(i_left_data),
-			.rdreq(),
+			.rdreq(left_rdreq[j]),
 			.sclr(buf_sclr),
 			.wrreq(i_left_wrreq[j]),
-			.empty(),
+			.empty(all_empty),
 			.full(),
 			.q(h_interconnect[0][j])
 		);
@@ -87,10 +94,10 @@ generate
 		Systolic_Array_Input_Buffer #(.DEPTH(N)) SAIB_top(
 			.clock(i_clk),
 			.data(i_top_data),
-			.rdreq(),
+			.rdreq(top_rdreq[i]),
 			.sclr(buf_sclr),
 			.wrreq(i_top_wrreq[i]),
-			.empty(),
+			.empty(all_empty),
 			.full(),
 			.q(v_interconnect[i][0])
 		);
@@ -139,26 +146,29 @@ always @ (*)
 begin
 	case (S)
 		START: NS = IDLE;
-		IDLE: NS = (i_systolic_array_start == 1'b1)?:IDLE;
-		PROCESS_INIT: NS = FOR_CHECK;
-	
+		IDLE: NS = (i_systolic_array_start == 1'b1)?LOAD_WHILE_CHECK:IDLE;
+		LOAD_WHILE_CHECK:;
 		STATE_ERROR: NS = STATE_ERROR;
+		default: NS = STATE_ERROR;
 	endcase
 end
+
 //execution logic
 always @ (posedge i_clk or negedge i_trst)
 begin
 	if (i_trst == 1'b0)
 	begin
-		
+	
 	end
 	else
 	begin
 		case (S)
-		
+			default:;
 		endcase
 	end
 end
+
+assign o_systolic_array_idle = (S == IDLE)?1'b1:1'b0; //idle signal set combinationally
 // ---------- END CODE ---------- //
 
 // ---------- DEBUG ---------- //
