@@ -26,7 +26,7 @@ The *Tensor_Processing_Unit* folder contains the TPU hardware written in Verilog
 - Functional TPU ISA (v0.1 complete)
 - Message protocol (v0.1 complete)
 - Hardware Spec (v0.1 complete)
-- Verilog code for TPU (in progress)
+- Verilog code for TPU (v0.1 complete)
 ## Tests
 The *Tests* folder contains code used to verify the functionality of systems in the project.
 
