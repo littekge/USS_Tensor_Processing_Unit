@@ -138,13 +138,17 @@ wire         vpa_element_valid;
 wire         vpb_vector_idle;
 wire         vpb_element_valid;
 
-// VP SA interface (stubs for step 7)
+// VP <-> Systolic_Array interface
 wire [7:0]   vpa_sa_top_wrreq;
 wire [7:0]   vpa_sa_top_data;
 wire [7:0]   vpb_sa_left_wrreq;
 wire [7:0]   vpb_sa_left_data;
 wire [3:0]   vpa_sa_row;
 wire [3:0]   vpa_sa_col;
+
+// Systolic_Array outputs
+wire         sa_systolic_array_idle;
+wire [31:0]  sa_c;
 
 // ALU element_valid enable: both VP_A and VP_B must be valid simultaneously
 wire alu_enable;
@@ -256,7 +260,7 @@ Controller ctrl (
     .i_instruction          (feeder_instruction),
     .i_vector_idle_a        (vpa_vector_idle),
     .i_vector_idle_b        (vpb_vector_idle),
-    .i_systolic_array_idle  (1'b1),   // stub: connected to Systolic_Array in step 7
+    .i_systolic_array_idle  (sa_systolic_array_idle),
     .o_controller_idle      (ctrl_controller_idle),
     .o_clear                (ctrl_clear),
     .o_vector_start_a       (ctrl_vector_start_a),
@@ -309,7 +313,7 @@ Vector_Processor vp_a (
     .o_sa_left_wrreq       (),
     .o_sa_row              (vpa_sa_row),
     .o_sa_col              (vpa_sa_col),
-    .i_sa_c                (32'd0)      // stub: connected to Systolic_Array in step 7
+    .i_sa_c                (sa_c)
 );
 
 Vector_Processor vp_b (
@@ -377,6 +381,21 @@ ALU alu (
 	.i_data_a(vpa_data),
 	.i_data_b(vpb_data),
 	.o_data(alu_data)
+);
+
+Systolic_Array #(.N(8)) sa (
+	.i_clk                  (i_clk),
+	.i_trst                 (trst),
+	.i_clear                (ctrl_clear),
+	.i_systolic_array_start (ctrl_systolic_array_start),
+	.o_systolic_array_idle  (sa_systolic_array_idle),
+	.i_top_data             (vpa_sa_top_data),
+	.i_top_wrreq            (vpa_sa_top_wrreq),
+	.i_left_data            (vpb_sa_left_data),
+	.i_left_wrreq           (vpb_sa_left_wrreq),
+	.i_row                  (vpa_sa_row),
+	.i_col                  (vpa_sa_col),
+	.o_c                    (sa_c)
 );
 
 // ---------- END CODE ---------- //

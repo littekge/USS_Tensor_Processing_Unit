@@ -2,8 +2,44 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
-## 2026-06-22 — Build Step 7: Systolic Array module
+## 2026-06-22 — Build Step 7: Systolic Array completion, integration, and tests
 
+- **Fixed `TPU/SYSTOLIC_ARRAY/Systolic_Array.v`** — corrected the errors in the
+  partially-built module:
+  - Next-state logic referenced an undeclared `LOAD_WHILE_CHECK` state and left
+    `NS` unassigned; replaced the unused `LOAD_FOR_*` parameters with a clean
+    `STATE_ERROR/START/IDLE/LOAD` FSM.
+  - Every input buffer drove the same `all_empty` wire (2N drivers contending on
+    one net). Split into per-buffer `top_empty[N-1:0]` / `left_empty[N-1:0]`
+    vectors and derived `all_empty = (&top_empty) & (&left_empty)`.
+  - `top_rdreq` / `left_rdreq` were undriven `wire` arrays, so no buffer ever
+    read. Changed to packed `reg [N-1:0]` driven by combinational decode.
+  - Interconnect nets were declared `[0:N-1][0:N-1]` but indexed out of bounds
+    at `v_interconnect[i][j+1]` and `h_interconnect[i+1][j]`. Resized to
+    `v_interconnect[0:N-1][0:N]` and `h_interconnect[0:N][0:N-1]` to hold the
+    bottom/right edge outputs.
+- **Implemented the FSM per the hardware spec:** on `systolic_array_start` the
+  array enters LOAD, asserts `systolic_array_idle` LOW, and ramps a `load_cnt`
+  counter so buffer M begins reading on the Mth cycle (the diagonal offset
+  required by an output-stationary array). `rdreq` for each buffer is gated by
+  its `empty` flag. Once `all_empty` is HIGH the FSM returns to IDLE and reasserts
+  `systolic_array_idle`.
+- **Tiling convention documented and verified:** first net index = column
+  (a/top stream), second = row (b/left stream); `o_c = unit_out[i_col][i_row]`,
+  matching the Vector_Processor readback (`o_sa_row=col_cnt`, `o_sa_col=row_cnt`).
+- **Updated `TPU/TPU.v`:** instantiated `Systolic_Array #(.N(8))`; connected
+  `ctrl_clear`, `ctrl_systolic_array_start`, VP_A top buffers, VP_B left buffers,
+  and VP_A SA read interface (`o_sa_row/o_sa_col`/`i_sa_c`). Replaced the
+  Controller `i_systolic_array_idle` stub (was `1'b1`) and the VP_A `i_sa_c` stub
+  (was `32'd0`) with the real `sa_systolic_array_idle` and `sa_c` nets.
+- **Created `tests/TB_Step7_SystolicArray.v`** — 7-test testbench. Tests: reset
+  idle state; clear flushes all input buffers; start lowers idle; read-request
+  skew (buffer M enabled on cycle M); rdreq gated by empty; idle returns after
+  drain; MAC tile accumulates a non-zero product with correct `o_c` output-mux
+  decode (untouched tiles read zero).
+- **Verification:** full TPU hierarchy compiles with 0 errors/0 warnings under
+  Questa; top-level `TPU` elaborates cleanly; all 7 testbench cases PASS
+  (`vsim -L altera_mf_ver -voptargs=+acc`).
 
 ## 2026-06-18 — Build Step 7: Systolic Array module
 - Began building `TPU/SYSTOLIC_ARRAY/Systolic_Array.v` — top level module for the systolic array subsystem.
