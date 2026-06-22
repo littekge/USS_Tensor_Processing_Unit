@@ -83,6 +83,21 @@ reg  [N-1:0] top_rdreq;
 wire [N-1:0] left_empty;
 wire [N-1:0] top_empty;
 
+//raw buffer outputs (before the input-valid gate is applied)
+wire [7:0] top_q[0:N-1];
+wire [7:0] left_q[0:N-1];
+
+//read-request valids delayed by one cycle to match the input-buffer read
+//latency (rdreq at cycle T -> q valid at cycle T+1). A buffer drives genuine
+//popped data into the array only while its delayed read request is HIGH; at all
+//other times the array edge is fed 0. Because each MAC accumulates a*b every
+//cycle unconditionally, feeding 0 once a buffer has drained makes the stale
+//held-output contribute nothing, while the real operands already streamed in
+//propagate through normally. This is what stops an output-stationary array from
+//over-accumulating after its input buffers empty.
+reg [N-1:0] top_rdreq_d;
+reg [N-1:0] left_rdreq_d;
+
 //ramp counter; in LOAD, buffers 0..load_cnt are enabled to read
 reg [7:0] load_cnt;
 
@@ -105,8 +120,10 @@ generate
 			.wrreq(i_left_wrreq[j]),
 			.empty(left_empty[j]),
 			.full(),
-			.q(h_interconnect[0][j])
+			.q(left_q[j])
 		);
+		//gate the left edge of row j: real popped data only while streaming
+		assign h_interconnect[0][j] = left_rdreq_d[j] ? left_q[j] : 8'd0;
 	end
 endgenerate
 
@@ -122,8 +139,10 @@ generate
 			.wrreq(i_top_wrreq[i]),
 			.empty(top_empty[i]),
 			.full(),
-			.q(v_interconnect[i][0])
+			.q(top_q[i])
 		);
+		//gate the top edge of column i: real popped data only while streaming
+		assign v_interconnect[i][0] = top_rdreq_d[i] ? top_q[i] : 8'd0;
 	end
 endgenerate
 
@@ -201,6 +220,29 @@ begin
 			end
 			default:;
 		endcase
+	end
+end
+
+//delay the read-request valids by one cycle to align with the input-buffer
+//read latency, so the input-valid gate matches when q actually holds popped
+//data. Cleared with the array (trst LOW or clear HIGH) so each operation starts
+//with no spurious valids.
+always @(posedge i_clk or negedge i_trst)
+begin
+	if (i_trst == 1'b0)
+	begin
+		top_rdreq_d  <= {N{1'b0}};
+		left_rdreq_d <= {N{1'b0}};
+	end
+	else if (i_clear == 1'b1)
+	begin
+		top_rdreq_d  <= {N{1'b0}};
+		left_rdreq_d <= {N{1'b0}};
+	end
+	else
+	begin
+		top_rdreq_d  <= top_rdreq;
+		left_rdreq_d <= left_rdreq;
 	end
 end
 

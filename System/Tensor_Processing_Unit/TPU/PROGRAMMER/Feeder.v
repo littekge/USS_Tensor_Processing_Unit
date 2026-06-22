@@ -43,7 +43,8 @@ parameter [3:0]
     FORWARD     = 4'd5,
     WAIT_CTRL   = 4'd6,
     DONE        = 4'd7,
-    FEED_ERROR  = 4'd8;
+    FEED_ERROR  = 4'd8,
+    WAIT_ACK    = 4'd9;
 
 // syscall opcode per ISA (bits 127:124 = 4'b0000)
 parameter [3:0] SYSCALL_OPCODE = 4'b0000;
@@ -86,7 +87,14 @@ begin
         CHECK:
             NS = (i_pm_q[127:124] == SYSCALL_OPCODE) ? DONE : FORWARD;
         FORWARD:
-            NS = WAIT_CTRL;
+            NS = WAIT_ACK;
+        WAIT_ACK:
+            // Wait for the Controller to ACKNOWLEDGE the start pulse by driving
+            // controller_idle LOW before watching for completion. Without this
+            // the Feeder would sample the stale (pre-start) idle level — which
+            // is still HIGH on the cycle start is asserted — and advance before
+            // the Controller has even begun, losing the next instruction.
+            NS = (i_controller_idle == 1'b0) ? WAIT_CTRL : WAIT_ACK;
         WAIT_CTRL:
             // When controller is idle: increment pc or raise FEED_ERROR if at end
             NS = (i_controller_idle == 1'b1) ?
@@ -128,6 +136,12 @@ begin
             FORWARD:
             begin
                 o_controller_start <= 1'b1;
+            end
+            WAIT_ACK:
+            begin
+                // One-cycle start pulse is enough; the idle Controller latches
+                // it on the first WAIT_ACK cycle. Deassert here.
+                o_controller_start <= 1'b0;
             end
             WAIT_CTRL:
             begin

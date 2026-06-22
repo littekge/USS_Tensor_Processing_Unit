@@ -2,6 +2,68 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-06-22 — Build Step 8: Full-system integration test and bug fixes
+
+- **Created `tests/TB_Step8_FullSystem.v`** — full-system integration test that
+  drives the top-level `TPU` module over SPI exactly as real hardware would. A
+  single SPI session (Functional TPU Message Protocol) programs test weights via
+  MEM packets and a four-instruction program (mult, relu, add, syscall) via
+  PROGRAM packets, then STOP releases the TPU (program HIGH → trst HIGH) and the
+  Feeder/Controller run the program to completion. Results are verified by
+  snooping the muxed weight-memory / 0x1-buffer write ports into shadow memories
+  (mirrors exactly what the RAMs store; no vendor-IP internal arrays referenced).
+- **Test program (unified address space; a MEM-packet address and an ISA
+  instruction address refer to the same location, physical WM addr = ISA − 2):**
+  - mult: rs1@0x2 `[[16,0],[0,16]]` × rs2@0x6 `[[16,32],[48,64]]` → rd@0xA;
+    products 256/512/768/1024 requantized (>>8) to `[[1,2],[3,4]]`.
+  - relu: src@0xE `[-5,7,-1,100]` → rd@0x12 `[0,7,0,100]`.
+  - add: rs1@0x16 `[10,20,-100,50]` + rs2@0x1A `[5,-3,-50,80]` → rd@0x1E
+    `[15,17,-128,127]` (verifies int8 saturation clamps).
+- **7 tests:** programming-over-SPI completes and weights stored; syscall halts
+  the Feeder; mult result; relu result; add result; add saturation; clean
+  completion (Controller IDLE, Feeder DONE, no fault states). All 7 PASS.
+- **Integration bugs found and fixed (each masked by a unit-test stub that
+  modelled the wrong behaviour):**
+  1. **`Programmer.v` weight-memory address offset** — the Programmer wrote the
+     ISA address directly to Weight_Memory while the Vector_Processor reads/writes
+     at `ISA − 2`; the two never agreed on a location. The Programmer was also
+     internally inconsistent (it already subtracted the base for the 0x1 buffer).
+     Fixed `M_WRITE` to use `o_wm_address_a <= mem_addr - 16'd2`, unifying the
+     Programmer and processing-pipeline address spaces.
+  2. **`Vector_Processor.v` MEM_ERROR over-trigger** — `MEM_ADDR` treated dest
+     address 0 as illegal for *every* operation, but the Controller leaves the
+     dest address 0 for systolic-array / activator / ALU destinations (where it
+     is unused), so mult/relu/add deadlocked. Gated the check to fire only when
+     the destination is device memory (`vect_dest_lat == VDST_MEM && dst_is_zero`).
+  3. **`Vector_Processor.v` RAM/FIFO read-latency** — the VP allowed one wait
+     cycle for the Weight_Memory/0x1-buffer read (`MEM_WAIT`) and one for the
+     Vector_Buffer read (`VB_WAIT`), but both IP blocks have a two-cycle
+     registered read latency (registered address + registered output / output
+     register). This shifted every streamed element by one (relu/add corrupted,
+     SA inputs corrupted). Added `MEM_WAIT2` and `VB_WAIT2` states.
+  4. **`Feeder.v` controller handshake race** — `WAIT_CTRL` sampled
+     `controller_idle` on the same cycle `controller_start` was asserted, while
+     idle was still HIGH (the Controller had not yet reacted), so the Feeder
+     advanced prematurely and lost instructions issued while the Controller was
+     busy (the add never executed). Added a `WAIT_ACK` state that waits for the
+     Controller to drop idle (acknowledge) before `WAIT_CTRL` waits for it to
+     rise (done).
+  5. **`Systolic_Array.v` post-drain over-accumulation** — the MACs accumulate
+     `a*b` every cycle unconditionally, but after the input buffers drained the
+     scfifo output registers held their last values, so MACs kept accumulating
+     stale products before the VP read them (mult row 1 inflated 8×). Added a
+     one-cycle-delayed read-request valid (`top_rdreq_d`/`left_rdreq_d`, matching
+     the buffer's 1-cycle read latency) that gates each array edge: genuine
+     popped data flows in while a buffer streams; 0 is fed otherwise. Zeros
+     propagate through the array, so late MACs still capture their real product
+     and drained buffers contribute nothing.
+- **Updated `tests/TB_Step1_Programmer.v`** — Test 3 now expects the corrected
+  unified mapping (MEM ISA address 0x5/0x6/0x7 → WM physical 3/4/5).
+- **Verification:** full hierarchy compiles with 0 errors/0 warnings under
+  Questa. All eight testbenches pass with the fixes applied and no regressions:
+  Step1 14/14, Step2 7/7, Step3 7/7, Step4 10/10, Step5 6/6, Step6 6/6,
+  Step7 7/7, Step8 7/7.
+
 ## 2026-06-22 — Build Step 7: Systolic Array completion, integration, and tests
 
 - **Fixed `TPU/SYSTOLIC_ARRAY/Systolic_Array.v`** — corrected the errors in the

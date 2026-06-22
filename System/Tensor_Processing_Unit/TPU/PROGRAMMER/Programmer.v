@@ -262,9 +262,13 @@ always @(posedge i_clk or negedge i_rst) begin
             M_WRITE: begin
                 case (mem_target)
                     1'b0: begin
-                        // Weight_Memory: ISA address maps directly to memory address
+                        // Weight_Memory: ISA addresses 0x0 and 0x1 are reserved,
+                        // so ISA address A maps to physical address A-2. This
+                        // matches the Vector_Processor's read/write mapping
+                        // (wm_addr = ISA_addr - 2) so the Programmer and the
+                        // processing pipeline share one unified address space.
                         o_wm_wren_a    <= 1'b1;
-                        o_wm_address_a <= mem_addr;
+                        o_wm_address_a <= mem_addr - 16'd2;
                         o_wm_data_a    <= data_byte;
                     end
                     default: begin

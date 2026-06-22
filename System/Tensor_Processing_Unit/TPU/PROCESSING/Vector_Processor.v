@@ -92,15 +92,17 @@ parameter [3:0]
     START        = 4'd1,
     IDLE         = 4'd2,
     MEM_ADDR     = 4'd3,   // Assert memory read address
-    MEM_WAIT     = 4'd4,   // Wait one cycle for registered RAM output
+    MEM_WAIT     = 4'd4,   // Wait for registered RAM output (latency cycle 1)
     MEM_FORWARD  = 4'd5,   // RAM output valid; route to destination
     VB_RDREQ     = 4'd6,   // Assert vector buffer rdreq
-    VB_WAIT      = 4'd7,   // Wait one cycle for FIFO output
+    VB_WAIT      = 4'd7,   // Wait for FIFO output (latency cycle 1)
     VB_WRITE     = 4'd8,   // Write FIFO output to memory
     SA_OUT_SEL   = 4'd9,   // Present SA row/col selectors; c is combinational
     SA_OUT_WRITE = 4'd10,  // Write requantized MAC value to memory
     DONE_STATE   = 4'd11,
-    MEM_ERROR    = 4'd12;
+    MEM_ERROR    = 4'd12,
+    VB_WAIT2     = 4'd13,  // Wait for FIFO output (latency cycle 2)
+    MEM_WAIT2    = 4'd14;  // Wait for registered RAM output (latency cycle 2)
 
 // Source encoding (must match Controller.v)
 parameter [2:0]
@@ -235,9 +237,18 @@ begin
                 NS = IDLE;
         end
         MEM_ADDR:
-            // Detect illegal write target before committing to a memory wait
-            NS = dst_is_zero ? MEM_ERROR : MEM_WAIT;
+            // Detect illegal write target before committing to a memory wait.
+            // The reserved-address (0x0) write check only applies when the
+            // destination is actually device memory; for systolic-array,
+            // activator, and ALU destinations the dest address is unused, so a
+            // zero value there is legal (the Controller leaves it at 0).
+            NS = (vect_dest_lat == VDST_MEM && dst_is_zero) ? MEM_ERROR : MEM_WAIT;
         MEM_WAIT:
+            // Weight_Memory / 0x1 Buffer (registered address + registered
+            // output) have a two-cycle read latency, so a second wait state is
+            // required before the RAM output is valid on i_wm_q / i_buf_q.
+            NS = MEM_WAIT2;
+        MEM_WAIT2:
             NS = MEM_FORWARD;
         MEM_FORWARD:
         begin
@@ -251,6 +262,11 @@ begin
         VB_RDREQ:
             NS = VB_WAIT;
         VB_WAIT:
+            // The Vector_Buffer scfifo (showahead OFF + output register ON) has
+            // a two-cycle read latency, so a second wait state is required
+            // before the popped element is valid on i_vb_q.
+            NS = VB_WAIT2;
+        VB_WAIT2:
             NS = VB_WRITE;
         VB_WRITE:
             NS = linear_last ? DONE_STATE : VB_RDREQ;
@@ -345,7 +361,8 @@ begin
                 // Zero source: no address needed, mem_rd_data returns 0 combinationally
             end
 
-            MEM_WAIT:; // Hold address; RAM output stabilises next cycle
+            MEM_WAIT:;  // RAM read latency cycle 1; hold address
+            MEM_WAIT2:; // RAM read latency cycle 2; i_wm_q/i_buf_q valid next cycle
 
             MEM_FORWARD:
             begin
@@ -414,7 +431,8 @@ begin
                 o_vb_rdreq <= 1'b1;
             end
 
-            VB_WAIT:; // FIFO output will be valid next cycle
+            VB_WAIT:;  // FIFO read latency cycle 1
+            VB_WAIT2:; // FIFO read latency cycle 2; i_vb_q valid next cycle
 
             VB_WRITE:
             begin

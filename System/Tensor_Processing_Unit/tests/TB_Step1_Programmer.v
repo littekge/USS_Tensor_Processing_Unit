@@ -217,9 +217,12 @@ module TB_Step1_Programmer;
         report(program === 1'b1, "program == 1 after STOP");
 
         // -------------------------------------------------------------------
-        // Test 3: MEM packet -> Weight_Memory (address 0x0005, 3 bytes)
+        // Test 3: MEM packet -> Weight_Memory (ISA address 0x0005, 3 bytes)
         //   Packet: [START, MEM, 0x05, 0x00, 0x03, 0x00, 0xAB, 0xCD, 0xEF, STOP]
-        //   Expected: 3 writes at WM addresses 5, 6, 7 with data AB, CD, EF
+        //   ISA addresses 0x0 and 0x1 are reserved, so weight memory begins at
+        //   ISA 0x2 -> physical 0. ISA address A maps to physical A-2, matching
+        //   the Vector_Processor. Expected: 3 writes at WM physical addresses
+        //   3, 4, 5 (ISA 5, 6, 7) with data AB, CD, EF.
         // -------------------------------------------------------------------
         $display("Test 3: MEM packet writes to Weight_Memory");
         wm_write_count = 0;
@@ -242,12 +245,12 @@ module TB_Step1_Programmer;
             timeout = timeout + 1;
         end
         report(wm_write_count === 3,          "3 writes to WM");
-        report(wm_addr_log[0] === 16'd5 &&
-               wm_data_log[0] === 8'hAB,      "WM[5] = 0xAB");
-        report(wm_addr_log[1] === 16'd6 &&
-               wm_data_log[1] === 8'hCD,      "WM[6] = 0xCD");
-        report(wm_addr_log[2] === 16'd7 &&
-               wm_data_log[2] === 8'hEF,      "WM[7] = 0xEF");
+        report(wm_addr_log[0] === 16'd3 &&
+               wm_data_log[0] === 8'hAB,      "WM phys 3 (ISA 5) = 0xAB");
+        report(wm_addr_log[1] === 16'd4 &&
+               wm_data_log[1] === 8'hCD,      "WM phys 4 (ISA 6) = 0xCD");
+        report(wm_addr_log[2] === 16'd5 &&
+               wm_data_log[2] === 8'hEF,      "WM phys 5 (ISA 7) = 0xEF");
 
         // -------------------------------------------------------------------
         // Test 4: MEM packet -> 0x1 Buffer (address 0x0001, 2 bytes)
