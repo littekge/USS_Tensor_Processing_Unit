@@ -181,7 +181,6 @@ def Save(model, sample_input, save_file_path):
     # Save an explicit ordered name list so the downstream step can preserve @main-arg order
     # for sequential address assignment (dict order is preserved, but this is unambiguous).
     weight_arrays["__order__"] = np.array(list(names))
-    print(weight_arrays)
     np.savez(Path(str(save_file_path) + ".weights.npz"), **weight_arrays)
     print("Weights exported to .weights.npz successfully!")
 

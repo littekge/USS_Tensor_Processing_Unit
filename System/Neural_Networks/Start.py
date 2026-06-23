@@ -15,7 +15,7 @@ import argparse
 
 def Get_LeNet_5_Data():
     CURRENT_DIR = Path(__file__).parent # determining file path
-    DATA_PATH = CURRENT_DIR / model_params.MODEL_NAME / "dataset.e" # setting dataset path
+    DATA_PATH = CURRENT_DIR / "LeNet_5" / "dataset.e" # setting dataset path
     # converts images to normalized tensors
     transform = transforms.Compose([
         transforms.ToTensor(),
@@ -59,26 +59,16 @@ def Get_Bigger_NN_Data():
     exportSet = (torch.tensor([[0.5]], dtype=torch.float32),)
     return trainSet, testSet, exportSet
 
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("model_name")
-    parser.add_argument("run_name")
-    parser.add_argument("-t", "--train", action='store_true')
-    parser.add_argument("-e", "--export", action='store_true')
-    parser.add_argument("-r", "--run", action='store_true')
-    
-    args = parser.parse_args()
-
+def Start(model_name, run_name, train, export, run):
     model_params = Operations.MODEL_PARAMS(
-        MODEL_NAME=args.model_name,
-        RUN_NAME=args.run_name,
-        TRAIN = args.train,
-        RUN = args.run,
-        EXPORT = args.export
+        MODEL_NAME=model_name,
+        RUN_NAME=run_name,
+        TRAIN = train,
+        RUN = run,
+        EXPORT = export
     )
 
-    match args.model_name:
+    match model_name:
         case "LeNet_5":
             model_params.MODEL = LeNet_5()
             trainSet, testSet, exportSet = Get_LeNet_5_Data()
@@ -120,6 +110,26 @@ if __name__ == "__main__":
         trainSet=trainSet,
         exportSet=exportSet
     )
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("model_name")
+    parser.add_argument("run_name")
+    parser.add_argument("-t", "--train", action='store_true')
+    parser.add_argument("-e", "--export", action='store_true')
+    parser.add_argument("-r", "--run", action='store_true')
+    
+    args = parser.parse_args()
+
+    Start(
+        model_name=args.model_name,
+        run_name=args.run_name,
+        train=args.train,
+        export=args.export,
+        run=args.run
+    )
+
+    
     
     
 
