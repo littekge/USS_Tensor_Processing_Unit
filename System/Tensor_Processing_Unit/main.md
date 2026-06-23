@@ -10,11 +10,12 @@
 - **Development Environment:** Quartus Prime Lite Edition
 - **Development Platform:** Windows 11
 - **License:** MIT License
+- **Hardware Spec:** `/hardware_spec/Functional_TPU_Hardware_Specification_v0.1.1.md` (detailed description of Verilog module implementations)
 - **Change Log:** `log.md`
 - **Specifications:** — located at `../../Specifications/`
     - **Instruction Set Architecture:** `Functional_TPU_ISA_v0.2.md` (TPU instruction set)
     - **Messaging Protocol:** `Functional_TPU_Message_Protocol_v0.1.md` (defines byte format for communicating with the TPU)
-    - **Hardware Spec:** `Functional_TPU_Hardware_Specification_v0.1.1.md` (detailed description of Verilog module implementations)
+    
 
 ## General Project Description
 The Functional TPU is a tensor processing unit roughly based on Google's first generation TPU. This project aims to create Verilog HDL code that implements the instruction set detailed in `Functional_TPU_ISA_v0.2.md` in order to accelerate small neural networks using an FPGA.
