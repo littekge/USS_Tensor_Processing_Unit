@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import SubsetRandomSampler as sample
 import torchax.export as export
+import numpy as np
 from pathlib import Path
 from dataclasses import dataclass
 
@@ -162,5 +163,26 @@ def Save(model, sample_input, save_file_path):
     with open(Path(str(save_file_path) + ".mlir"), "w") as out:
         out.write(stablehlo.mlir_module())
     print("Model exported to .mlir successfully!")
+
+    # Dump the raw weight values alongside the .mlir/.pt2.
+    #
+    # WHY: the .mlir module only stores tensor shapes/types (the @main signature) -- it does
+    # NOT contain the actual weight numbers. Those live only in the exported program's state.
+    # We persist them here so the downstream Synth_Flow step can quantize them to int8 and
+    # build the hardware load packets without having to re-export the model.
+    #
+    # export_raw=True returns matched (names, states, func): the names come from the
+    # graph signature (parameters + buffers) and line up positionally with the leading
+    # @main arguments %arg0..%argN-2 (the final @main argument is the runtime input, not a
+    # weight). states are torch tensors here (the conversion to jax arrays happens only in
+    # the non-raw path), so we can move them straight to numpy.
+    names, states, _ = export.exported_program_to_jax(exportedModel, export_raw=True)
+    weight_arrays = {name: tensor.detach().cpu().numpy() for name, tensor in zip(names, states)}
+    # Save an explicit ordered name list so the downstream step can preserve @main-arg order
+    # for sequential address assignment (dict order is preserved, but this is unambiguous).
+    weight_arrays["__order__"] = np.array(list(names))
+    print(weight_arrays)
+    np.savez(Path(str(save_file_path) + ".weights.npz"), **weight_arrays)
+    print("Weights exported to .weights.npz successfully!")
 
     

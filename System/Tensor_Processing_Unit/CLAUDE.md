@@ -1,7 +1,7 @@
 # Claude - Project Instructions
 
 > These rules apply to every task in this project.
-> Github Copilot reads this file to begin the coding process.
+> Claude reads this file to begin the coding process.
 
 > **NOTE:** All paths are described relative to the directory in which this file is located unless otherwise specified.
 

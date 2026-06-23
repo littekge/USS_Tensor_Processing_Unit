@@ -1,8 +1,4 @@
-'''
-from mlir import ir
-from mlir.passmanager import PassManager
-from mlir.dialects import stablehlo
-'''
+
 import argparse
 from pathlib import Path
 import subprocess
@@ -19,7 +15,7 @@ if __name__ == "__main__":
     assert MLIR_PATH.is_file()
 
     CURRENT_DIR = Path(__file__).parent
-    OPTIM_PATH = CURRENT_DIR / "current.optim.mlir"
+    OPTIM_PATH = CURRENT_DIR / "tmp" / "current.optim.mlir"
     try:
         subprocess.run(["stablehlo-opt", "--stablehlo-target-independent-optimization", str(MLIR_PATH), "-o", str(OPTIM_PATH)])
     except subprocess.CalledProcessError as e:
