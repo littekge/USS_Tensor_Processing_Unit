@@ -19,6 +19,8 @@
   ```
   source ~/Git/USS_Tensor_Processing_Unit/USS_TPU.venv/bin/activate
   ```
+- **StableHLO Binaries Location:** `~/Programs/stablehlo/build/bin/`
+- **MLIR Binaries Location:** `~/Programs/stablehlo/llvm-build/bin/`
 
 ## Iterative Build Workflow
 
@@ -68,7 +70,7 @@ self.score = 0  # Reset between innings; accumulated score is in game_state.tota
 
 ## Architecture Rules
 
-- `/mlir_passes/` — you have free reign over this subdirectory. It is a workspace for you alone and I will not modify it.
+- `/src/MLIR/` — you have free reign over this subdirectory. It is a workspace for you alone and I will not modify it.
 - `/tmp/` — stores **ALL** intermediate files between build steps (MLIR code after each pass, binary archives, etc.).
 - `/out/` — stores the final output of the project.
 
