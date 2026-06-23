@@ -25,8 +25,8 @@
 1. **Before starting work**, read `main.md` to understand the spec and `log.md` to see what's already been done.
 2. **Work in small increments** — one module or feature at a time.
 3. **After every change**, append a dated entry to `log.md` describing what was added, changed, or fixed.
-4. **Build and run unit tests** after every build step in the `tests/` directory using pytest: `python -m pytest tests/ -v`
-5. **Run the program** to verify it works as expected up to the current build step: `python Convert.py Tiny_NN Recent`
+4. **Build and run unit tests** after every build step in the `test/` directory using pytest: `python -m pytest test/ -v`
+5. **Run the program** to verify it works as expected up to the current build step: `python ./src/main.py Tiny_NN Recent`
 6. **Commit often** with descriptive messages: `git add . ; git commit -m "feat: ..."`
 7. **Mark completed build steps** in `main.md`.
 

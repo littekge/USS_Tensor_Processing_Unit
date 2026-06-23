@@ -1,7 +1,7 @@
-
 import argparse
 from pathlib import Path
 import subprocess
+from NN_Import import NN_import
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -10,12 +10,12 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     
-    NN_DIR = Path(__file__).parent.parent.parent / "Neural_Networks" # getting Neural_Networks directory
-    MLIR_PATH = NN_DIR / args.model_name / str(args.model_name + "_" + args.run_name + ".mlir") # setting save path
-    assert MLIR_PATH.is_file()
-
-    CURRENT_DIR = Path(__file__).parent
-    OPTIM_PATH = CURRENT_DIR / "tmp" / "current.optim.mlir"
+    NN_import(args.model_name, args.run_name) # import NN to ../tmp/
+    
+    # StableHLO base optimization pass
+    TMP_DIR = Path(__file__).parent.parent / "tmp"
+    OPTIM_PATH = TMP_DIR / "optimized.mlir"
+    MLIR_PATH = TMP_DIR / "initial.mlir"
     try:
         subprocess.run(["stablehlo-opt", "--stablehlo-target-independent-optimization", str(MLIR_PATH), "-o", str(OPTIM_PATH)])
     except subprocess.CalledProcessError as e:
