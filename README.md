@@ -1,13 +1,13 @@
 # USS_Tensor_Processing_Unit
-This repository contains research on the synthesis flow and hardware code required to accelerate a Pytorch neural network using a custom TPU architecture defined in Verilog HDL that runs on an FPGA. This research is endorsed and funded by Miami University of Ohio and conducted under their Electrical and Computer Engineering department in the College of Engineering and Computing.
+This repository contains research on the synthesis flow and hardware code required to accelerate a Pytorch neural network using a custom TPU architecture defined in Verilog HDL that runs on an FPGA. This research is endorsed and funded by Miami University of Ohio and conducted under the Electrical and Computer Engineering department in the College of Engineering and Computing.
 
 # Folder Hierarchy and Project Log:
 This is a general overview of the project folder hierarchy and a log of what parts of the system have been implemented. Only relevant directories are included; further subdirectories are specific to components of an individual system; this is a high-level overview of the outermost systems.
 ## Specifications
-The *Specifications* folder contains spec sheets related to the project.
-- Functional TPU ISA (v0.1 complete)
+The *Specifications* folder contains specification sheets, spec sheet changelogs, and previous versions of spec sheets.
+- Functional TPU ISA (v0.2 complete)
 - Functional TPU Message Protocol (v0.1 complete)
-- Functional TPU Hardware Spec (v0.1 complete)
+- Functional TPU Hardware Spec (v0.1.1 complete)
 ### Old
 The *Old* folder contains old revisions of spec sheets.
 ## System
@@ -30,7 +30,7 @@ The *Arduino_2_FPGA* folder contains an Arduino program to forward data from the
 - SPI Transmitter on Arduino (complete)
 ### Tensor_Processing_Unit
 The *Tensor_Processing_Unit* folder contains the TPU hardware written in Verilog HDL.
-- Verilog code for TPU (v0.1 complete)
+- Verilog code for TPU (v0.1.1 complete)
 ## Tests
 The *Tests* folder contains code used to verify the functionality of systems in the project.
 
