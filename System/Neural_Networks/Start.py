@@ -12,7 +12,6 @@ import torchvision.transforms as transforms
 from pathlib import Path
 import argparse
 
-
 def Get_LeNet_5_Data():
     CURRENT_DIR = Path(__file__).parent # determining file path
     DATA_PATH = CURRENT_DIR / "LeNet_5" / "dataset.e" # setting dataset path
