@@ -17,7 +17,7 @@
 - **Languages:** Python 3.13, MLIR, C/C++
 - **Virtual Environment:** Stored **outside** this directory at `~/Git/USS_Tensor_Processing_Unit/USS_TPU.venv` to unify environment across multiple projects. Virtual environment is not uploaded to Github (venvs contain hardcoded absolute paths that break across machines). Activate with:
   ```
-  source "~/Git/USS_Tensor_Processing_Unit/USS_TPU.venv/bin/activate"
+  source ~/Git/USS_Tensor_Processing_Unit/USS_TPU.venv/bin/activate
   ```
 
 ## Iterative Build Workflow
@@ -26,7 +26,7 @@
 2. **Work in small increments** — one module or feature at a time.
 3. **After every change**, append a dated entry to `log.md` describing what was added, changed, or fixed.
 4. **Build and run unit tests** after every build step in the `test/` directory using pytest: `python -m pytest test/ -v`
-5. **Run the program** to verify it works as expected up to the current build step: `python ./src/main.py Tiny_NN Recent`
+5. **Run the program** to verify it works as expected up to the current build step: `python ./src/Convert.py Tiny_NN Recent`
 6. **Commit often** with descriptive messages: `git add . ; git commit -m "feat: ..."`
 7. **Mark completed build steps** in `main.md`.
 
