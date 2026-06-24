@@ -52,40 +52,50 @@ The lowering pipeline to the `Functional_TPU_Message_Protocol_v0.1.md` format ha
 
 v0.1 is **complete**: the full pipeline runs end-to-end and produces `/out/TRANSMISSION.bin`.
 
-The project is an installable Python package named **`nn_assembler`** (the `src/`
-directory is mapped to that import name via `pyproject.toml`). After a one-time
-`pip install -e .` from the project root, it can be used any of these ways:
+The project is an installable Python package named **`nn_assembler`** (the
+`nn_assembler/` directory is the package). After a one-time editable install
+from the project root it can be used any of these ways:
+
+```
+pip install -e . --config-settings editable_mode=compat
+```
+
+(The `editable_mode=compat` flag makes setuptools write a plain static path into
+the `.pth` file instead of its default dynamic import hook, so editors / static
+analyzers such as Pylance can resolve `nn_assembler` imports. It adds no files to
+the project tree. A plain `pip install -e .` still works at runtime but leaves the
+package unresolved in the IDE.)
 
 - From another file: `from nn_assembler import Convert; Convert("Tiny_NN", "Recent")`
 - As a module: `python -m nn_assembler Tiny_NN Recent`
 - As a console script: `nn-assemble Tiny_NN Recent`
-- As the original script (still supported): `python ./src/Convert.py Tiny_NN Recent`
+- As the original script (still supported): `python ./nn_assembler/Convert.py Tiny_NN Recent`
 
-- **Main Guard:** The project can be run using `python ./src/Convert.py` with relevant arguments, or by directly calling the `Convert(model_name, run_name)` function.
-- **Neural Network Imports:** The `NN_Import` function in `/src/Convert.py` imports neural networks based on *model_name* and *run_name* and saves them to `/tmp/initial.mlir` (StableHLO computation graph) and `/tmp/weights.npz` (neural network weights). The `Neural_Networks` directory is located by an upward search from the package (overridable via the `NN_ASSEMBLER_NETWORKS_DIR` env var or the `nn_dir` argument), so the project is not coupled to a fixed directory depth.
-- **First Optimization Pass:** `/src/Process_MLIR.py` runs a base optimization pass provided by the StableHLO-opt binary, saving the result to `/tmp/optimized.mlir`.
-- **Weight Processing:** `/src/Process_Weights.py` quantizes weights f32 → Q0.7, maps them to addresses (input → `0x1`, weights contiguous from `0x2`), and writes `/tmp/MEM.bin` and `/tmp/weight_map.json`.
-- **Custom Dialect + Legalization:** `/src/MLIR/` defines the *Functional TPU* dialect (Python implementation — see `/src/MLIR/README.md`) and the StableHLO → TPU legalization pass; `Process_MLIR` writes `/tmp/optimized.tpu.mlir`. Shape-only ops (reshape) are folded so each dialect op maps 1:1 to an instruction.
-- **Assembler:** `/src/Assembler.py` translates the dialect to ISA machine code and exports `/tmp/PROGRAM.bin`. Intermediate results and the network input share scratch address `0x1`.
-- **Serializer:** `/src/Serializer.py` wraps `MEM.bin` then `PROGRAM.bin` with START/STOP into `/out/TRANSMISSION.bin`.
-- **Protocol encoders:** `/src/Protocol.py` centralizes the Message Protocol byte format (function codes, MEM/PROGRAM block builders).
+- **Main Guard:** The project can be run using `python ./nn_assembler/Convert.py` with relevant arguments, or by directly calling the `Convert(model_name, run_name)` function.
+- **Neural Network Imports:** The `NN_Import` function in `/nn_assembler/Convert.py` imports neural networks based on *model_name* and *run_name* and saves them to `/tmp/initial.mlir` (StableHLO computation graph) and `/tmp/weights.npz` (neural network weights). The `Neural_Networks` directory is located by an upward search from the package (overridable via the `NN_ASSEMBLER_NETWORKS_DIR` env var or the `nn_dir` argument), so the project is not coupled to a fixed directory depth.
+- **First Optimization Pass:** `/nn_assembler/Process_MLIR.py` runs a base optimization pass provided by the StableHLO-opt binary, saving the result to `/tmp/optimized.mlir`.
+- **Weight Processing:** `/nn_assembler/Process_Weights.py` quantizes weights f32 → Q0.7, maps them to addresses (input → `0x1`, weights contiguous from `0x2`), and writes `/tmp/MEM.bin` and `/tmp/weight_map.json`.
+- **Custom Dialect + Legalization:** `/nn_assembler/MLIR/` defines the *Functional TPU* dialect (Python implementation — see `/nn_assembler/MLIR/README.md`) and the StableHLO → TPU legalization pass; `Process_MLIR` writes `/tmp/optimized.tpu.mlir`. Shape-only ops (reshape) are folded so each dialect op maps 1:1 to an instruction.
+- **Assembler:** `/nn_assembler/Assembler.py` translates the dialect to ISA machine code and exports `/tmp/PROGRAM.bin`. Intermediate results and the network input share scratch address `0x1`.
+- **Serializer:** `/nn_assembler/Serializer.py` wraps `MEM.bin` then `PROGRAM.bin` with START/STOP into `/out/TRANSMISSION.bin`.
+- **Protocol encoders:** `/nn_assembler/Protocol.py` centralizes the Message Protocol byte format (function codes, MEM/PROGRAM block builders).
 - **Tests:** 15 pytest tests in `/test/` cover quantization, weight mapping, the dialect, legalization, instruction encoding, and the full pipeline.
 
 ## Architecture
 
-- `pyproject.toml` — packaging metadata; maps the `src/` directory to the importable `nn_assembler` package and defines the `nn-assemble` console script.
+- `pyproject.toml` — packaging metadata; declares the `nn_assembler` package and defines the `nn-assemble` console script.
 - `/examples/` — example code for claude to reference
 - `/out/` — Location of final output binary
-- `/src/` — Source files (the `nn_assembler` package)
-    - `/src/__init__.py` — package entry; re-exports `Convert`, `NN_import`, `main`
-    - `/src/__main__.py` — enables `python -m nn_assembler`
-    - `/src/Protocol.py` — Message Protocol byte encoders (function codes, MEM/PROGRAM blocks)
-    - `/src/MLIR/` — Custom MLIR dialect and passes, should be mostly self-contained
-    - `/src/Convert.py` — Top level file; entry point for program, binds logic from other files together. Also implements step 1 of lowering (*Neural Network Import*)
-    - `/src/Process_Weights.py` — implements step 2 of lowering (*Weight Processing*)
-    - `/src/Process_MLIR.py` —  implements the first half of step 3 of lowering (*MLIR Lowering*); this file accesses the custom dialect and passes in `/src/MLIR/`
-    - `/src/Assembler.py` — assembles the *Functional TPU* custom MLIR dialect into machine code, implementing the second half of lowering step 3.
-    - `/src/Serializer.py` — implements the 4th lowering step (*Final Conversion*).
+- `/nn_assembler/` — Source files (the `nn_assembler` package)
+    - `/nn_assembler/__init__.py` — package entry; re-exports `Convert`, `NN_import`, `main`
+    - `/nn_assembler/__main__.py` — enables `python -m nn_assembler`
+    - `/nn_assembler/Protocol.py` — Message Protocol byte encoders (function codes, MEM/PROGRAM blocks)
+    - `/nn_assembler/MLIR/` — Custom MLIR dialect and passes, should be mostly self-contained
+    - `/nn_assembler/Convert.py` — Top level file; entry point for program, binds logic from other files together. Also implements step 1 of lowering (*Neural Network Import*)
+    - `/nn_assembler/Process_Weights.py` — implements step 2 of lowering (*Weight Processing*)
+    - `/nn_assembler/Process_MLIR.py` —  implements the first half of step 3 of lowering (*MLIR Lowering*); this file accesses the custom dialect and passes in `/nn_assembler/MLIR/`
+    - `/nn_assembler/Assembler.py` — assembles the *Functional TPU* custom MLIR dialect into machine code, implementing the second half of lowering step 3.
+    - `/nn_assembler/Serializer.py` — implements the 4th lowering step (*Final Conversion*).
 - `/test/` — All tests used to verify program functionality
 - `/tmp/` — Temporary program files
 
@@ -95,7 +105,7 @@ The build plan for this project is *versioned*. Early versions will **NOT** impl
 ### v0.1 — Basic Functionality ✅ COMPLETE
 Implements basic functionality of the program. Does **NOT** implement complex MLIR passes (no matmul partitioning), only the legalization pass from StableHLO to the *Functional TPU* custom dialect.
 
-> All steps below are complete. The custom dialect (Step 4) is implemented in Python rather than TableGen/C++ — `main.md` Step 4 grants free reign over the language; see `/src/MLIR/README.md` for the rationale and the dialect grammar.
+> All steps below are complete. The custom dialect (Step 4) is implemented in Python rather than TableGen/C++ — `main.md` Step 4 grants free reign over the language; see `/nn_assembler/MLIR/README.md` for the rationale and the dialect grammar.
 
 #### Step 1: Weight Quantization ✅
 Build logic to...
@@ -113,7 +123,7 @@ Reference the `Functional_TPU_Message_Protocol_v0.1.md` and build logic to...
 - Export the weight addresses as `/tmp/weight_map.json`.
 
 #### Step 4: Custom MLIR Dialect ✅
-Build a custom MLIR dialect in `/src/MLIR/`. The formatting of the code and files in that directory are entirely up to you; you may choose the coding language (likely tablegen and c++ to conform to what MLIR expects). However, the dialect must follow a few key rules:
+Build a custom MLIR dialect in `/nn_assembler/MLIR/`. The formatting of the code and files in that directory are entirely up to you; you may choose the coding language (likely tablegen and c++ to conform to what MLIR expects). However, the dialect must follow a few key rules:
 - **Direct translation** to the `Functional_TPU_ISA_v0.2.md`. The custom dialect must have a nearly 1:1 relation to machine code, and I should be able to easily determine the layout of the machine code from the custom dialect.
 - **Minimize** functions that will be synthesized away during assembly.
 The goal of the custom dialect is to be a bridge between StableHLO and machine code. If someone writes a computation graph in our custom dialect, our assembler will be able to translate it to machine code.
@@ -121,11 +131,11 @@ The goal of the custom dialect is to be a bridge between StableHLO and machine c
 #### Step 5: Legalization Pass ✅
 Build a legalization pass to convert StableHLO to our custom dialect.
 - The legalization does not need to be complete, this version of the pass only needs to consider the operations present in `/examples/v0.1_example.mlir` and `/examples/v0.1_optimized_example.mlir`.
-- The logic that actually runs the pass should be in `/src/Process_MLIR.py`, but the pass should be defined in `/src/MLIR/`. This legalization pass is the second pass, and occurs after the first optimization pass.
+- The logic that actually runs the pass should be in `/nn_assembler/Process_MLIR.py`, but the pass should be defined in `/nn_assembler/MLIR/`. This legalization pass is the second pass, and occurs after the first optimization pass.
 - Save the result of the legalization pass to `/tmp/optimized.tpu.mlir`.
 
 #### Step 6: Assembler ✅
-Build `/src/Assembler.py`:
+Build `/nn_assembler/Assembler.py`:
 - Reference the weight map json file to convert the output of the final MLIR pass to `Functional_TPU_ISA_v0.2.md` machine code.
 - Prioritize using address 0x1 for intermediate results.
 
@@ -134,7 +144,7 @@ Reference the `Functional_TPU_Message_Protocol_v0.1.md` and build logic to...
 - Export the machine instructions to the *Functional TPU Message Protocol* format and save it as `/tmp/PROGRAM.bin`
 
 #### Step 8: Serializer ✅
-Build `/src/Serializer.py`:
+Build `/nn_assembler/Serializer.py`:
 - Concatenate `/tmp/MEM.bin` and `/tmp/PROGRAM.bin` into a single binary string.
 - Append START and STOP codes to generate a full *Functional TPU Message Protocol* message.
 - Save the final result to `/out/TRANSMISSION.bin`.

@@ -2,6 +2,19 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-06-24 — Renamed `src/` → `nn_assembler/` and switched to strict editable install (IDE resolution fix)
+
+- Reason: `from nn_assembler import Convert` worked at runtime but showed as *unresolved* in the IDE. Root cause: setuptools 81 defaults to the "lenient" editable install, which registers a dynamic `MetaPathFinder` (`__editable___..._finder.py`) instead of putting a path in the `.pth`. Pylance/static analyzers can't execute that finder, so they can't locate the package.
+- Renamed the package directory `src/` → `nn_assembler/` (via `git mv`) so the on-disk name matches the import name, and dropped the now-unnecessary `[tool.setuptools.package-dir]` remap from `pyproject.toml`. (`packages = ["nn_assembler", "nn_assembler.MLIR"]` unchanged.)
+- The actual resolution fix: install with `pip install -e . --config-settings editable_mode=compat`. Compat mode writes a **plain static path** (the project root, which contains `nn_assembler/`) into the `.pth`, with no finder hook and **no files added to the project tree** — so Pylance resolves the package while edits stay live. (Strict mode also fixes resolution but materializes a `build/` proxy tree inside the project, which contradicts the `/tmp/` + `/out/` layout in `main.md`; compat avoids that.) A plain `pip install -e .` still re-introduces the finder hook.
+- Updated the direct-run bootstrap in `nn_assembler/Convert.py` (`from src.Convert` → `from nn_assembler.Convert`; comment now says `python ./nn_assembler/Convert.py`).
+- Simplified `test/conftest.py` source-tree fallback to `import nn_assembler` (dir name now matches import name; dropped the `import src as nn_assembler` alias).
+- Added `System/Assembler/.gitignore` (ignores `*.egg-info/`, `.pytest_cache/`, `__pycache__/`, `build/`).
+- Updated `main.md` and `CLAUDE.md`: all `/src/...` paths → `/nn_assembler/...`, run command → `python ./nn_assembler/Convert.py`, and install instructions now specify the `editable_mode=compat` flag with rationale.
+- Files modified: `pyproject.toml`, `nn_assembler/Convert.py`, `test/conftest.py`, `main.md`, `CLAUDE.md`, `log.md`. Files created: `.gitignore`. Directory renamed: `src/` → `nn_assembler/`.
+- Tests: all 19 pytest tests pass (including `test_full_pipeline`); verified `python ./nn_assembler/Convert.py Tiny_NN Recent` still writes `out/TRANSMISSION.bin`, and that the regenerated `.pth` now contains a static path with no finder hook.
+- Note (pre-existing): `nn_assembler.egg-info/` is tracked in git from before this change; left as-is to avoid scope creep, though it is now covered by `.gitignore` for future checkouts.
+
 ## 2026-06-24 — Decoupled Neural_Networks lookup from directory depth
 
 - Reason: prep for relocating the project from `System/Synth_Flow/Neural_Network_2_TPU_ISA` to `System/Assembler` (one level shallower). The old `Path(__file__).parent.parent.parent.parent / "Neural_Networks"` walk depended on the exact depth and would have silently broken at runtime after the move.

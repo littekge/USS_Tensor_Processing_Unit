@@ -10,14 +10,14 @@ Binds the four lowering stages together:
 from __future__ import annotations
 
 if __name__ == "__main__" and __package__ in (None, ""):
-    # Allow running this file directly (`python ./src/Convert.py ...`) even though
-    # the package now uses relative imports: put the parent of `src/` on sys.path,
-    # import the package's entry point, and hand off to it.
+    # Allow running this file directly (`python ./nn_assembler/Convert.py ...`)
+    # even though the package uses relative imports: put the parent of the
+    # `nn_assembler/` package on sys.path, import its entry point, and hand off.
     import sys
     from pathlib import Path as _Path
 
     sys.path.insert(0, str(_Path(__file__).resolve().parents[1]))
-    from src.Convert import main as _main
+    from nn_assembler.Convert import main as _main
 
     _main()
     raise SystemExit(0)

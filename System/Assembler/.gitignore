@@ -1,0 +1,5 @@
+# Python packaging / build artifacts
+*.egg-info/
+.pytest_cache/
+__pycache__/
+build/

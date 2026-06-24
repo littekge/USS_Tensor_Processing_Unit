@@ -14,10 +14,5 @@ dependencies = ["numpy"]
 [project.scripts]
 nn-assemble = "nn_assembler.Convert:main"
 
-# The source lives in src/ but is imported as the `nn_assembler` package. The
-# directory keeps the name `src/` to match the layout documented in main.md.
 [tool.setuptools]
 packages = ["nn_assembler", "nn_assembler.MLIR"]
-
-[tool.setuptools.package-dir]
-nn_assembler = "src"

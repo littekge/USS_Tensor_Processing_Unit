@@ -13,10 +13,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 try:
     import nn_assembler  # noqa: F401  (editable install present)
 except ModuleNotFoundError:
+    # Fall back to importing the source tree directly when the package is not
+    # installed. The package directory is named `nn_assembler`, so adding the
+    # project root to sys.path makes `import nn_assembler` resolve as-is.
     if str(PROJECT_ROOT) not in sys.path:
         sys.path.insert(0, str(PROJECT_ROOT))
-    import src as nn_assembler
-
-    # Register the source package under its public name so that
-    # `from nn_assembler... import ...` resolves to the same modules.
-    sys.modules.setdefault("nn_assembler", nn_assembler)
+    import nn_assembler  # noqa: F401
