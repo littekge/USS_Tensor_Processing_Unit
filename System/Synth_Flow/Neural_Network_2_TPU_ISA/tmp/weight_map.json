@@ -1,0 +1,50 @@
+{
+  "%arg0": {
+    "kind": "weight",
+    "label": "hidden.weight",
+    "address": 2,
+    "shape": [
+      4,
+      1
+    ],
+    "num_words": 4
+  },
+  "%arg1": {
+    "kind": "weight",
+    "label": "hidden.bias",
+    "address": 6,
+    "shape": [
+      4
+    ],
+    "num_words": 4
+  },
+  "%arg2": {
+    "kind": "weight",
+    "label": "output.weight",
+    "address": 10,
+    "shape": [
+      1,
+      4
+    ],
+    "num_words": 4
+  },
+  "%arg3": {
+    "kind": "weight",
+    "label": "output.bias",
+    "address": 14,
+    "shape": [
+      1
+    ],
+    "num_words": 1
+  },
+  "%arg4": {
+    "kind": "input",
+    "label": "__input__",
+    "address": 1,
+    "shape": [
+      1,
+      1
+    ],
+    "num_words": 1
+  }
+}
