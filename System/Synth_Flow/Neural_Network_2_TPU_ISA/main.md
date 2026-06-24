@@ -9,7 +9,7 @@
 - **Languages:** Python 3.13, MLIR, C/C++
 - **License:** MIT License
 - **Change Log:** `log.md`
-- **Specifications:** — located at `../../Specifications/`
+- **Specifications:** — located at `../../../Specifications/`
     - **Instruction Set Architecture:** `Functional_TPU_ISA_v0.2.md` — TPU instruction set
     - **Messaging Protocol:** `Functional_TPU_Message_Protocol_v0.1.md` — defines byte format for communicating with the TPU
 
@@ -20,7 +20,7 @@ This project aims to assemble neural network computation graphs and weights into
 
 **Design Goals:**
 - Multi-stage lowering and assembly pipeline.
-- Obvious intermediate representations of computation graph.
+- Obvious intermediate representations of the computation graph.
 - Custom *Functional TPU* MLIR dialect.
 - f32 to Q0.7 fixed point quantization of neural network weights.
 - Memory mapping algorithms.
@@ -31,21 +31,21 @@ This project aims to assemble neural network computation graphs and weights into
 The lowering pipeline to the `Functional_TPU_Message_Protocol_v0.1.md` format has 4 stages:
 1. Neural Network Import
     1. import MLIR representation as `/tmp/initial.mlir`.
-    2. import neural network weights as `/tmp/weighs.npz`.
+    2. import neural network weights as `/tmp/weights.npz`.
 2. Weight Processing
     1. Read weights from `/tmp/weights.npz`.
-    2. Quantize neural network weights from f32 to Q0.7 fixed point (1 sign bit + 0 integer bits + 7 decimal bits = 8 bits total).
+    2. Quantize neural network weights from f32 to Q0.7 fixed point (1 sign bit + 0 integer bits + 7 fractional bits = 8 bits total).
     3. Algorithmically map weights to ISA compliant memory locations.
     4. Convert mapped weights to the `Functional_TPU_Message_Protocol_v0.1.md` MEM format and save as `/tmp/MEM.bin`.
-    5. Save weight addresses as `/tmp/weight_map.json` — should correspond to the input arguments in `/tmp/initial.mlir`. This should be easy since `/tmp/weighs.npz` is already ordered and labeled in accordance with `/tmp/initial.mlir`.
+    5. Save weight addresses as `/tmp/weight_map.json` — should correspond to the input arguments in `/tmp/initial.mlir`. This should be easy since `/tmp/weights.npz` is already ordered and labeled in accordance with `/tmp/initial.mlir`.
 3. MLIR Lowering
     1. Run StableHLO default optimization pass on `/tmp/initial.mlir`, saving the result as `/tmp/optimized.mlir`.
     2. Legalize `/tmp/optimized.mlir` to the *Functional_TPU* MLIR dialect, saving the result as `/tmp/optimized.tpu.mlir`.
     3. Assemble `/tmp/optimized.tpu.mlir` into `Functional_TPU_ISA_v0.2.md` machine code referencing `/tmp/weight_map.json` to determine weight addresses.
     4. Convert machine code to the `Functional_TPU_Message_Protocol_v0.1.md` PROGRAM format and save as `/tmp/PROGRAM.bin`.
 4. Final Conversion
-    1. Concatenate `/tmp/PROGRAM.bin` and `/tmp/MEM.bin` into a single string of binary
-    2. Append START and END function codes to create a full transmission.
+    1. Concatenate `/tmp/MEM.bin` and `/tmp/PROGRAM.bin` into a single string of binary
+    2. Append START and STOP function codes to create a full transmission.
     3. Save the completed binary to `/out/TRANSMISSION.bin`.
 
 ## Current State (v0.1 — What's Working)
@@ -59,7 +59,7 @@ The lowering pipeline to the `Functional_TPU_Message_Protocol_v0.1.md` format ha
 - `/examples/` — example code for claude to reference
 - `/out/` — Location of final output binary
 - `/src/` — Source files
-    - `/src/MLIR/` — Custom MLIR dialect and passes, should be mostly self contained
+    - `/src/MLIR/` — Custom MLIR dialect and passes, should be mostly self-contained
     - `/src/Convert.py` — Top level file; entry point for program, binds logic from other files together. Also implements step 1 of lowering (*Neural Network Import*)
     - `/src/Process_Weights.py` — implements step 2 of lowering (*Weight Processing*)
     - `/src/Process_MLIR.py` —  implements the first half of step 3 of lowering (*MLIR Lowering*); this file accesses the custom dialect and passes in `/src/MLIR/`
@@ -102,7 +102,7 @@ Build a legalization pass to convert StableHLO to our custom dialect.
 - Save the result of the legalization pass to `/tmp/optimized.tpu.mlir`.
 
 #### Step 6: Assembler
-Build `/src/Assember.py`:
+Build `/src/Assembler.py`:
 - Reference the weight map json file to convert the output of the final MLIR pass to `Functional_TPU_ISA_v0.2.md` machine code.
 - Prioritize using address 0x1 for intermediate results.
 
