@@ -22,7 +22,7 @@ from pathlib import Path
 
 import numpy as np
 
-from Protocol import build_mem_block
+from .Protocol import build_mem_block
 
 # Q0.7 fixed point: 1 sign bit + 7 fractional bits. A value of 1.0 would be 128,
 # which overflows int8, so the representable range is [-1.0, 127/128].

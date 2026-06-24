@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from Protocol import START, STOP
+from .Protocol import START, STOP
 
 
 def Serialize(tmp_dir: Path | None = None, out_dir: Path | None = None) -> Path:

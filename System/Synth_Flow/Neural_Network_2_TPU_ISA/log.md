@@ -2,6 +2,20 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-06-24 — Turned the project into an installable package (`nn_assembler`)
+
+- Reason: relative/flat imports only worked when running from inside `src/`, which broke importing `Convert` from another file.
+- Added `pyproject.toml` mapping the `src/` directory to the importable package name **`nn_assembler`** (`tool.setuptools.package-dir`), so the documented `/src/...` layout is unchanged — no files were moved. Defines deps (`numpy`) and a `nn-assemble` console script (`nn_assembler.Convert:main`).
+- Converted intra-project imports from flat (`from Process_MLIR import ...`) to package-relative (`from .Process_MLIR import ...`, `from .MLIR.legalize import ...`, `from .Protocol import ...`) across `Convert.py`, `Process_MLIR.py`, `Process_Weights.py`, `Assembler.py`, `Serializer.py`. (`MLIR/legalize.py` already used relative imports.)
+- Added `src/__init__.py` (re-exports `Convert`, `NN_import`, `main`; sets `__version__`) and `src/__main__.py` (enables `python -m nn_assembler`).
+- Refactored `Convert.py`'s `__main__` block into a `main()` function (used by the console script and `-m`), and added a small bootstrap so the original `python ./src/Convert.py <model> <run>` still works despite the relative imports.
+- Updated `test/conftest.py` to import the installed package, with a fallback that aliases the source tree as `nn_assembler` when it is not installed; updated all test imports to `nn_assembler.*`.
+- Added `.gitignore` for build/packaging artifacts (`*.egg-info/`, `__pycache__/`, `.pytest_cache/`, etc.).
+- Verified four usage paths all produce `out/TRANSMISSION.bin`: `from nn_assembler import Convert` (run from `/tmp`), `python -m nn_assembler`, `nn-assemble`, and `python ./src/Convert.py`. All 15 pytest tests pass.
+- Files created: `pyproject.toml`, `.gitignore`, `src/__init__.py`, `src/__main__.py`.
+- Files modified: `src/Convert.py`, `src/Process_MLIR.py`, `src/Process_Weights.py`, `src/Assembler.py`, `src/Serializer.py`, `test/conftest.py`, all `test/test_*.py`, `main.md`, `CLAUDE.md`.
+- Install step: `pip install -e .` from the project root (one-time, into the shared venv).
+
 ## 2026-06-24 — Completed v0.1 (build steps 1-8)
 
 - Implemented the full v0.1 lowering pipeline end-to-end; `python ./src/Convert.py Tiny_NN Recent` now produces `/out/TRANSMISSION.bin`.

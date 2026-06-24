@@ -14,8 +14,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from MLIR.dialect import AddOp, EndOp, MultOp, Operand, ReluOp, ReturnOp, parse_program
-from Protocol import build_program_instruction
+from .MLIR.dialect import AddOp, EndOp, MultOp, Operand, ReluOp, ReturnOp, parse_program
+from .Protocol import build_program_instruction
 
 # Opcodes (bits 127-124) and funct codes from the ISA's Instruction Set Listing.
 OPCODE_MULT = 0b1000

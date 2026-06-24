@@ -2,8 +2,8 @@
 
 import numpy as np
 
-from Process_Weights import Process_Weights, quantize_q07
-from Protocol import MEM
+from nn_assembler.Process_Weights import Process_Weights, quantize_q07
+from nn_assembler.Protocol import MEM
 
 
 def test_quantize_round_to_nearest():

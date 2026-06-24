@@ -9,14 +9,27 @@ Binds the four lowering stages together:
 
 from __future__ import annotations
 
+if __name__ == "__main__" and __package__ in (None, ""):
+    # Allow running this file directly (`python ./src/Convert.py ...`) even though
+    # the package now uses relative imports: put the parent of `src/` on sys.path,
+    # import the package's entry point, and hand off to it.
+    import sys
+    from pathlib import Path as _Path
+
+    sys.path.insert(0, str(_Path(__file__).resolve().parents[1]))
+    from src.Convert import main as _main
+
+    _main()
+    raise SystemExit(0)
+
 import argparse
 import shutil
 from pathlib import Path
 
-from Assembler import Assemble
-from Process_MLIR import Process_MLIR
-from Process_Weights import Process_Weights
-from Serializer import Serialize
+from .Assembler import Assemble
+from .Process_MLIR import Process_MLIR
+from .Process_Weights import Process_Weights
+from .Serializer import Serialize
 
 
 def NN_import(model_name: str, run_name: str, tmp_dir: Path | None = None) -> None:
@@ -44,11 +57,16 @@ def Convert(model_name: str, run_name: str) -> Path:
     return Serialize()
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> None:
+    """CLI entry point: assemble a network named on the command line."""
     parser = argparse.ArgumentParser(description="Assemble a neural network into a Functional TPU transmission.")
     parser.add_argument("model_name")
     parser.add_argument("run_name")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     output_path = Convert(args.model_name, args.run_name)
     print(f"Wrote transmission to {output_path}")
+
+
+if __name__ == "__main__":
+    main()

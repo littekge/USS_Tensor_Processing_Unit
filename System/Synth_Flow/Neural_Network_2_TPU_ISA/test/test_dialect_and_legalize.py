@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
-from MLIR.dialect import AddOp, EndOp, MultOp, ReturnOp, parse_program, serialize
-from MLIR.legalize import legalize_text
+from nn_assembler.MLIR.dialect import AddOp, EndOp, MultOp, ReturnOp, parse_program, serialize
+from nn_assembler.MLIR.legalize import legalize_text
 
 EXAMPLE = Path(__file__).parent.parent / "examples" / "v0.1_optimized_example.mlir"
 

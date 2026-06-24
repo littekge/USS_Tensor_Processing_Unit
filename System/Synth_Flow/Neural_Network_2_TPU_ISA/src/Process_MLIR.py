@@ -12,7 +12,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from MLIR.legalize import legalize
+from .MLIR.legalize import legalize
 
 
 def Process_MLIR(tmp_dir: Path | None = None) -> None:

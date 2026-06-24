@@ -19,6 +19,11 @@
   ```
   source ~/Git/USS_Tensor_Processing_Unit/USS_TPU.venv/bin/activate
   ```
+- **Package install:** The project is an installable package named `nn_assembler` (the `src/` directory mapped via `pyproject.toml`). After activating the venv, install it once in editable mode from the project root so it can be imported from anywhere:
+  ```
+  pip install -e .
+  ```
+  Then `from nn_assembler import Convert` works from any file. The pipeline can also be run via `python -m nn_assembler <model> <run>` or the `nn-assemble` console script.
 - **StableHLO Binaries Location:** `~/Programs/stablehlo/build/bin/`
 - **StableHLO Documentation:** https://openxla.org/stablehlo/spec
 - **MLIR Binaries Location:** `~/Programs/stablehlo/llvm-build/bin/`

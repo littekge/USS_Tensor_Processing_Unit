@@ -50,7 +50,16 @@ The lowering pipeline to the `Functional_TPU_Message_Protocol_v0.1.md` format ha
 
 ## Current State (v0.1 — What's Working)
 
-v0.1 is **complete**: the full pipeline runs end-to-end via `python ./src/Convert.py Tiny_NN Recent`, producing `/out/TRANSMISSION.bin`.
+v0.1 is **complete**: the full pipeline runs end-to-end and produces `/out/TRANSMISSION.bin`.
+
+The project is an installable Python package named **`nn_assembler`** (the `src/`
+directory is mapped to that import name via `pyproject.toml`). After a one-time
+`pip install -e .` from the project root, it can be used any of these ways:
+
+- From another file: `from nn_assembler import Convert; Convert("Tiny_NN", "Recent")`
+- As a module: `python -m nn_assembler Tiny_NN Recent`
+- As a console script: `nn-assemble Tiny_NN Recent`
+- As the original script (still supported): `python ./src/Convert.py Tiny_NN Recent`
 
 - **Main Guard:** The project can be run using `python ./src/Convert.py` with relevant arguments, or by directly calling the `Convert(model_name, run_name)` function.
 - **Neural Network Imports:** The `NN_Import` function in `/src/Convert.py` imports neural networks from `../../../Neural_Networks/` based on *model_name* and *run_name* and saves them to `/tmp/initial.mlir` (StableHLO computation graph) and `/tmp/weights.npz` (neural network weights).
@@ -64,9 +73,13 @@ v0.1 is **complete**: the full pipeline runs end-to-end via `python ./src/Conver
 
 ## Architecture
 
+- `pyproject.toml` — packaging metadata; maps the `src/` directory to the importable `nn_assembler` package and defines the `nn-assemble` console script.
 - `/examples/` — example code for claude to reference
 - `/out/` — Location of final output binary
-- `/src/` — Source files
+- `/src/` — Source files (the `nn_assembler` package)
+    - `/src/__init__.py` — package entry; re-exports `Convert`, `NN_import`, `main`
+    - `/src/__main__.py` — enables `python -m nn_assembler`
+    - `/src/Protocol.py` — Message Protocol byte encoders (function codes, MEM/PROGRAM blocks)
     - `/src/MLIR/` — Custom MLIR dialect and passes, should be mostly self-contained
     - `/src/Convert.py` — Top level file; entry point for program, binds logic from other files together. Also implements step 1 of lowering (*Neural Network Import*)
     - `/src/Process_Weights.py` — implements step 2 of lowering (*Weight Processing*)

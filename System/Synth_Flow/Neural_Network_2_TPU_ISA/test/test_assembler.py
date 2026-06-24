@@ -1,6 +1,6 @@
 """Tests for instruction encoding and assembly (build steps 6-7)."""
 
-from Assembler import assemble_program, encode_add, encode_end, encode_mult, encode_relu
+from nn_assembler.Assembler import assemble_program, encode_add, encode_end, encode_mult, encode_relu
 
 
 def _bits(value, hi, lo):

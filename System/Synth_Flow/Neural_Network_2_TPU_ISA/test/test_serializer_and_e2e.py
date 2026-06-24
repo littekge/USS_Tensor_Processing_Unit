@@ -3,11 +3,11 @@
 import numpy as np
 import pytest
 
-from Assembler import Assemble
-from Process_MLIR import Process_MLIR
-from Process_Weights import Process_Weights
-from Protocol import MEM, PROGRAM, START, STOP
-from Serializer import Serialize
+from nn_assembler.Assembler import Assemble
+from nn_assembler.Process_MLIR import Process_MLIR
+from nn_assembler.Process_Weights import Process_Weights
+from nn_assembler.Protocol import MEM, PROGRAM, START, STOP
+from nn_assembler.Serializer import Serialize
 
 
 def test_serialize_wraps_mem_then_program(tmp_path):
