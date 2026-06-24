@@ -2,6 +2,15 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-06-24 — Decoupled Neural_Networks lookup from directory depth
+
+- Reason: prep for relocating the project from `System/Synth_Flow/Neural_Network_2_TPU_ISA` to `System/Assembler` (one level shallower). The old `Path(__file__).parent.parent.parent.parent / "Neural_Networks"` walk depended on the exact depth and would have silently broken at runtime after the move.
+- Replaced the fixed parent walk with `find_networks_dir()`: checks the `NN_ASSEMBLER_NETWORKS_DIR` env var, then searches upward from the package for a `Neural_Networks` directory.
+- `NN_import` gained an optional `nn_dir` argument (explicit override; also used by tests).
+- Added `test/test_nn_import.py` (env override, missing-dir error, explicit-dir import, descriptive missing-network error).
+- Files modified: `src/Convert.py`, `main.md`. Files created: `test/test_nn_import.py`.
+- Tests: 19 pass. Pipeline verified still working from the current location.
+
 ## 2026-06-24 — Turned the project into an installable package (`nn_assembler`)
 
 - Reason: relative/flat imports only worked when running from inside `src/`, which broke importing `Convert` from another file.

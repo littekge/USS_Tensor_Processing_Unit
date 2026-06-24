@@ -23,6 +23,7 @@ if __name__ == "__main__" and __package__ in (None, ""):
     raise SystemExit(0)
 
 import argparse
+import os
 import shutil
 from pathlib import Path
 
@@ -31,10 +32,45 @@ from .Process_MLIR import Process_MLIR
 from .Process_Weights import Process_Weights
 from .Serializer import Serialize
 
+# Environment variable that lets callers point at a Neural_Networks directory
+# anywhere on disk, overriding the upward search.
+NETWORKS_DIR_ENV = "NN_ASSEMBLER_NETWORKS_DIR"
 
-def NN_import(model_name: str, run_name: str, tmp_dir: Path | None = None) -> None:
+
+def find_networks_dir() -> Path:
+    """Locate the `Neural_Networks` directory without depending on a fixed depth.
+
+    Resolution order: the ``NN_ASSEMBLER_NETWORKS_DIR`` env var, then an upward
+    search from this file for a directory containing ``Neural_Networks``. The
+    upward search is robust to moving the project to a different depth (which a
+    hard-coded ``parent.parent...`` walk was not).
+    """
+    override = os.environ.get(NETWORKS_DIR_ENV)
+    if override:
+        candidate = Path(override).expanduser()
+        assert candidate.is_dir(), f"{NETWORKS_DIR_ENV} points to a missing directory: {candidate}"
+        return candidate
+
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "Neural_Networks"
+        if candidate.is_dir():
+            return candidate
+
+    raise FileNotFoundError(
+        "Could not locate a 'Neural_Networks' directory in any parent of "
+        f"{Path(__file__).resolve()}. Set {NETWORKS_DIR_ENV} or pass nn_dir to NN_import()."
+    )
+
+
+def NN_import(
+    model_name: str,
+    run_name: str,
+    tmp_dir: Path | None = None,
+    nn_dir: Path | None = None,
+) -> None:
     """Copy a trained network's MLIR graph and weights into the tmp workspace."""
-    nn_dir = Path(__file__).parent.parent.parent.parent / "Neural_Networks"
+    if nn_dir is None:
+        nn_dir = find_networks_dir()
     mlir_path = nn_dir / model_name / f"{model_name}_{run_name}.mlir"
     weight_path = nn_dir / model_name / f"{model_name}_{run_name}.weights.npz"
     assert mlir_path.is_file(), f"Missing network graph: {mlir_path}"
