@@ -20,7 +20,10 @@
   source ~/Git/USS_Tensor_Processing_Unit/USS_TPU.venv/bin/activate
   ```
 - **StableHLO Binaries Location:** `~/Programs/stablehlo/build/bin/`
+- **StableHLO Documentation:** https://openxla.org/stablehlo/spec
 - **MLIR Binaries Location:** `~/Programs/stablehlo/llvm-build/bin/`
+- **MLIR Documentation:** https://mlir.llvm.org/docs/
+
 
 ## Iterative Build Workflow
 
@@ -58,6 +61,10 @@ self.score = 0  # set score to zero
 # GOOD — explains why
 self.score = 0  # Reset between innings; accumulated score is in game_state.total_runs
 ```
+
+### Error Handling
+- **Safe and descriptive** handling of exceptions. Exceptions should be clear and descriptive and tell the user what went wrong and where.
+- **Use assert statements** to terminate the program if data is not formatted correctly and to check if files exist before loading them.
 
 ### Other Conventions
 

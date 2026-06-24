@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
-import subprocess
 import shutil
+from Process_MLIR import Process_MLIR
 
 
 def NN_import(model_name, run_name):
@@ -21,16 +21,8 @@ def NN_import(model_name, run_name):
 
 def Convert(model_name, run_name):
     NN_import(model_name, run_name) # import NN to ../tmp/
-
-    # StableHLO base optimization pass
-    TMP_DIR = Path(__file__).parent.parent / "tmp"
-    OPTIM_PATH = TMP_DIR / "optimized.mlir"
-    MLIR_PATH = TMP_DIR / "initial.mlir"
-    try:
-        subprocess.run(["stablehlo-opt", "--stablehlo-target-independent-optimization", str(MLIR_PATH), "-o", str(OPTIM_PATH)])
-    except subprocess.CalledProcessError as e:
-        print("Failed: stablehlo-opt either does not exist or is not registered in PATH")
-
+    Process_MLIR()
+    
 # main guard
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
