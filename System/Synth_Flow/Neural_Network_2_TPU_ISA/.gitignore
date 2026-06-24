@@ -1,9 +1,0 @@
-# Python build / packaging artifacts
-*.egg-info/
-build/
-dist/
-__pycache__/
-*.py[cod]
-
-# Pytest / tooling caches
-.pytest_cache/

@@ -10,7 +10,7 @@
 
 - **Build Spec:** `main.md` — the single source of truth for what to build (includes build plan).
 - **Change Log:** `log.md` — append an entry every time you make a change.
-- **Specifications:** — located at `../../../Specifications/`
+- **Specifications:** — located at `../../Specifications/`
 	- **Instruction Set Architecture:** `Functional_TPU_ISA_v0.2.md` — TPU instruction set
 	- **Messaging Protocol:** `Functional_TPU_Message_Protocol_v0.1.md` — defines byte format for communicating with the TPU
 - **Development Platform:** Debian 13 Linux

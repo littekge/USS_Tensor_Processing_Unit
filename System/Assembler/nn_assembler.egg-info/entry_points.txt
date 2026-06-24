@@ -1,0 +1,2 @@
+[console_scripts]
+nn-assemble = nn_assembler.Convert:main
