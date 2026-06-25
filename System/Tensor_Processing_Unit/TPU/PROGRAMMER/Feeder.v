@@ -38,13 +38,14 @@ parameter [3:0]
     STATE_ERROR = 4'd0,
     START       = 4'd1,
     FETCH       = 4'd2,
-    WAIT_PM     = 4'd3,
+    WAIT_PM     = 4'd3,   // Program_Memory read latency cycle 1
     CHECK       = 4'd4,
     FORWARD     = 4'd5,
     WAIT_CTRL   = 4'd6,
     DONE        = 4'd7,
     FEED_ERROR  = 4'd8,
-    WAIT_ACK    = 4'd9;
+    WAIT_ACK    = 4'd9,
+    WAIT_PM2    = 4'd10;  // Program_Memory read latency cycle 2
 
 // end (program termination) opcode per ISA (bits 127:124 = 4'b0000).
 // The end instruction reuses the former syscall encoding (opcode 0000);
@@ -85,6 +86,8 @@ begin
         FETCH:
             NS = WAIT_PM;
         WAIT_PM:
+            NS = WAIT_PM2;
+        WAIT_PM2:
             NS = CHECK;
         CHECK:
             NS = (i_pm_q[127:124] == END_OPCODE) ? DONE : FORWARD;
@@ -126,8 +129,10 @@ begin
         case (S)
             FETCH:
             begin
-                // Present the current program counter address to program memory;
-                // the registered RAM output will be valid in CHECK (two cycles later)
+                // Present the current program counter address to program memory.
+                // Program_Memory has a 2-cycle registered read latency, so the
+                // address settles in WAIT_PM and the RAM output is not valid until
+                // CHECK (two cycles after the address is driven onto the bus).
                 o_pm_address <= pc;
             end
             CHECK:

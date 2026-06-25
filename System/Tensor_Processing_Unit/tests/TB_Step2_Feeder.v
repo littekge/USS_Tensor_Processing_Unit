@@ -4,7 +4,7 @@
  *
  * Testbench for Build Step 2: Feeder module.
  * Tests the Feeder state machine using a behavioral Program_Memory model
- * (1-cycle registered output latency) and a behavioral Controller stub.
+ * (2-cycle registered output latency) and a behavioral Controller stub.
  *
  * -------------------------------------------------------------------------
  * HOW TO RUN (Questa Intel FPGA simulation from Quartus Prime Lite):
@@ -101,9 +101,15 @@ reg [127:0] pmem [0:3]; // 4-word behavioral memory
 wire [9:0]  pm_address;
 wire        pm_wren;    // Feeder never writes; wire present for completeness
 
-reg [127:0] pm_q_reg;   // 1-cycle registered output, matches Quartus IP latency
+// 2-cycle registered read latency, matches the Quartus IP (registered address +
+// registered output). The Feeder must wait two cycles after driving the address.
+reg [127:0] pm_q_stage1;
+reg [127:0] pm_q_reg;
 always @ (posedge clk)
-    pm_q_reg <= pmem[pm_address[1:0]];
+begin
+    pm_q_stage1 <= pmem[pm_address[1:0]];
+    pm_q_reg    <= pm_q_stage1;
+end
 
 // ---------------------------------------------------------------------------
 // Controller stub
@@ -212,7 +218,7 @@ begin
     do_reset;
 
     ctrl_start_seen = 1'b0;
-    // START→FETCH→WAIT_PM→CHECK→DONE is 4 state transitions plus margin
+    // START→FETCH→WAIT_PM→WAIT_PM2→CHECK→DONE is 5 transitions plus margin
     for (i = 0; i < 10; i = i + 1)
     begin
         @(posedge clk); #1;
