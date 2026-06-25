@@ -2,6 +2,33 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-06-25 — Feeder Program_Memory 2-cycle read latency fix
+
+- **Context:** `main.md` Build Parameters now specify a 2-cycle memory read
+  latency for all device RAMs. Audited every module that reads a device RAM:
+  - `Vector_Processor.v` — already correct (`MEM_WAIT`+`MEM_WAIT2`,
+    `VB_WAIT`+`VB_WAIT2` give two wait cycles; fixed 2026-06-22).
+  - `Programmer.v` — reads only the SPI input FIFO (own `BUFFER_LATENCY`);
+    it writes, never reads, the device RAMs. No change needed.
+  - `Feeder.v` — read Program_Memory with only **one** wait cycle (`WAIT_PM`),
+    sampling `i_pm_q` in `CHECK` one cycle too early under 2-cycle latency.
+- **`TPU/PROGRAMMER/Feeder.v`** — added `WAIT_PM2` state between `WAIT_PM` and
+  `CHECK` so the address now settles for two cycles before the RAM output is
+  read (`FETCH → WAIT_PM → WAIT_PM2 → CHECK`). State register already 4 bits
+  (WAIT_PM2 = 4'd10). Updated the FETCH comment to describe the 2-cycle path.
+- **`tests/TB_Step2_Feeder.v`** — upgraded the behavioral Program_Memory model
+  from a single registered stage to a two-stage pipeline (`pm_q_stage1` →
+  `pm_q_reg`) so it faithfully models the IP's 2-cycle latency and genuinely
+  exercises the new wait state. Updated header/inline comments. Existing test
+  loop margins already accommodate the extra cycle.
+- **Verification:** RUN 2026-06-25 on Questa Intel Starter FPGA Edition 2023.3.
+  Full TPU hierarchy + both testbenches recompiled with 0 errors/0 warnings.
+  `TB_Step2_Feeder` → **7/7 PASS** (confirms the new `WAIT_PM2` wait state reads
+  Program_Memory correctly under the two-stage-pipeline model). `TB_Step8_FullSystem`
+  (`-L altera_mf_ver -voptargs=+acc`) → **7/7 PASS** (mult, relu, add, end
+  termination, add saturation, clean completion). No regression from the 2-cycle
+  latency fix.
+
 ## 2026-06-22 — Terminology update for the *end* instruction (docs + identifiers)
 
 - **Context:** ISA v0.2 / Hardware Spec v0.1.1 renamed the program-termination

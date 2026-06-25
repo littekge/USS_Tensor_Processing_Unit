@@ -34,6 +34,7 @@ The Functional TPU is a tensor processing unit roughly based on Google's first g
 - **Systolic Array Size:** N=8 (creates 8x8 systolic array)
 - **Multiply Accumulate Unit Accumulator Size:** 32 bits
 - **Memory Datatype:** 8 bit signed integer
+- **Memory Latency:** 2 clock cycles
 - **Re-quantization Method:** Symmetric uniform quantization with saturation checks
 - **Memory Specs by Module:**
     - **Weight_Memory:**

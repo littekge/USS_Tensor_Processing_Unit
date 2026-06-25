@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nn-assembler"
+version = "0.1.0"
+description = "Neural Network Assembler — lowers StableHLO + weights into a Functional TPU transmission."
+readme = "main.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = ["numpy"]
+
+[project.scripts]
+nn-assemble = "nn_assembler.Convert:main"
+
+[tool.setuptools]
+packages = ["nn_assembler", "nn_assembler.MLIR"]

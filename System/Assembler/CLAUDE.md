@@ -10,7 +10,7 @@
 
 - **Build Spec:** `main.md` — the single source of truth for what to build (includes build plan).
 - **Change Log:** `log.md` — append an entry every time you make a change.
-- **Specifications:** — located at `../../../Specifications/`
+- **Specifications:** — located at `../../Specifications/`
 	- **Instruction Set Architecture:** `Functional_TPU_ISA_v0.2.md` — TPU instruction set
 	- **Messaging Protocol:** `Functional_TPU_Message_Protocol_v0.1.md` — defines byte format for communicating with the TPU
 - **Development Platform:** Debian 13 Linux
@@ -19,6 +19,11 @@
   ```
   source ~/Git/USS_Tensor_Processing_Unit/USS_TPU.venv/bin/activate
   ```
+- **Package install:** The project is an installable package named `nn_assembler` (the `nn_assembler/` directory is the package). After activating the venv, install it once in editable mode from the project root so it can be imported from anywhere:
+  ```
+  pip install -e . --config-settings editable_mode=compat
+  ```
+  Then `from nn_assembler import Convert` works from any file. The pipeline can also be run via `python -m nn_assembler <model> <run>` or the `nn-assemble` console script. Use the `editable_mode=compat` flag: it writes a plain static path into the `.pth` (adding no files to the project tree) so editors/static analyzers (Pylance) can resolve `nn_assembler`; a plain `pip install -e .` works at runtime but leaves the import unresolved in the IDE.
 - **StableHLO Binaries Location:** `~/Programs/stablehlo/build/bin/`
 - **StableHLO Documentation:** https://openxla.org/stablehlo/spec
 - **MLIR Binaries Location:** `~/Programs/stablehlo/llvm-build/bin/`
@@ -31,7 +36,7 @@
 2. **Work in small increments** — one module or feature at a time.
 3. **After every change**, append a dated entry to `log.md` describing what was added, changed, or fixed.
 4. **Build and run unit tests** after every build step in the `test/` directory using pytest: `python -m pytest test/ -v`
-5. **Run the program** to verify it works as expected up to the current build step: `python ./src/Convert.py Tiny_NN Recent`
+5. **Run the program** to verify it works as expected up to the current build step: `python ./nn_assembler/Convert.py Tiny_NN Recent`
 6. **Commit often** with descriptive messages: `git add . ; git commit -m "feat: ..."`
 7. **Mark completed build steps** in `main.md`.
 
@@ -77,7 +82,7 @@ self.score = 0  # Reset between innings; accumulated score is in game_state.tota
 
 ## Architecture Rules
 
-- `/src/MLIR/` — you have free reign over this subdirectory. It is a workspace for you alone and I will not modify it.
+- `/nn_assembler/MLIR/` — you have free reign over this subdirectory. It is a workspace for you alone and I will not modify it.
 - `/tmp/` — stores **ALL** intermediate files between build steps (MLIR code after each pass, binary archives, etc.).
 - `/out/` — stores the final output of the project.
 
