@@ -21,9 +21,13 @@
   `pm_q_reg`) so it faithfully models the IP's 2-cycle latency and genuinely
   exercises the new wait state. Updated header/inline comments. Existing test
   loop margins already accommodate the extra cycle.
-- **Verification:** NOT YET RUN — development machine has no simulator. Compile
-  and run `TB_Step2_Feeder` (expect 7/7) and `TB_Step8_FullSystem` on a machine
-  with Questa to confirm no regression.
+- **Verification:** RUN 2026-06-25 on Questa Intel Starter FPGA Edition 2023.3.
+  Full TPU hierarchy + both testbenches recompiled with 0 errors/0 warnings.
+  `TB_Step2_Feeder` → **7/7 PASS** (confirms the new `WAIT_PM2` wait state reads
+  Program_Memory correctly under the two-stage-pipeline model). `TB_Step8_FullSystem`
+  (`-L altera_mf_ver -voptargs=+acc`) → **7/7 PASS** (mult, relu, add, end
+  termination, add saturation, clean completion). No regression from the 2-cycle
+  latency fix.
 
 ## 2026-06-22 — Terminology update for the *end* instruction (docs + identifiers)
 
