@@ -7,31 +7,31 @@ This is a general overview of the project folder hierarchy and a log of what par
 The *Specifications* folder contains shared specification sheets, spec sheet changelogs, and previous versions of spec sheets.
 - Functional TPU ISA (v0.2 complete)
 - Functional TPU Message Protocol (v0.1 complete)
+- Functional TPU Hardware Spec (v0.1.1 complete)
 ### Old
 The *Old* folder contains old revisions of spec sheets.
 ## System
-The *system* folder contains the entire TPU system, including data conversion, communication, and TPU hardware.
+The *System* folder contains the entire TPU system, including neural network training, data conversion, communication, and TPU hardware.
 ### Neural_Networks
-The *Neural_Networks* folder contains neural network models (defined using PyTorch) and outermost application code.
+The *Neural_Networks* folder contains neural network models (defined using PyTorch) and code used to train, run, and export them.
 - Digit Recognition N.N. (LeNet_5) (complete)
 - Extremely small N.N. for initial benchmarks (Tiny_NN) (complete)
 - Larger N.N. for testing matrix operation partitioning (Bigger_NN) (complete)
 - Python scripts (Start.py, Operations.py) to train, run, and export neural networks in a format that the synth flow can understand (StableHLO .mlir format) (complete)
-### Synth_Flow
-The *Synth_Flow* folder contains code to translate a neural network into a data format usable by the TPU and subsequently load it onto an FPGA.
-#### Neural_Network_2_TPU_ISA
-The *Neural_Network_2_TPU_ISA* folder contains an MLIR pipeline that converts a neural network into serial data formatted for the FPGA. All of the data conversion is done here, and additional steps in the synth flow simply forward data using various communication protocols.
-- StableHLO to machine code assembler (v0.1 in progress)
+### Assembler
+The *Assembler* folder contains the code that assembles a binary compatible with the TPU hardware starting from a StableHLO MLIR representation. All of the data conversion is done here, and additional steps in the synth flow simply forward data using various communication protocols.
+- StableHLO to machine code assembler (v0.1 complete)
+### Communication
+The *Communication* folder contains code that reads and forwards a TPU-compatible binary to the FPGA.
 #### Arduino_2_FPGA
 The *Arduino_2_FPGA* folder contains an Arduino program to forward data from the serial receiver on the Arduino to the SPI output pins.
 - Serial Receiver on Arduino (complete)
 - SPI Transmitter on Arduino (complete)
-#### PC_2_Serial
-The *PC_2_Serial* folder contains a python script that reads data from the final binary from the conversion program, opens a serial port, and forwards the binary stream to the Arduino.
-- Serial Transmitter on PC (pending)
+#### PC_2_Arduino
+The *PC_2_Arduino* folder contains a python script that reads data from the final binary produced by the assembler, opens a serial port, and forwards the binary stream to the Arduino.
+- Serial Transmitter on PC (complete)
 ### Tensor_Processing_Unit
-The *Tensor_Processing_Unit* folder contains the TPU hardware written in Verilog HDL, as well as the hardware specification used to build it.
-- Functional TPU Hardware Spec (v0.1.1 complete)
+The *Tensor_Processing_Unit* folder contains the TPU hardware written in Verilog HDL.
 - Verilog code for TPU (v0.1.1 complete)
 ## Tests
 The *Tests* folder contains code used to verify the functionality of systems in the project.
@@ -45,4 +45,3 @@ The *Tests* folder contains code used to verify the functionality of systems in 
 ## Potential Long-Term Changes
 - Create soldered perfboard for SPI connection to allow for more reliable data transfer and faster transfer speed. Probably will not be needed.
 - Attempt to package StableHLO binary and Python wheel in a single release to allow for full integration with Google Colab (makes long term access to script more reliable).
-- Create custom MLIR passes that handle partitioning of oversize operations.
