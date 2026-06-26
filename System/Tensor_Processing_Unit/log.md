@@ -155,33 +155,42 @@
   (`vsim -L altera_mf_ver -voptargs=+acc`).
 
 ## 2026-06-18 — Build Step 7: Systolic Array module
-- Began building `TPU/SYSTOLIC_ARRAY/Systolic_Array.v` — top level module for the systolic array subsystem.
-- Generates a systolic array from `TPU/SYSTOLIC_ARRAY/Multiply_Accumulate_Buffer.v` modules by instantiating a grid of instances connected by wire nets.
+
+- Began building `TPU/SYSTOLIC_ARRAY/Systolic_Array.v` — top level module for
+  the systolic array subsystem.
+- Generates a systolic array from  
+  `TPU/SYSTOLIC_ARRAY/Multiply_Accumulate_Buffer.v` modules by instantiating
+  a grid of instances connected by wire nets.
 - Generates input buffers from `TPU/SYSTOLIC_ARRAY/Systolic_Array_Input_Buffer.v` and connects them to the top and left edges of the systolic array.
 - Combinationally decodes control signals from the two vector processors to write to the input buffers and read from the systolic array outputs.
 - Partially defined state machine to handle systolic array insertion timings and synchronous control signals from the controller.
 
 ## 2026-06-18 — Build Step 7: Systolic Array Input Buffer
+
 - Built `TPU/SYSTOLIC_ARRAY/TEMPLATE/BUFFER_TEMPLATE.v` — template for directly instantiating a scfifo megafunction (unused in actual project).
-- Built `TPU/SYSTOLIC_ARRAY/Systolic_Array_Input_Buffer.v` — wrapper module for a scfifo megafunction FIFO buffer. 
+- Built `TPU/SYSTOLIC_ARRAY/Systolic_Array_Input_Buffer.v` — wrapper module for a scfifo megafunction FIFO buffer.
 - Standard buffer control signals `wrreq`, `rdreq`, `empty`, `full`, and `sclr`.
 - Data input `data` and data output `q`.
 - Variable depth via the `DEPTH` parameter during module instantiation.
 
 ## 2026-06-17 — Build Step 7: Multiply Accumulate Unit
+
 - Built `TPU/SYSTOLIC_ARRAY/Multiply_Accumulate_Unit.v` — single multiply accumulate unit that serves as one "tile" in the systolic array.
 - Performs one single multiply accumulate operation (c=c+a*b) every clock cycle.
 - Forwards `i_a` and `i_b` to `o_a` amd `o_b` respectively every clock cycle.
 
 ## 2026-06-17 — Testbench: ALU Module
+
 - Created `tests/TB_Step6_ALU.v` — 6-test testbench. Tests: o_data is forced to 45 when i_trst LOW, i_enable LOW, or i_clear HIGH, i_enable routes to o_write, NOOP operation functions correctly, ADD operation functions correctly, positive clamping functions correctly, negative clamping functions correctly.
 
 ## 2026-06-16 — Debug: Tensor_Processing_Unit and TPU modules
+
 - Modified TPU to output a debug signal `o_debug_val` that concatenates relevant output signals to prevent removal of memory and logic during synthesis.
 - Instantiated `debug` module in `Tensor_Processing_Unit.v` to output `o_debug_val` to a monitor via VGA.
 - Created basic logic to connect FPGA external input `KEY[3]` to `i_write_next` in the debug module to trigger writing to the screen when `KEY[3]` is pressed.
 
 ## 2026-06-16 — Build Step 6: ALU Module
+
 - Built `/TPU/PROCESSING/ALU.v` — combinational ALU that implements ADD and NOOP function codes.
 - Module input `i_clk` intentionally not connected.
 - `i_trst` and `i_clear` signals hold the module in a default state.
@@ -207,8 +216,8 @@
 - Updated `TPU/TPU.v` to connect relevant control signals...
 - `ctrl_clear` and `ctrl_activator_funct` stubs connected to activator.
 - `vpa_data` stub connected to `i_data` in activator module.
-- Defined `alu_write`, `act_write`, `alu_data`, and `act_data` to connect to write and data outputs (`alu_write` and `alu_data` are stubs to be connected in build step 6). 
-- `vb_wrreq` and `vb_data` updated to be driven by `act_write` and `alu_write`. 
+- Defined `alu_write`, `act_write`, `alu_data`, and `act_data` to connect to write and data outputs (`alu_write` and `alu_data` are stubs to be connected in build step 6).
+- `vb_wrreq` and `vb_data` updated to be driven by `act_write` and `alu_write`.
 - `vb_data` is set combinationally based on `alu_write`.
 
 ## 2026-06-15 — Testbench: Added Tests 8–10 (0x1 Buffer and zero source coverage)
@@ -289,8 +298,8 @@
   (left_buf[i] = col i). The stride multiply (row_cnt × dim1_lat) uses
   zero-extended 4-bit operands to avoid Verilog truncation.
 - **SA output readback (VSRC_SA_OUT):** VP_A reads MAC(sa_row=col_cnt,
-  sa_col=row_cnt) to reconstruct result[row_cnt][col_cnt] row-major, then
-  requantizes (arithmetic right-shift by REQUANT_SHIFT bits, saturate to
+  sa_col=row_cnt) to reconstruct result\[row_cnt\]\[col_cnt\] row-major, then
+  requantizes (arithmetic right-shift bytes REQUANT_SHIFT bits, saturate to
   signed 8-bit) and writes linearly to destination memory.
 - **Done detection:** uses lookahead comparisons (`row_cnt == dim0_lat − 1 &&
   col_cnt == dim1_lat − 1`) so next-state transitions evaluate the last
@@ -391,8 +400,6 @@
 - **State register width:** Expanded from 5 to 6 bits to accommodate 39 states.
 - **Files modified:** `TPU/PROGRAMMER/Programmer.v`
 
-
-
 - Built `TPU/PROGRAMMER/Programmer.v` — 30-state FSM decoding the Functional TPU
   Messaging Protocol (START/MEM/PROGRAM/STOP function codes) from the SPI input
   buffer and writing to Program_Memory, Weight_Memory port a, and TPU_0x1_Buffer
@@ -411,5 +418,3 @@
   module. Tests: program signal after reset, START/STOP toggling, MEM writes to
   Weight_Memory and 0x1 Buffer, PROGRAM instruction assembly and write,
   COM_ERROR on invalid function code, WRITE_ERROR on address 0x0000.
-
-

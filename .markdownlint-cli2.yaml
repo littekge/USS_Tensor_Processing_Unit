@@ -1,0 +1,4 @@
+config:
+  MD013:
+    tables: false
+    code_blocks: false   # optional: also exempt long lines in code fences

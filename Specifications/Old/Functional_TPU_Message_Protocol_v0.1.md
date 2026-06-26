@@ -1,10 +1,13 @@
 # Functional TPU Message Protocol
+>
 > **Purpose:** This document outlines the *Functional TPU* messaging protocol.
 
 ## General Protocol Description
+
 The *Functional TPU* messaging protocol is a controller-peripheral protocol that defines the format of bytes transmitted over a lower level communication protocol (eg. SPI or UART). The protocol is simplex, meaning that it defines data flow in only a single direction (controller to peripheral). The protocol uses single-byte *function codes* to indicate how the peripheral should interpret received data. All data transmissions must be preceded by a function code.
 
 ### Byte Order
+
 For any function code that indicates the transmission of data larger than a single byte, the data will be sent with the least significant byte first.
 
 ## Function Codes
@@ -19,6 +22,7 @@ For any function code that indicates the transmission of data larger than a sing
 The *Functional TPU* messaging protocol defines 4 function codes (START, MEM, PROGRAM, STOP). All function codes are a single byte ASCII code. Each code defines how the peripheral interprets the next N received bytes. Function code descriptions describe the order in which the bytes are received from left to right.
 
 ### START
+
 The START function code indicates the beginning of a transmission. The peripheral should disregard all received bytes until it receives the START code. The START code should be immediately followed by either a MEM or PROGRAM code.
 
 ### MEM
@@ -35,10 +39,13 @@ The MEM function code indicates that the following data should be written to dev
 | --- | --- | --- | --- | --- |
 | PROGRAM | IB0 | IB1 | ... | IB15
 
-The PROGRAM function code indicates that the following data should be written to program memory as an *instruction*. Upon receiving the PROGRAM function code during a transmission, the peripheral should concatenate the next 16 received bytes into a 128-bit instruction (LSB received first (see *Byte Order*)) and subsequently write the instruction to the next available location in program memory. 
+The PROGRAM function code indicates that the following data should be written to program memory as an *instruction*. Upon receiving the PROGRAM function code during a transmission, the peripheral should concatenate the next 16 received bytes into a 128-bit instruction (LSB received first (see *Byte Order*)) and subsequently write the instruction to the next available location in program memory.
 
 ### STOP
-The STOP function code indicates the end of a transmission. When the peripheral receives the STOP code, it returns to an idle state until it receives the next START code. 
+
+The STOP function code indicates the end of a transmission. When the peripheral receives the STOP code, it returns to an idle state until it receives the next START code.
 
 ## Invalid Function Codes
+
 In the event that the peripheral expects a function code but receives another value the peripheral may define an internal ERROR state and the communication channel is assumed to be compromised. If an internal ERROR state is defined, the peripheral must also define how the ERROR state is reset so that communication may resume or begin again.
+
