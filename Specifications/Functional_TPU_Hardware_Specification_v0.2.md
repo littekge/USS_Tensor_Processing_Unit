@@ -151,46 +151,121 @@ buffers *sclr* such that the buffer is cleared when *rst* is pulled low.
 
 ### Programmer
 
-**Description:** This module writes data to the Program_Memory, Weight_Memory,
-and TPU_0x1_Buffer, effectively "programming" the TPU. The module defines a
-finite state machine that retrieves data byte by byte from the SPI input buffer
-(if data is available), decodes it according to the *Functional TPU Messaging
-Protocol* defined in `Functional_TPU_Message_Protocol_v0.1.md`, and writes it
-to the correct location in memory. It also instantiates the SPI_Interface module.
+**Description:** The *Programmer* module is the central controller for all
+device IO. It writes data to the Program_Memory, Weight_Memory,
+and TPU_0x1_Buffer, effectively "programming" the TPU. After program execution,
+it reads the output data and exposes it to the top-level *TPU* module. To
+interpret external commands, the module instantiates the SPI_Interface module,
+reading from the SPI input buffer while idle to search for messages in the
+*Functional TPU Message Protocol* format (defined in `Functional_TPU_Message_Protocol_v0.2.md`).
+The module defines a complex finite state machine to implement these functions.
 
 - **Synchronous Control Signals:**
   - **Inputs:**
     - ***clk***: Module input clock.
     - ***rst***: Module reset signal (active LOW).
+    - ***mode_select***: LOW indicates *device* mode, HIGH indicates *external*
+    mode.
+    - ***input_data_valid***: Asserted HIGH for one clock cycle when input data
+    is valid.
+    - ***device_ready***: Asserted HIGH for one clock cycle when the device is
+    ready to receive the next output value.
   - **Outputs:**
     - ***program***: Indicates that the module is currently programming the
     device (active LOW).
+    - ***tpu_rst***: Resets the Feeder, Systolic_Array, Controller,
+    Vector_Processor (*a* and *b*), Activator, and ALU (active LOW).
+    - ***output_data_valid***: Asserted HIGH for one clock cycle when output data
+    is valid.
+- **Modes:** The Programmer module operates in one of two modes determined by
+the *mode_select* input signal. Note that the programmer uses the same output
+mechanism for both modes, but each mode outputs a different number of values.
+  - **Device mode:** In device mode, the programmer directly interfaces with the
+  TPU module (which may link to hardware specific inputs like buttons or
+  switches). Device mode supports a single input and output value.
+  - **External mode:** In external mode, the programmer interfaces with external
+  SPI signals. External mode supports an input tensor of any size (via the
+  *Functional TPU Message Protocol* — limited only by the size of the 0x1
+  buffer) and 10 output values.
+- **Input and Output Data:** The module defines two data signals, *input_data*
+and *output_data* for sending output data and receiving input data in device mode.
+- **Meta-states:** The Programmer module defines a number of "meta-states" for the
+purpose of describing the state machine flow.
+  - **IDLE:** default meta-state. Module awaits a condition that triggers a
+  transition to another meta-state.
+  - **PROGRAM:** programs the entire TPU by writing to the program memory,
+  weight memory, and TPU_0x1_Buffer.
+  - **DEVICE_INPUT:** Maintains the current program, but programs a new input by
+  reading an *input_data* signal and writing the value to the first address in
+  the 0x1 Buffer.
+  - **DEVICE_OUTPUT:** Outputs the first value in the 0x1 buffer on program end.
+  - **EXTERNAL_INPUT:** Maintains the current program, but programs a new input
+  from an external *Functional TPU Message Protocol* transmission.
+  - **EXTERNAL_OUTPUT:** Outputs the first 10 values in the 0x1 buffer on
+  program end.
 - **State Machine Flow:**
-  - Check for available bytes in the SPI input buffer via the passthrough from
-  the SPI Interface.
-  - If available, pop bytes from the buffer until a START code is found.
-  - Assert *program* LOW when a start code is found.
-  - Decode the next function code and subsequent values (if needed).
-  - Write relevant bytes (dependent on function code) to the correct location in
-  memory.
-  - Repeat the decode-write cycle until a STOP code is received.
-  - Assert *program* HIGH when a STOP code is received.
-  - Return to checking for a START code.
+  - on start enter IDLE meta-state.
+  - **IDLE:**
+    - Check for either available bytes in the SPI input buffer,
+    *input_data_valid* HIGH, or *end_reached* (from Feeder module) HIGH.
+    - If the SPI input buffer is nonempty, pop bytes from the buffer until a
+    valid *header code* is found or the buffer is empty. If a FLASH header
+    code is found, transition immediately to PROGRAM. If an INPUT header is
+    found and the programmer is in external mode, transition to
+    EXTERNAL_INPUT.
+    - Else if the programmer is in device mode and *input_data_valid* is HIGH,
+    transition to DEVICE_INPUT.
+    - Else if *end_reached* (see Feeder module description) is HIGH, enter
+    DEVICE_OUTPUT in device mode or EXTERNAL_OUTPUT in external mode.
+  - **PROGRAM:**
+    - Assert *program* and *tpu_rst* LOW.
+    - Decode the next *command code* and subsequent values (if needed).
+    - Write relevant bytes (dependent on *command code*) to the correct location
+    in memory.
+    - Repeat the decode-write cycle until a valid *trailer code* is received.
+    - Assert *program* and *tpu_rst* HIGH when a valid *trailer code* is received.
+    - Return to IDLE.
+  - **DEVICE_INPUT:**
+    - Assert *program* and *tpu_rst* LOW.
+    - Write *input_value* to the first address in the 0x1 buffer.
+    - Assert *program* and *tpu_rst* HIGH.
+    - Return to IDLE.
+  - **DEVICE_OUTPUT:**
+    - Assert *program* LOW.
+    - Forward the data at the first address in the 0x1 buffer to *output_data*.
+    - Assert *output_data_valid* HIGH for one clock cycle.
+    - Assert *program* HIGH.
+  - **EXTERNAL_INPUT:**
+    - Assert *program* and *tpu_rst* LOW.
+    - Decode the next *command code* and subsequent values (if needed).
+    - Write relevant bytes (dependent on *command code*) to the 0x1 buffer.
+    - Repeat the decode-write cycle until a valid *trailer code* is received.
+    - Assert *program* and *tpu_rst* HIGH.
+  - **EXTERNAL_OUTPUT:**
+    - Assert *program* LOW.
+    - Forward the data at the first address in the 0x1 buffer to *output_data*.
+    - Assert *output_data_valid* HIGH for one clock cycle.
+    - Wait until *device_ready* is pulsed HIGH for one clock cycle.
+    - repeat the forward, assert, wait cycle for the next 9 values in the 0x1 buffer.
+    - Assert *program* HIGH.
+
 - **Error States:** The state machine defaults to a STATE_ERROR state in the
 event of undefined state machine behavior, a COM_ERROR state if it attempts to
 decode an invalid code, a WRITE_ERROR state if it attempts to write to an
 invalid memory address, and a PROG_OVERFLOW_ERROR state if the program memory
 runs out of space during programming.
-- **Program Memory:** When initially writing to the program memory, the
-programmer starts from address 0x0. Subsequent writes to program memory should
-increment the address by 1 such that instructions are stored contiguously.
+- **Program Memory:** When writing to the program memory, the programmer starts
+from address 0x0. Subsequent writes to program memory (in a single transmission)
+should increment the address by 1 such that instructions are stored contiguously.
+When a new program is written to the device, the program memory is reset such that
+the new program completely overwrites it.
 - **Device Memory:** When writing to the weight memory or 0x1 buffer, the
 programmer uses port *a*.
 
 ### Program_Memory
 
 **Description:** The Program_Memory is a single-port RAM module. It stores
-program instructions defined by `Functional_TPU_ISA_v0.1.md`.
+program instructions defined by `Functional_TPU_ISA_v0.2.md`.
 
 - **Synchronous Control Signals:**
   - **Inputs:**
@@ -235,7 +310,7 @@ respectively.
 ### TPU_0x1_Buffer
 
 **Description:** The TPU_0x1_Buffer is a dual-port RAM module. It functions as
-the unique isolated memory required for address 0x1 in `Functional_TPU_ISA_v0.1.md`.
+the unique isolated memory required for address 0x1 in `Functional_TPU_ISA_v0.2.md`.
 
 - **Synchronous Control Signals:**
   - **Inputs:**
@@ -284,7 +359,7 @@ instruction is retrieved from memory.
   - Wait for the controller to assert *controller_idle* HIGH.
   - When the controller asserts *controller_idle* HIGH, increment the program
   counter and repeat.
-- **Error States:** The state machine def
+- **Error States:** The state machine defines a STATE_ERROR state in the
 event of undefined state machine behavior and a FEED_ERROR state if *pc* reaches
 the end of the program memory.
 
@@ -295,7 +370,7 @@ the Feeder module, the two implement the traditional CPU instruction cycle
 (Fetch-Decode-Execute-Writeback). The Controller module defines a finite state
 machine that converts instructions from the Feeder into control signals and
 manages timing and dataflow between other modules. Valid instructions and their
-formats are defined in `Functional_TPU_ISA_v0.1.md`.
+formats are defined in `Functional_TPU_ISA_v0.2.md`.
 
 - **Synchronous Control Signals:**
   - **Inputs:**
@@ -360,7 +435,7 @@ Array, and proper formatting of data.
     transfer will be successful.
 - **ISA compliance:** The Vector_Processor module formats data written to the
 weight memory and 0x1 buffer in accordance with the
-`Functional_TPU_ISA_v0.1.md`. Likewise, it expects all data read from memory to
+`Functional_TPU_ISA_v0.2.md`. Likewise, it expects all data read from memory to
 be formatted in accordance with the ISA. As a result, the Vector_Processor
 handles translation of data from flattened arrays in memory to matrices when
 \loading data to the systolic array input buffers and from matrices to
@@ -417,7 +492,7 @@ Vector_Processor module requantizes the output value before writing to its desti
 ### Activator
 
 **Description:** The Activator module implements the ACT instruction functions
-from the `Functional_TPU_ISA_v0.1.md`.
+from the `Functional_TPU_ISA_v0.2.md`.
 
 - **Synchronous Control Signals:**
   - **Inputs:**
@@ -438,7 +513,7 @@ can process a single value by asserting *enable* HIGH for one clock cycle.
 
 ### ALU
 
-**Description:** The ALU module implements ELEM instructions from the `Functional_TPU_ISA_v0.1.md`.
+**Description:** The ALU module implements ELEM instructions from the `Functional_TPU_ISA_v0.2.md`.
 
 - **Synchronous Control Signals:**
   - **Inputs:**
