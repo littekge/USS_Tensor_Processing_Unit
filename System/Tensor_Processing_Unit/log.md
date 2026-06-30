@@ -2,6 +2,29 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-06-30 — v0.2 Step 5: Full-system test rewrite (both IO modes) + final regression
+
+- **`tests/TB_Step8_FullSystem.v` rewritten** to drive the top-level `TPU`
+  through both v0.2 Programmer IO modes end to end, using the real RAM IP for
+  the readback path (no internal RAM array referenced):
+  - **Device mode** (`mode_select`=0): FLASH a self-contained `relu 0x0001 ->
+    0x0001, len 1` program; supply a single input via `i_input_data` /
+    `i_input_data_valid`; verify `o_output_data` / `o_output_data_valid` emit the
+    activated value. Tests pass-through (42 -> 42) and negative clamp (-9 -> 0).
+  - **External mode** (`mode_select`=1): re-FLASH `relu 0x0001 -> 0x0001, len 10`;
+    send an INPUT transmission (MEM @ISA 0x0001, len 10) with a mixed-sign
+    vector; verify exactly 10 outputs are emitted with the `i_device_ready`
+    handshake and that each equals `relu(input)`. A continuous-assign
+    `device_ready = (prog.S == X_OUT_WAIT_RDY)` models the consumer handshake.
+- **7 test cases:** device FLASH completion; device positive input; device
+  negative input (clamp); external re-FLASH completion; external emits exactly 10
+  values; external values equal relu(inputs); clean completion (Controller IDLE,
+  Feeder DONE, program HIGH, no fault states). **All 7 PASS.**
+- **Full regression (Questa 2023.3, `-L altera_mf_ver -voptargs=+acc`):**
+  Step1 14/14, Step2 7/7, Step3 7/7, Step4 10/10, Step5 6/6, Step6 6/6,
+  Step7 7/7, Step8 7/7 — **no regressions** from the v0.2 changes.
+- **`main.md`:** marked all five v0.2 build steps ✅ Complete. v0.2 build done.
+
 ## 2026-06-30 — v0.2 Steps 1-4: Programmer IO rewrite, Feeder end_reached, TPU passthrough, NO OP write suppression
 
 - **Clarifications recorded in `main.md`** (per user request before building): (1)

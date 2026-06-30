@@ -199,7 +199,7 @@ module to route control signals from the controller to the systolic array.~~
 Adds improved IO functionality to the Programmer module to better demonstrate
 TPU functionality.
 
-#### Step 1 — Programmer Module
+#### Step 1 — Programmer Module — ✅ Complete (2026-06-30)
 
 Update the Programmer module to reflect the current version of the
 *Functional TPU Hardware Specification*.
@@ -218,7 +218,7 @@ machine, whatever you think is easier to read).
 > maintains the current program (does not reset or write Program_Memory), so the
 > PROGRAM command code is invalid inside an INPUT transmission.
 
-#### Step 2 — TPU Module
+#### Step 2 — TPU Module — ✅ Complete (2026-06-30)
 
 Update the TPU module to reflect the current version of the
 *Functional TPU Hardware Specification*.
@@ -232,7 +232,7 @@ Update the TPU module to reflect the current version of the
 > wrapper (`Tensor_Processing_Unit.v`) pin mapping is left to the user and is not
 > modified by this build step (respects the "do not modify debug sections" rule).
 
-#### Step 3 — Feeder Module
+#### Step 3 — Feeder Module — ✅ Complete (2026-06-30)
 
 Update the Feeder module to reflect the current version of the
 *Functional TPU Hardware Specification*.
@@ -241,14 +241,14 @@ Update the Feeder module to reflect the current version of the
 - Rewrite Feeder unit test to thoroughly test new functionality
 (`./tests/TB_Step2_Feeder.v`).
 
-#### Step 4 — Additional Minor Changes
+#### Step 4 — Additional Minor Changes — ✅ Complete (2026-06-30)
 
 Search the *Functional TPU Hardware Specification* for additional changes.
 
 - Implement additional changes.
 - Revise relevant tests and run to confirm functionality.
 
-#### Step 5 — Final Test
+#### Step 5 — Final Test — ✅ Complete (2026-06-30)
 
 Revise the full system test to test new functionality.
 
