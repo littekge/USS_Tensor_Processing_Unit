@@ -121,7 +121,14 @@ TPU tpu (
 	.o_SPI_MISO(GPIO_0[5]),
 	.i_SPI_MOSI(GPIO_0[3]),
 	.i_SPI_SS (GPIO_0[1]),
-	.o_debug_val(debug_val)
+	.o_debug_val(),
+	
+	.i_mode_select(SW[9]),        // LOW = device mode, HIGH = external mode
+   .i_input_data_valid(~KEY[1]),   // one-cycle pulse: i_input_data valid
+   .i_device_ready(write_ready),       // one-cycle pulse: consumer ready for output
+   .i_input_data(SW[7:0]),         // device-mode input value
+   .o_output_data(debug_val),        // output value (both modes)
+   .o_output_data_valid(valid) // one-cycle pulse: o_output_data valid
 );
 
 // ---------- END CODE ---------- //
@@ -129,11 +136,9 @@ TPU tpu (
 // ---------- DEBUG ---------- //
 
 
-wire write_ready;
-assign LEDR[0] = write_ready;
-
+wire write_ready, valid;
 reg write;
-
+assign LEDR[7:0] = debug_val;
 always @ (posedge clk or negedge rst)
 begin
 	if (rst == 1'b0)
@@ -142,7 +147,7 @@ begin
 	end
 	else
 	begin
-		if (KEY[3] == 1'b0 && write_ready) begin
+		if (valid && write_ready) begin
 			write <= 1'b1;
 		end else begin
 			write <= 1'b0;
