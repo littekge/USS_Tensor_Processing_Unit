@@ -7,7 +7,9 @@
  * instructions from Program_Memory one at a time using a program counter
  * register (pc), checks each instruction for the end termination
  * opcode, and forwards non-terminating instructions to the Controller,
- * synchronizing via the controller_idle handshake signal.
+ * synchronizing via the controller_idle handshake signal. Pulses
+ * o_end_reached HIGH for one clock cycle when an end instruction is retrieved
+ * so the Programmer can trigger an output meta-state.
  */
 module Feeder (
 
@@ -22,7 +24,10 @@ module Feeder (
     // Controller interface
     input              i_controller_idle,
     output reg [127:0] o_instruction,
-    output reg         o_controller_start
+    output reg         o_controller_start,
+
+    // Programmer interface
+    output reg         o_end_reached
 
     // ---------- PARAMETERS ---------- //
     // ---------- END PARAMETERS ---------- //
@@ -123,9 +128,13 @@ begin
         o_pm_address       <= 10'd0;
         o_instruction      <= 128'd0;
         o_controller_start <= 1'b0;
+        o_end_reached      <= 1'b0;
     end
     else
     begin
+        // Default: end_reached is a one-cycle strobe, deasserted unless set below
+        o_end_reached <= 1'b0;
+
         case (S)
             FETCH:
             begin
@@ -139,6 +148,10 @@ begin
             begin
                 // Latch instruction so it remains stable through FORWARD/WAIT_CTRL
                 o_instruction <= i_pm_q;
+                // On an end instruction, pulse end_reached for one cycle (HIGH
+                // during the first DONE cycle) so the Programmer can output.
+                if (i_pm_q[127:124] == END_OPCODE)
+                    o_end_reached <= 1'b1;
             end
             FORWARD:
             begin

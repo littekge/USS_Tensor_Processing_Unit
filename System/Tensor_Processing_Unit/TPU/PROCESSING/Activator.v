@@ -35,9 +35,11 @@ parameter [2:0]
 // ---------- END PARAMETERS ---------- //
 
 // ---------- CODE ---------- //
-// The Activator implementation is combinational, so i_enable is passed through to o_write
-// for writing to the vector buffer.
-assign o_write = i_enable;
+// The Activator implementation is combinational, so i_enable drives o_write for
+// writing to the vector buffer. Buffer writing is suppressed when the function
+// is NO OP (per the hardware spec) so a non-activation operation cannot push
+// stale/placeholder data into the vector buffer.
+assign o_write = i_enable & (i_activator_op != NOOP);
 
 always @ (*)
 begin

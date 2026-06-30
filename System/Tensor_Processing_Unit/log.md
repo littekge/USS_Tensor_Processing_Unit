@@ -2,6 +2,65 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-06-30 — v0.2 Steps 1-4: Programmer IO rewrite, Feeder end_reached, TPU passthrough, NO OP write suppression
+
+- **Clarifications recorded in `main.md`** (per user request before building): (1)
+  `EXTERNAL_INPUT` uses unified address routing like FLASH (PROGRAM command
+  invalid in an INPUT transmission); (2) new Programmer IO is exposed at the TPU
+  module boundary only (FPGA wrapper pin mapping left to the user); (3) the
+  revised full-system test exercises both device and external IO modes.
+- **Build-step order:** built Programmer (Step 1) → Feeder `end_reached`
+  (Step 3) → TPU (Step 2) → minor changes (Step 4). Feeder/TPU were reordered
+  because the TPU rewiring consumes the Feeder's new `end_reached` output.
+
+- **`TPU/PROGRAMMER/Programmer.v` — full meta-state rewrite (v0.2).**
+  - New IO: `i_mode_select`, `i_input_data_valid`, `i_device_ready`,
+    `i_input_data[7:0]`, `o_output_data[7:0]`, `o_output_data_valid`,
+    `i_end_reached`, `i_buf_q_a[7:0]` (0x1-buffer readback), and `o_tpu_rst`
+    (active LOW) now separate from `o_program`.
+  - Single flat FSM organized into six meta-states: IDLE (scan SPI for a
+    FLASH/INPUT header; service latched device input / program end by priority
+    PROGRAM > DEVICE_INPUT > OUTPUT), PROGRAM (FLASH: overwrite program memory,
+    MEM/PROGRAM commands), DEVICE_INPUT (write `i_input_data` to 0x1-buffer addr
+    0, pulse `tpu_rst`), DEVICE_OUTPUT (emit 0x1-buffer[0]), EXTERNAL_INPUT
+    (INPUT header, unified MEM routing, PROGRAM command → COM_ERROR),
+    EXTERNAL_OUTPUT (emit 0x1-buffer[0..9] paced by `i_device_ready`).
+  - Protocol v0.2 codes: FLASH `U`, INPUT `I`, MEM `M`, PROGRAM `P`, STOP `S`.
+  - One-cycle pulses (`i_end_reached`, `i_input_data_valid`) are latched so they
+    are not missed while the FSM is busy; consumed on entering the relevant
+    meta-state. 0x1-buffer reads honor the 2-cycle RAM read latency.
+  - Retains error states STATE_ERROR / COM_ERROR / WRITE_ERROR /
+    PROG_OVERFLOW_ERROR (unrecoverable except by `i_rst`).
+- **`TPU/PROGRAMMER/Feeder.v`** — added `o_end_reached` output, pulsed HIGH for
+  one clock cycle in CHECK when an `end` instruction is fetched (HIGH during the
+  first DONE cycle). Added a default deassert so it is a clean one-cycle strobe.
+- **`TPU/TPU.v`** — `trst` is now `i_rst & prog_tpu_rst` (was `i_rst & program`),
+  letting the Programmer reset the internals independently of its memory-bus
+  access so output meta-states can read memory without disturbing a finished
+  program. Added the Programmer IO passthrough ports at the TPU boundary; wired
+  the Feeder `o_end_reached → Programmer i_end_reached`, `buf_q_a → Programmer
+  i_buf_q_a`, and `Programmer o_tpu_rst → prog_tpu_rst`. Debug section untouched.
+- **`TPU/PROCESSING/Activator.v`, `TPU/PROCESSING/ALU.v`** — `o_write` now
+  suppressed when the function/operation is NO OP
+  (`o_write = i_enable & (op != NOOP)`), per the v0.2 hardware-spec design fix,
+  so a non-activation/non-ALU instruction cannot push placeholder data into the
+  vector buffer. Verified the Systolic_Array already passes `i_trst` to every MAC
+  (the other listed design fix) — no change needed.
+
+- **Tests:**
+  - `tests/TB_Step1_Programmer.v` — rewritten: reset defaults; FLASH+MEM with
+    program/tpu_rst toggling; PROGRAM instruction assembly + program-memory
+    overwrite; DEVICE_INPUT; DEVICE_OUTPUT; EXTERNAL_OUTPUT (10 values with
+    device_ready handshake); INPUT-header routing (external writes, device-mode
+    discards). 7 cases / 14 sub-checks — **all PASS**.
+  - `tests/TB_Step2_Feeder.v` — Test 7 replaced with an `end_reached` one-cycle
+    strobe check (count == 1 and Feeder in DONE). **7/7 PASS**.
+  - `tests/TB_Step5_Activator.v`, `tests/TB_Step6_ALU.v` — Test 4/Test 2 updated
+    to drive a non-NOOP function when checking `o_write` follows `i_enable`;
+    NOOP test now also asserts `o_write` is suppressed. **6/6 PASS each**.
+- **Verification:** full TPU hierarchy recompiles with **0 errors / 0 warnings**
+  under Questa 2023.3. Full-system test rewrite (Step 5) pending.
+
 ## 2026-06-25 — Feeder Program_Memory 2-cycle read latency fix
 
 - **Context:** `main.md` Build Parameters now specify a 2-cycle memory read

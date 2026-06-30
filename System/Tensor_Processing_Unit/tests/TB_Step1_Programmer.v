@@ -1,42 +1,50 @@
-/* 
+/*
  * File: TB_Step1_Programmer.v
- * Date: 2026-06-12
+ * Date: 2026-06-30
  *
- * Testbench for Build Step 1: Programmer module.
- * Tests the Programmer state machine by bit-banging SPI frames and verifying
- * memory write outputs.
+ * Testbench for v0.2 Build Step 1: Programmer module (meta-state rewrite).
+ * Exercises the new Functional TPU Message Protocol v0.2 (FLASH/INPUT headers,
+ * MEM/PROGRAM commands, STOP trailer), the separate program / tpu_rst outputs,
+ * and the new device-level IO paths (device input, device output, external
+ * output with the device_ready handshake).
+ *
+ * A behavioral 0x1-buffer model (2-cycle registered read latency, matching the
+ * Quartus RAM IP) responds to the Programmer's read/write port so the output
+ * meta-states can be verified end to end.
  *
  * -------------------------------------------------------------------------
- * HOW TO RUN (Questa Intel FPGA simulation from Quartus Prime Lite):
+ * HOW TO RUN (Questa Intel FPGA simulation):
  *
- *   1. Open a terminal and cd to the project root:
- *        cd <path>/Tensor_Processing_Unit
- *
- *   2. Compile with the altera_mf simulation library:
+ *   1. cd <path>/Tensor_Processing_Unit
+ *   2. Compile:
  *        vlib work
  *        vlog -work work TPU/PROGRAMMER/SPI_LINK/SPI_Slave.v
  *        vlog -work work TPU/PROGRAMMER/SPI_LINK/SPI_INPUT_BUFFER/SPI_Input_buffer.v
  *        vlog -work work TPU/PROGRAMMER/SPI_LINK/SPI_Interface.v
  *        vlog -work work TPU/PROGRAMMER/Programmer.v
  *        vlog -work work tests/TB_Step1_Programmer.v
- *
- *   3. Simulate (altera_mf_ver is the pre-compiled Verilog megafunction library):
- *        vsim -L altera_mf_ver work.TB_Step1_Programmer -do "run -all; quit"
+ *   3. Simulate:
+ *        vsim -L altera_mf_ver -voptargs=+acc work.TB_Step1_Programmer -do "add wave -r /*; run -all; quit"
  *
  * -------------------------------------------------------------------------
  * PASS / FAIL CRITERIA:
- *   Each test prints "PASS" or "FAIL" to the transcript.
- *   A final summary line prints total pass/fail counts.
+ *   Each test prints "PASS" or "FAIL". A final summary prints pass/fail counts.
  *   All 7 tests should show PASS for a correct implementation.
  *
  * TEST CASES:
- *   Test 1: program signal HIGH after reset (not programming)
- *   Test 2: program signal goes LOW on START, HIGH on STOP
- *   Test 3: MEM packet writes correct data to Weight_Memory (address >= 2)
- *   Test 4: MEM packet writes correct data to 0x1 Buffer (address == 1)
- *   Test 5: PROGRAM packet writes correct 128-bit instruction to Program_Memory
- *   Test 6: COM_ERROR — invalid function code after START halts writes
- *   Test 7: WRITE_ERROR — MEM packet with address 0 halts writes
+ *   Test 1: Reset defaults — program HIGH, tpu_rst HIGH, output_data_valid LOW.
+ *   Test 2: FLASH + MEM — program & tpu_rst go LOW during the session and HIGH
+ *           after STOP; MEM bytes land in weight memory (unified address map).
+ *   Test 3: PROGRAM — a 128-bit instruction is assembled LSB-first and written
+ *           to program memory; a second FLASH overwrites from address 0.
+ *   Test 4: DEVICE_INPUT — i_input_data_valid writes i_input_data to 0x1-buffer
+ *           address 0 and tpu_rst pulses LOW (program re-run trigger).
+ *   Test 5: DEVICE_OUTPUT — i_end_reached emits 0x1-buffer[0] on o_output_data
+ *           with a one-cycle o_output_data_valid pulse.
+ *   Test 6: EXTERNAL_OUTPUT — external mode emits 10 values from 0x1-buffer[0..9]
+ *           paced by the i_device_ready handshake.
+ *   Test 7: INPUT header — external mode writes a MEM block to memory; device
+ *           mode discards the INPUT transmission (no writes).
  * -------------------------------------------------------------------------
  */
 
@@ -47,8 +55,17 @@ module TB_Step1_Programmer;
     // -----------------------------------------------------------------------
     // DUT signals
     // -----------------------------------------------------------------------
-    reg        clk;
-    reg        rst;
+    reg          clk;
+    reg          rst;
+
+    reg          mode_select;
+    reg          input_data_valid;
+    reg          device_ready;
+    reg  [7:0]   input_data;
+    wire [7:0]   output_data;
+    wire         output_data_valid;
+
+    reg          end_reached;
 
     wire [127:0] pm_data;
     wire [9:0]   pm_address;
@@ -59,7 +76,9 @@ module TB_Step1_Programmer;
     wire [7:0]   buf_data_a;
     wire [15:0]  buf_address_a;
     wire         buf_wren_a;
+    wire [7:0]   buf_q_a;
     wire         program;
+    wire         tpu_rst;
 
     // SPI
     reg  spi_clk;
@@ -68,79 +87,73 @@ module TB_Step1_Programmer;
     wire spi_miso;
 
     // -----------------------------------------------------------------------
-    // Timing parameters
+    // Timing
     // -----------------------------------------------------------------------
-    localparam CLK_HALF  = 10;   // 10 ns => 50 MHz FPGA clock
-    localparam SPI_HALF  = 100;  // 100 ns => 5 MHz SPI clock (>= 4x slower)
+    localparam CLK_HALF = 10;   // 50 MHz
+    localparam SPI_HALF = 100;  // 5 MHz SPI
+
+    // Protocol codes
+    localparam [7:0] FLASH_CODE = 8'h55;
+    localparam [7:0] INPUT_CODE = 8'h49;
+    localparam [7:0] MEM_CODE   = 8'h4D;
+    localparam [7:0] PROG_CODE  = 8'h50;
+    localparam [7:0] STOP_CODE  = 8'h53;
 
     // -----------------------------------------------------------------------
-    // DUT instantiation
+    // DUT
     // -----------------------------------------------------------------------
     Programmer dut (
-        .i_clk          (clk),
-        .i_rst          (rst),
-        .o_pm_data      (pm_data),
-        .o_pm_address   (pm_address),
-        .o_pm_wren      (pm_wren),
-        .o_wm_data_a    (wm_data_a),
-        .o_wm_address_a (wm_address_a),
-        .o_wm_wren_a    (wm_wren_a),
-        .o_buf_data_a   (buf_data_a),
-        .o_buf_address_a(buf_address_a),
-        .o_buf_wren_a   (buf_wren_a),
-        .o_program      (program),
-        .i_SPI_Clk      (spi_clk),
-        .o_SPI_MISO     (spi_miso),
-        .i_SPI_MOSI     (spi_mosi),
-        .i_SPI_SS       (spi_ss)
+        .i_clk              (clk),
+        .i_rst              (rst),
+        .i_mode_select      (mode_select),
+        .i_input_data_valid (input_data_valid),
+        .i_device_ready     (device_ready),
+        .i_input_data       (input_data),
+        .o_output_data      (output_data),
+        .o_output_data_valid(output_data_valid),
+        .i_end_reached      (end_reached),
+        .o_pm_data          (pm_data),
+        .o_pm_address       (pm_address),
+        .o_pm_wren          (pm_wren),
+        .o_wm_data_a        (wm_data_a),
+        .o_wm_address_a     (wm_address_a),
+        .o_wm_wren_a        (wm_wren_a),
+        .o_buf_data_a       (buf_data_a),
+        .o_buf_address_a    (buf_address_a),
+        .o_buf_wren_a       (buf_wren_a),
+        .i_buf_q_a          (buf_q_a),
+        .o_program          (program),
+        .o_tpu_rst          (tpu_rst),
+        .i_SPI_Clk          (spi_clk),
+        .o_SPI_MISO         (spi_miso),
+        .i_SPI_MOSI         (spi_mosi),
+        .i_SPI_SS           (spi_ss)
     );
 
     // -----------------------------------------------------------------------
-    // Clock generation
+    // Clock
     // -----------------------------------------------------------------------
     initial clk = 0;
     always #CLK_HALF clk = ~clk;
 
     // -----------------------------------------------------------------------
-    // Test bookkeeping
+    // Behavioral 0x1-buffer model (2-cycle registered read latency).
+    // Honors the Programmer's writes so DEVICE_INPUT can be read back, and the
+    // preloaded contents drive the output meta-states.
     // -----------------------------------------------------------------------
-    integer pass_count;
-    integer fail_count;
+    reg [7:0] buf_mem [0:255];
+    reg [7:0] buf_q_stage1, buf_q_reg;
+    assign buf_q_a = buf_q_reg;
 
-    task report;
-        input pass;
-        input [255:0] description;
-        begin
-            if (pass) begin
-                $display("  PASS: %0s", description);
-                pass_count = pass_count + 1;
-            end else begin
-                $display("  FAIL: %0s", description);
-                fail_count = fail_count + 1;
-            end
-        end
-    endtask
+    always @(posedge clk) begin
+        if (buf_wren_a)
+            buf_mem[buf_address_a[7:0]] <= buf_data_a;
+        buf_q_stage1 <= buf_mem[buf_address_a[7:0]];
+        buf_q_reg    <= buf_q_stage1;
+    end
 
     // -----------------------------------------------------------------------
-    // SPI byte transmission (mode 0, MSB first)
-    // SS must be asserted LOW before calling and de-asserted after the packet.
-    // -----------------------------------------------------------------------
-    task send_spi_byte;
-        input [7:0] byte_val;
-        integer i;
-        begin
-            for (i = 7; i >= 0; i = i - 1) begin
-                spi_mosi = byte_val[i];
-                #SPI_HALF;
-                spi_clk = 1;
-                #SPI_HALF;
-                spi_clk = 0;
-            end
-        end
-    endtask
-
-    // -----------------------------------------------------------------------
-    // Captured write events (sampled in always blocks below)
+    // Write-event capture
     // -----------------------------------------------------------------------
     integer wm_write_count;
     reg [15:0] wm_addr_log [0:7];
@@ -173,7 +186,76 @@ module TB_Step1_Programmer;
     end
 
     // -----------------------------------------------------------------------
-    // Main test sequence
+    // Output-event capture (sampled when output_data_valid is HIGH)
+    // -----------------------------------------------------------------------
+    integer out_count;
+    reg [7:0] out_log [0:15];
+
+    always @(posedge clk) begin
+        if (output_data_valid && out_count < 16) begin
+            out_log[out_count] = output_data;
+            out_count = out_count + 1;
+        end
+    end
+
+    // -----------------------------------------------------------------------
+    // Bookkeeping
+    // -----------------------------------------------------------------------
+    integer pass_count, fail_count;
+
+    task report;
+        input pass;
+        input [255:0] description;
+        begin
+            if (pass) begin
+                $display("  PASS: %0s", description);
+                pass_count = pass_count + 1;
+            end else begin
+                $display("  FAIL: %0s", description);
+                fail_count = fail_count + 1;
+            end
+        end
+    endtask
+
+    // SPI byte (mode 0, MSB first)
+    task send_spi_byte;
+        input [7:0] byte_val;
+        integer i;
+        begin
+            for (i = 7; i >= 0; i = i - 1) begin
+                spi_mosi = byte_val[i];
+                #SPI_HALF;
+                spi_clk = 1;
+                #SPI_HALF;
+                spi_clk = 0;
+            end
+        end
+    endtask
+
+    // One-cycle pulse on end_reached
+    task pulse_end_reached;
+    begin
+        @(posedge clk); #1;
+        end_reached = 1'b1;
+        @(posedge clk); #1;
+        end_reached = 1'b0;
+    end
+    endtask
+
+    // One-cycle pulse on input_data_valid with data
+    task pulse_input;
+        input [7:0] val;
+        begin
+            @(posedge clk); #1;
+            input_data       = val;
+            input_data_valid = 1'b1;
+            @(posedge clk); #1;
+            input_data_valid = 1'b0;
+        end
+    endtask
+
+    // -----------------------------------------------------------------------
+    // Variables
     // -----------------------------------------------------------------------
     integer timeout;
     integer k;
@@ -181,179 +263,205 @@ module TB_Step1_Programmer;
 
     initial begin
         // Init
-        rst            = 0;
-        spi_clk        = 0;
-        spi_mosi       = 0;
-        spi_ss         = 1;
-        pass_count     = 0;
-        fail_count     = 0;
-        wm_write_count  = 0;
-        buf_write_count = 0;
-        pm_write_count  = 0;
+        rst              = 0;
+        mode_select      = 0;     // device mode
+        input_data_valid = 0;
+        device_ready     = 0;
+        input_data       = 0;
+        end_reached      = 0;
+        spi_clk          = 0;
+        spi_mosi         = 0;
+        spi_ss           = 1;
+        pass_count       = 0;
+        fail_count       = 0;
+        wm_write_count   = 0;
+        buf_write_count  = 0;
+        pm_write_count   = 0;
+        out_count        = 0;
+        for (k = 0; k < 256; k = k + 1) buf_mem[k] = 8'd0;
 
-        // Apply and release reset
         repeat (4) @(posedge clk);
         rst = 1;
         repeat (4) @(posedge clk);
 
-        // -------------------------------------------------------------------
-        // Test 1: program HIGH after reset (not programming)
-        // -------------------------------------------------------------------
-        $display("Test 1: program signal HIGH after reset");
-        report(program === 1'b1, "program == 1 after reset");
+        // ===================================================================
+        // Test 1: reset defaults
+        // ===================================================================
+        $display("Test 1: reset defaults");
+        report((program === 1'b1) && (tpu_rst === 1'b1) &&
+               (output_data_valid === 1'b0),
+               "program HIGH, tpu_rst HIGH, output_data_valid LOW after reset");
 
-        // -------------------------------------------------------------------
-        // Test 2: program LOW on START, HIGH on STOP
-        //   Packet: [START, STOP]
-        // -------------------------------------------------------------------
-        $display("Test 2: program toggles with START / STOP");
-        spi_ss = 0;
-        send_spi_byte(8'h55); // START
-        send_spi_byte(8'h53); // STOP
-        spi_ss = 1;
-        // Allow state machine to process
-        repeat (500) @(posedge clk);
-        // program should be HIGH again after STOP
-        report(program === 1'b1, "program == 1 after STOP");
-
-        // -------------------------------------------------------------------
-        // Test 3: MEM packet -> Weight_Memory (ISA address 0x0005, 3 bytes)
-        //   Packet: [START, MEM, 0x05, 0x00, 0x03, 0x00, 0xAB, 0xCD, 0xEF, STOP]
-        //   ISA addresses 0x0 and 0x1 are reserved, so weight memory begins at
-        //   ISA 0x2 -> physical 0. ISA address A maps to physical A-2, matching
-        //   the Vector_Processor. Expected: 3 writes at WM physical addresses
-        //   3, 4, 5 (ISA 5, 6, 7) with data AB, CD, EF.
-        // -------------------------------------------------------------------
-        $display("Test 3: MEM packet writes to Weight_Memory");
+        // ===================================================================
+        // Test 2: FLASH + MEM -> Weight_Memory; program/tpu_rst toggling
+        //   FLASH, MEM @ISA 0x0005 (3 bytes AB CD EF), STOP
+        //   ISA addr A -> WM physical A-2, so phys 3,4,5
+        // ===================================================================
+        $display("Test 2: FLASH + MEM write to Weight_Memory");
         wm_write_count = 0;
         spi_ss = 0;
-        send_spi_byte(8'h55); // START
-        send_spi_byte(8'h4D); // MEM
-        send_spi_byte(8'h05); // LADD = 0x05
-        send_spi_byte(8'h00); // UADD = 0x00
-        send_spi_byte(8'h03); // LLEN = 3
-        send_spi_byte(8'h00); // ULEN = 0
-        send_spi_byte(8'hAB); // data[0]
-        send_spi_byte(8'hCD); // data[1]
-        send_spi_byte(8'hEF); // data[2]
-        send_spi_byte(8'h53); // STOP
-        spi_ss = 1;
-        // Wait for all writes (up to 5000 clock cycles)
-        timeout = 0;
-        while (wm_write_count < 3 && timeout < 5000) begin
-            @(posedge clk);
-            timeout = timeout + 1;
-        end
-        report(wm_write_count === 3,          "3 writes to WM");
-        report(wm_addr_log[0] === 16'd3 &&
-               wm_data_log[0] === 8'hAB,      "WM phys 3 (ISA 5) = 0xAB");
-        report(wm_addr_log[1] === 16'd4 &&
-               wm_data_log[1] === 8'hCD,      "WM phys 4 (ISA 6) = 0xCD");
-        report(wm_addr_log[2] === 16'd5 &&
-               wm_data_log[2] === 8'hEF,      "WM phys 5 (ISA 7) = 0xEF");
-
-        // -------------------------------------------------------------------
-        // Test 4: MEM packet -> 0x1 Buffer (address 0x0001, 2 bytes)
-        //   Packet: [START, MEM, 0x01, 0x00, 0x02, 0x00, 0x12, 0x34, STOP]
-        //   Expected: 2 writes at internal BUF addresses 0, 1 with data 12, 34
-        // -------------------------------------------------------------------
-        $display("Test 4: MEM packet writes to 0x1 Buffer");
-        buf_write_count = 0;
-        spi_ss = 0;
-        send_spi_byte(8'h55); // START
-        send_spi_byte(8'h4D); // MEM
-        send_spi_byte(8'h01); // LADD = 0x01
-        send_spi_byte(8'h00); // UADD = 0x00
-        send_spi_byte(8'h02); // LLEN = 2
-        send_spi_byte(8'h00); // ULEN = 0
-        send_spi_byte(8'h12); // data[0]
-        send_spi_byte(8'h34); // data[1]
-        send_spi_byte(8'h53); // STOP
+        send_spi_byte(FLASH_CODE);
+        send_spi_byte(MEM_CODE);
+        send_spi_byte(8'h05); // LADD
+        send_spi_byte(8'h00); // UADD
+        send_spi_byte(8'h03); // LLEN
+        send_spi_byte(8'h00); // ULEN
+        send_spi_byte(8'hAB);
+        send_spi_byte(8'hCD);
+        send_spi_byte(8'hEF);
+        // Sample program/tpu_rst mid-session (should both be LOW)
+        report((program === 1'b0) && (tpu_rst === 1'b0),
+               "program LOW and tpu_rst LOW during FLASH session");
+        send_spi_byte(STOP_CODE);
         spi_ss = 1;
         timeout = 0;
-        while (buf_write_count < 2 && timeout < 5000) begin
-            @(posedge clk);
-            timeout = timeout + 1;
+        while (wm_write_count < 3 && timeout < 6000) begin
+            @(posedge clk); timeout = timeout + 1;
         end
-        report(buf_write_count === 2,           "2 writes to 0x1 Buffer");
-        report(buf_addr_log[0] === 16'd0 &&
-               buf_data_log[0] === 8'h12,       "BUF[0] = 0x12");
-        report(buf_addr_log[1] === 16'd1 &&
-               buf_data_log[1] === 8'h34,       "BUF[1] = 0x34");
+        report(wm_write_count === 3, "3 writes to WM");
+        report(wm_addr_log[0] === 16'd3 && wm_data_log[0] === 8'hAB, "WM phys 3 = 0xAB");
+        report(wm_addr_log[2] === 16'd5 && wm_data_log[2] === 8'hEF, "WM phys 5 = 0xEF");
+        repeat (10) @(posedge clk);
+        report((program === 1'b1) && (tpu_rst === 1'b1),
+               "program HIGH and tpu_rst HIGH after STOP");
 
-        // -------------------------------------------------------------------
-        // Test 5: PROGRAM packet writes a 128-bit instruction (LSB first)
-        //   16 bytes sent: 0x00 .. 0x0F
-        //   Expected instruction[7:0]=0x00, instruction[15:8]=0x01, ...
-        //   i.e., pm_data = 128'h0F0E0D0C0B0A09080706050403020100
-        // -------------------------------------------------------------------
-        $display("Test 5: PROGRAM packet writes instruction to Program_Memory");
+        // ===================================================================
+        // Test 3: PROGRAM instruction write + overwrite on next FLASH
+        // ===================================================================
+        $display("Test 3: PROGRAM instruction write and overwrite");
         pm_write_count = 0;
         expected_instr = 128'h0F0E0D0C0B0A09080706050403020100;
+        // First program: write one instruction (ends at pc 0)
         spi_ss = 0;
-        send_spi_byte(8'h55); // START
-        send_spi_byte(8'h50); // PROGRAM
-        for (k = 0; k < 16; k = k + 1)
-            send_spi_byte(k[7:0]); // bytes 0x00 - 0x0F
-        send_spi_byte(8'h53); // STOP
+        send_spi_byte(FLASH_CODE);
+        send_spi_byte(PROG_CODE);
+        for (k = 0; k < 16; k = k + 1) send_spi_byte(k[7:0]);
+        send_spi_byte(STOP_CODE);
         spi_ss = 1;
         timeout = 0;
-        while (pm_write_count < 1 && timeout < 5000) begin
-            @(posedge clk);
+        while (pm_write_count < 1 && timeout < 6000) begin
+            @(posedge clk); timeout = timeout + 1;
+        end
+        report(pm_write_count === 1 && pm_addr_log[0] === 10'd0 &&
+               pm_data_log[0] === expected_instr,
+               "instruction assembled LSB-first at pm address 0");
+        // Second program: a new FLASH session must overwrite from address 0
+        pm_write_count = 0;
+        spi_ss = 0;
+        send_spi_byte(FLASH_CODE);
+        send_spi_byte(PROG_CODE);
+        for (k = 0; k < 16; k = k + 1) send_spi_byte(8'hA0 + k[7:0]);
+        send_spi_byte(STOP_CODE);
+        spi_ss = 1;
+        timeout = 0;
+        while (pm_write_count < 1 && timeout < 6000) begin
+            @(posedge clk); timeout = timeout + 1;
+        end
+        report(pm_write_count === 1 && pm_addr_log[0] === 10'd0,
+               "second FLASH overwrites program memory from address 0");
+
+        // ===================================================================
+        // Test 4: DEVICE_INPUT
+        // ===================================================================
+        $display("Test 4: DEVICE_INPUT writes input to 0x1-buffer addr 0");
+        mode_select     = 1'b0; // device mode
+        buf_write_count = 0;
+        pulse_input(8'h5A);
+        timeout = 0;
+        while (buf_write_count < 1 && timeout < 2000) begin
+            @(posedge clk); timeout = timeout + 1;
+        end
+        report(buf_write_count === 1 && buf_addr_log[0] === 16'd0 &&
+               buf_data_log[0] === 8'h5A,
+               "input 0x5A written to 0x1-buffer address 0");
+
+        // ===================================================================
+        // Test 5: DEVICE_OUTPUT
+        //   Preload buffer[0]; pulse end_reached; expect one output of buf[0].
+        // ===================================================================
+        $display("Test 5: DEVICE_OUTPUT emits 0x1-buffer[0]");
+        mode_select = 1'b0;
+        // Settle past any pending buffer write from Test 4 before preloading.
+        repeat (3) @(posedge clk); #1;
+        buf_mem[0]  = 8'h77;
+        out_count   = 0;
+        pulse_end_reached;
+        timeout = 0;
+        while (out_count < 1 && timeout < 2000) begin
+            @(posedge clk); timeout = timeout + 1;
+        end
+        repeat (5) @(posedge clk);
+        report(out_count === 1 && out_log[0] === 8'h77,
+               "single output 0x77 with output_data_valid pulse");
+
+        // ===================================================================
+        // Test 6: EXTERNAL_OUTPUT (10 values with device_ready handshake)
+        // ===================================================================
+        $display("Test 6: EXTERNAL_OUTPUT emits 10 values");
+        mode_select = 1'b1; // external mode
+        for (k = 0; k < 10; k = k + 1) buf_mem[k] = 8'hC0 + k[7:0];
+        out_count = 0;
+        pulse_end_reached;
+        // Service the handshake: pulse device_ready whenever the DUT is waiting.
+        timeout = 0;
+        while (out_count < 10 && timeout < 8000) begin
+            @(posedge clk); #1;
+            if (dut.S == 6'd49) begin // X_OUT_WAIT_RDY
+                device_ready = 1'b1;
+                @(posedge clk); #1;
+                device_ready = 1'b0;
+            end
             timeout = timeout + 1;
         end
-        report(pm_write_count === 1,                "1 write to Program_Memory");
-        report(pm_addr_log[0] === 10'd0,            "pm_address == 0");
-        report(pm_data_log[0] === expected_instr,   "pm_data correct");
+        report(out_count === 10, "exactly 10 values emitted");
+        report(out_log[0] === 8'hC0 && out_log[9] === 8'hC9,
+               "first value 0xC0, tenth value 0xC9");
 
-        // -------------------------------------------------------------------
-        // Test 6: COM_ERROR — invalid function code causes no memory writes
-        //   Packet: [START, 0xFF (invalid)]
-        //   After error, no wm/buf/pm writes should occur on next START attempt
-        // -------------------------------------------------------------------
-        $display("Test 6: COM_ERROR on invalid function code");
-        wm_write_count  = 0;
+        // ===================================================================
+        // Test 7: INPUT header — external writes, device-mode discards
+        // ===================================================================
+        $display("Test 7: INPUT header routing by mode");
+        // External mode: INPUT + MEM should write to the 0x1 buffer (ISA 0x1).
+        mode_select     = 1'b1;
         buf_write_count = 0;
-        pm_write_count  = 0;
         spi_ss = 0;
-        send_spi_byte(8'h55); // START
-        send_spi_byte(8'hFF); // Invalid function code -> COM_ERROR
-        spi_ss = 1;
-        repeat (200) @(posedge clk); // allow time for any erroneous writes
-        report(wm_write_count  === 0 &&
-               buf_write_count === 0 &&
-               pm_write_count  === 0, "No memory writes in COM_ERROR");
-
-        // -------------------------------------------------------------------
-        // Test 7: WRITE_ERROR — MEM packet with address 0 causes no writes
-        //   Packet: [START, MEM, 0x00, 0x00, 0x01, 0x00, 0xAA]
-        //   Address 0x0000 is read-only; programmer should enter WRITE_ERROR.
-        // -------------------------------------------------------------------
-        $display("Test 7: WRITE_ERROR on address 0x0000");
-        // Reset DUT to clear error state
-        rst = 0;
-        repeat (4) @(posedge clk);
-        rst = 1;
-        repeat (4) @(posedge clk);
-        wm_write_count  = 0;
-        buf_write_count = 0;
-        pm_write_count  = 0;
-        spi_ss = 0;
-        send_spi_byte(8'h55); // START
-        send_spi_byte(8'h4D); // MEM
-        send_spi_byte(8'h00); // LADD = 0x00
-        send_spi_byte(8'h00); // UADD = 0x00 -> address 0 -> WRITE_ERROR
+        send_spi_byte(INPUT_CODE);
+        send_spi_byte(MEM_CODE);
+        send_spi_byte(8'h01); // LADD = ISA 0x0001 (0x1 buffer)
+        send_spi_byte(8'h00); // UADD
         send_spi_byte(8'h01); // LLEN = 1
-        send_spi_byte(8'h00); // ULEN = 0
-        send_spi_byte(8'hAA); // data byte (should NOT be written)
+        send_spi_byte(8'h00); // ULEN
+        send_spi_byte(8'h3C); // data
+        send_spi_byte(STOP_CODE);
         spi_ss = 1;
-        repeat (300) @(posedge clk);
-        report(wm_write_count === 0 &&
-               buf_write_count === 0, "No writes on WRITE_ERROR (address 0)");
+        timeout = 0;
+        while (buf_write_count < 1 && timeout < 6000) begin
+            @(posedge clk); timeout = timeout + 1;
+        end
+        report(buf_write_count === 1 && buf_addr_log[0] === 16'd0 &&
+               buf_data_log[0] === 8'h3C,
+               "external INPUT writes 0x3C to 0x1-buffer address 0");
+        // Device mode: the same INPUT transmission must be discarded (no writes).
+        mode_select     = 1'b0;
+        buf_write_count = 0;
+        wm_write_count  = 0;
+        spi_ss = 0;
+        send_spi_byte(INPUT_CODE);
+        send_spi_byte(MEM_CODE);
+        send_spi_byte(8'h01);
+        send_spi_byte(8'h00);
+        send_spi_byte(8'h01);
+        send_spi_byte(8'h00);
+        send_spi_byte(8'h99);
+        send_spi_byte(STOP_CODE);
+        spi_ss = 1;
+        repeat (400) @(posedge clk);
+        report((buf_write_count === 0) && (wm_write_count === 0),
+               "device-mode INPUT transmission discarded (no writes)");
 
-        // -------------------------------------------------------------------
+        // ===================================================================
         // Summary
-        // -------------------------------------------------------------------
+        // ===================================================================
         $display("");
         $display("================================");
         $display("Results: %0d PASS, %0d FAIL", pass_count, fail_count);

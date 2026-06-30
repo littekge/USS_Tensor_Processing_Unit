@@ -211,6 +211,13 @@ machine, whatever you think is easier to read).
 - Rewrite Programmer unit test to thoroughly test new functionality
 (`./tests/TB_Step1_Programmer.v`).
 
+> **Clarification (2026-06-30):** In `EXTERNAL_INPUT` (an INPUT-header
+> transmission), MEM command addresses use **unified address routing** —
+> interpreted exactly as in `PROGRAM`/FLASH mode (routed to weight memory or the
+> 0x1 buffer by address). `EXTERNAL_INPUT` differs from `PROGRAM` only in that it
+> maintains the current program (does not reset or write Program_Memory), so the
+> PROGRAM command code is invalid inside an INPUT transmission.
+
 #### Step 2 — TPU Module
 
 Update the TPU module to reflect the current version of the
@@ -218,6 +225,12 @@ Update the TPU module to reflect the current version of the
 
 - Update *trst* implementation.
 - Implement signal passthrough for programmer.
+
+> **Clarification (2026-06-30):** The new Programmer IO (*mode_select*,
+> *input_data*, *input_data_valid*, *device_ready*, *output_data*,
+> *output_data_valid*) is exposed **at the TPU module boundary only**. The FPGA
+> wrapper (`Tensor_Processing_Unit.v`) pin mapping is left to the user and is not
+> modified by this build step (respects the "do not modify debug sections" rule).
 
 #### Step 3 — Feeder Module
 
@@ -242,3 +255,9 @@ Revise the full system test to test new functionality.
 - Rewrite System test to thoroughly test new functionality
 (`./tests/TB_Step8_FullSystem.v`).
 - Run full system test and fix any issues that arise.
+
+> **Clarification (2026-06-30):** The revised full-system test exercises **both**
+> IO modes end-to-end: device mode (single input via *input_data* /
+> *input_data_valid* → program runs → single *output_data* value) and external
+> mode (INPUT transmission over SPI → program runs → 10 *output_data* values with
+> the *device_ready* handshake).

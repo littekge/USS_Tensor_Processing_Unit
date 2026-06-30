@@ -30,8 +30,8 @@
  *   Test 1: o_data is forced to 45 when i_trst LOW
  *   Test 2: o_data is forced to 45 when i_clear HIGH
  *   Test 3: o_data is forced to 45 when i_enable LOW
- *   Test 4: i_enable routes to o_write
- *   Test 5: NOOP operation functions correctly
+ *   Test 4: i_enable routes to o_write for a non-NOOP function
+ *   Test 5: NOOP function — placeholder o_data and o_write suppressed (LOW)
  *   Test 6: ReLu operation functions correctly
  * -------------------------------------------------------------------------
  */
@@ -157,15 +157,24 @@ begin
 	check(out_data === 8'd45, 3);
 	
 	// -----------------------------------------------------------------------
-   // Test 4: i_enable routes to o_write
+   // Test 4: i_enable routes to o_write for a non-NOOP function (RELU)
    // -----------------------------------------------------------------------
-	act_enable = 1'b1;
-	@(posedge clk); #1;
-	@(posedge clk); #1;
-	check(write === act_enable, 4);
-	
+	begin : write_route_test
+		integer write_pass_count;
+		write_pass_count = 0;
+		activator_funct = 3'h0; // RELU (non-NOOP)
+		act_enable = 1'b1;
+		@(posedge clk); #1;
+		if (write === 1'b1) write_pass_count = write_pass_count + 1;
+		act_enable = 1'b0;
+		@(posedge clk); #1;
+		if (write === 1'b0) write_pass_count = write_pass_count + 1;
+		check(write_pass_count === 2, 4);
+	end
+
 	// -----------------------------------------------------------------------
-   // Test 5: NOOP operation functions correctly
+   // Test 5: NOOP — placeholder o_data (98) and o_write suppressed even with
+   //         i_enable HIGH (buffer writing is suppressed for NOOP per spec)
    // -----------------------------------------------------------------------
 	trst = 1'b1;
 	act_enable = 1'b1;
@@ -174,7 +183,7 @@ begin
 	activator_funct = 3'h7;
 	@(posedge clk); #1;
 	@(posedge clk); #1;
-	check(out_data === 8'd98, 5);
+	check((out_data === 8'd98) && (write === 1'b0), 5);
 	
 	// -----------------------------------------------------------------------
    // Test 6: ReLu operation functions correctly
