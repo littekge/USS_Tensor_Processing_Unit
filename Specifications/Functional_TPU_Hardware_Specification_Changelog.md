@@ -2,16 +2,25 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
-## 2026-06-30 — Functional TPU Hardware Specification v0.2
+## 2026-06-30 — Functional TPU Hardware Specification v0.2 — TPU
 
-- General revision and clarification to Programmer module description (grammar,
+- **Small updates to TPU module**
+- Updated the *Separate TPU Reset* section to AND *rst* and *tpu_rst* instead of
+  *rst* and *tpu_rst* (allows programmer to access memory and reset the
+internals separately).
+- Added the *Programmer IO Passthrough* section to expose Programmer IO to
+external sources.
+
+## 2026-06-30 — Functional TPU Hardware Specification v0.2 — Programmer Revision
+
+- **General revision and clarification to Programmer module description** (grammar,
 wording, etc.)
 - Clarified that *output_data* is used in both modes of the Programmer.
 - Updated definition of IDLE meta-state to discard INPUT headers while in device
 mode.
 - Added explicit priority to meta-state changes from IDLE.
 
-## 2026-06-29 — Functional TPU Hardware Specification v0.2
+## 2026-06-29 — Functional TPU Hardware Specification v0.2 — Programmer
 
 - Updated Programmer module to include multiple methods of IO in addition to programming.
 - Defined two modes of operation: device mode and external mode.

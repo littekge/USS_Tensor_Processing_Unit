@@ -62,6 +62,10 @@ serves as a passthrough for relevant signals (clk, rst, SPI Signals, etc.).
     - ***rst***: Global reset (*rst*) input signal (active LOW). *rst* is the global
     system reset signal, and effectively resets the entire TPU to its default
     state while asserted LOW.
+- **Programmer IO Passthrough:** The TPU module exposes *input_data*,
+*input_data_valid*, and *device_ready* from the programmer module as module
+inputs, and *output_data* and *output_data_valid* from the programmer as module
+outputs.
 - **Dual Vector Processors:** The TPU module instantiates two Vector_Processor
 modules, a primary processor *a* and a secondary processor *b*. Relevant
 connections are described below.
@@ -82,10 +86,10 @@ connections are described below.
   - **Systolic Array Buffers:** *a* handles input to the top side systolic array
   input buffers and *b* handles input to the left side input buffers.
   - **Systolic Array Output:** *a* handles output from the systolic array.
-- **Separate TPU Reset:** The *program* signal from the programmer is combined
+- **Separate TPU Reset:** The *tpu_rst* signal from the programmer is combined
 with the global reset *rst* via a logical AND operation, and the resultant
 signal *trst* is passed to the following modules such that either *rst* or
-*program* can hold them in a default state: Feeder, Systolic_Array, Controller,
+*tpu_rst* can hold them in a default state: Feeder, Systolic_Array, Controller,
 Vector_Processor (*a* and *b*), Activator, and ALU. This is to ensure that the
 TPU internals cannot modify device memory while programming occurs.
 - **Memory MUX:** The Programmer module has full control over all device memory
