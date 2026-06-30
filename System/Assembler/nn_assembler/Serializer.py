@@ -1,7 +1,7 @@
 """Lowering step 4 (Step 8): final conversion / serialization.
 
 Concatenates `/tmp/MEM.bin` and `/tmp/PROGRAM.bin` (MEM first, then PROGRAM) and
-wraps them with the START and STOP function codes to form a complete Message
+wraps them with the FLASH and STOP function codes to form a complete Message
 Protocol transmission, saved to `/out/TRANSMISSION.bin`.
 """
 
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .Protocol import START, STOP
+from .Protocol import FLASH, STOP
 
 
 def Serialize(tmp_dir: Path | None = None, out_dir: Path | None = None) -> Path:
@@ -27,7 +27,7 @@ def Serialize(tmp_dir: Path | None = None, out_dir: Path | None = None) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     transmission_path = out_dir / "TRANSMISSION.bin"
 
-    transmission = bytearray([START])
+    transmission = bytearray([FLASH])
     transmission += mem_path.read_bytes()
     transmission += program_path.read_bytes()
     transmission.append(STOP)

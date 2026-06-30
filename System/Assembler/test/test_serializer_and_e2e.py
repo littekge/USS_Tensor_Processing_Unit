@@ -6,7 +6,7 @@ import pytest
 from nn_assembler.Assembler import Assemble
 from nn_assembler.Process_MLIR import Process_MLIR
 from nn_assembler.Process_Weights import Process_Weights
-from nn_assembler.Protocol import MEM, PROGRAM, START, STOP
+from nn_assembler.Protocol import FLASH, MEM, PROGRAM, STOP
 from nn_assembler.Serializer import Serialize
 
 
@@ -18,7 +18,7 @@ def test_serialize_wraps_mem_then_program(tmp_path):
     result = Serialize(tmp_path, out_dir)
     data = result.read_bytes()
 
-    assert data[0] == START
+    assert data[0] == FLASH
     assert data[-1] == STOP
     # MEM payload comes before the PROGRAM payload.
     assert data.index(MEM) < data.index(PROGRAM)
@@ -76,4 +76,4 @@ def test_full_pipeline(tmp_path):
     # 4 compute ops + end.
     assert len(instructions) == 5
     data = out_path.read_bytes()
-    assert data[0] == START and data[-1] == STOP
+    assert data[0] == FLASH and data[-1] == STOP

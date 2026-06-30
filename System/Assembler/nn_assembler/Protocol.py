@@ -1,4 +1,4 @@
-"""Encoders for the `Functional_TPU_Message_Protocol_v0.1.md` byte format.
+"""Encoders for the `Functional_TPU_Message_Protocol_v0.2.md` byte format.
 
 Centralizes the function codes and block layouts so every stage of the pipeline
 agrees on the wire format. All multi-byte fields are little-endian (least
@@ -7,11 +7,18 @@ significant byte first), per the protocol's *Byte Order* section.
 
 from __future__ import annotations
 
-# Single-byte ASCII function codes.
-START = ord("U")  # 0x55
+# Single-byte ASCII function codes, grouped per the protocol's categories.
+#
+# Header codes — mark the beginning of a transmission. (INPUT is defined by the
+# spec but unused here; the current flow programs the whole peripheral.)
+FLASH = ord("U")  # 0x55 — programs the entire peripheral (renamed from START in v0.2)
+
+# Command codes — sub-functions contained within a transmission.
+MEM = ord("M")  # 0x4D — write data to device memory
+PROGRAM = ord("P")  # 0x50 — write an instruction to program memory
+
+# Trailer codes — mark the end of a transmission.
 STOP = ord("S")  # 0x53
-MEM = ord("M")  # 0x4D
-PROGRAM = ord("P")  # 0x50
 
 ADDRESS_SPACE = 1 << 16  # 65536 words; addresses must fit in 16 bits.
 INSTRUCTION_BYTES = 16  # 128-bit instructions.

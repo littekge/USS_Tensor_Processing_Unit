@@ -2,6 +2,16 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-06-30 — v0.1.1: Message Protocol update (START → FLASH)
+
+- Implemented the v0.1.1 build plan: aligned the code with `Functional_TPU_Message_Protocol_v0.2.md`, which renamed the `START` header code to `FLASH` (ASCII `U` / `0x55` unchanged) and regrouped function codes into header/command/trailer categories. The protocol is functionally identical, so this is a rename + cosmetic-structure change with no behavioral effect.
+- Clarification resolved: `main.md`'s v0.1.1 section originally said the *PROGRAM* code was renamed — that was an error. The spec changelog shows it was *START* → *FLASH*; `PROGRAM` (`P` / `0x50`) kept its name and was only reclassified as a command code. Corrected the `main.md` v0.1.1 wording accordingly. Per user decision, the new `INPUT` header code (`I` / `0x49`) is out of scope for this version.
+- `Protocol.py`: renamed `START` → `FLASH`; grouped constants into header/command/trailer sections with comments mirroring the spec; fixed the stale `Functional_TPU_Message_Protocol_v0.1.md` docstring reference → `v0.2`.
+- `Serializer.py`: updated import and transmission-framing to use `FLASH`; updated docstring.
+- `test/test_serializer_and_e2e.py`: updated import and the two framing assertions (`data[0] == FLASH`).
+- Files modified: `nn_assembler/Protocol.py`, `nn_assembler/Serializer.py`, `test/test_serializer_and_e2e.py`, `main.md`, `log.md`.
+- Tests: all 19 pytest tests pass (including `test_full_pipeline`). Verified `python ./nn_assembler/Convert.py Tiny_NN Recent` still writes `out/TRANSMISSION.bin` (105 bytes), framed with `0x55` ('U'/FLASH) first and `0x53` ('S'/STOP) last.
+
 ## 2026-06-24 — Renamed `src/` → `nn_assembler/` and switched to strict editable install (IDE resolution fix)
 
 - Reason: `from nn_assembler import Convert` worked at runtime but showed as *unresolved* in the IDE. Root cause: setuptools 81 defaults to the "lenient" editable install, which registers a dynamic `MetaPathFinder` (`__editable___..._finder.py`) instead of putting a path in the `.pth`. Pylance/static analyzers can't execute that finder, so they can't locate the package.

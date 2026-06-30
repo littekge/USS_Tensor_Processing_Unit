@@ -7,7 +7,7 @@
 ## Project Identity
 
 - **Name:** Neural Network Assembler
-- **Version:** 0.2
+- **Version:** 0.1.1
 - **Development Platform:** Debian 13 Linux
 - **Languages:** Python 3.13, MLIR, C/C++
 - **License:** MIT License
@@ -247,29 +247,39 @@ Build `/nn_assembler/Serializer.py`:
 Protocol* message.
 - Save the final result to `/out/TRANSMISSION.bin`.
 
-### v0.1.1 — Message Protocol Update
+### v0.1.1 — Message Protocol Update ✅ COMPLETE
 
 Minor version update to implement changes to *Functional TPU Message
-Protocol*. The new protocol is functionally identical to the first, only the
-formatting of the specification sheet and the name of the PROGRAM function code
-were changed.
+Protocol*. The new protocol is functionally identical to the first; only the
+formatting of the specification sheet and the categorization/naming of function
+codes changed. Specifically, the `START` header code was renamed to `FLASH`
+(ASCII `U` / `0x55` unchanged), and codes were grouped into *header*, *command*,
+and *trailer* categories. `PROGRAM` was **not** renamed — it kept its name
+(`P` / `0x50`) and was merely reclassified as a *command code*. A new `INPUT`
+header code (`I` / `0x49`) was added but is **out of scope** for v0.1.1 (the
+current flow programs the whole peripheral via `FLASH`).
 
-#### Step 1: Comment and Variable Updates
+#### Step 1: Comment and Variable Updates ✅
 
-Update files to reference the new FLASH header code instead of
-the old PROGRAM function code.
+Update files to reference the new `FLASH` header code instead of the old `START`
+function code.
 
-- Update comments.
-- Update variable names.
+- Rename the `START` constant to `FLASH` in `Protocol.py` and update all
+references (`Serializer.py`, tests).
+- Group the `Protocol.py` constants into header/command/trailer categories with
+comments mirroring the spec.
+- Update comments and docstrings (including the stale `v0.1` protocol reference
+in `Protocol.py`).
+- `INPUT` is skipped entirely for this version.
 
-#### Step 2: Verification
+#### Step 2: Verification ✅
 
 Check through existing code to ensure that the update to the message protocol
 did not invalidate any old functionality.
 
 - Fix any issues that arise.
 
-#### Step 3: Tests
+#### Step 3: Tests ✅
 
 Run all existing tests to verify functionality.
 
