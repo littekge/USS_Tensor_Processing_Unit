@@ -63,9 +63,9 @@ serves as a passthrough for relevant signals (clk, rst, SPI Signals, etc.).
     system reset signal, and effectively resets the entire TPU to its default
     state while asserted LOW.
 - **Programmer IO Passthrough:** The TPU module exposes *input_data*,
-*input_data_valid*, and *device_ready* from the programmer module as module
-inputs, and *output_data* and *output_data_valid* from the programmer as module
-outputs.
+*input_data_valid*, *device_ready*, and *mode_select* from the programmer module
+as module inputs, and *output_data* and *output_data_valid* from the programmer
+as module outputs.
 - **Dual Vector Processors:** The TPU module instantiates two Vector_Processor
 modules, a primary processor *a* and a secondary processor *b*. Relevant
 connections are described below.
@@ -111,7 +111,7 @@ that either *trst* going LOW or *clear* going HIGH will flush the buffer.
 **Description:** The SPI_Slave module is the connection point between the
 external SPI signals and TPU internals. This module is pulled from
 [nandland's SPI Slave](https://github.com/nandland/spi-slave) repository.
-Relevant documentation on the modules functionality can be found there.
+Relevant documentation on the module's functionality can be found there.
 
 ### SPI_Input_buffer
 
@@ -151,7 +151,7 @@ cycle to indicate that the data output of the module is readable. This naturally
 meshes with the functionality of *wrreq* in the SPI_Input_buffer, and so the two
 modules are directly wired together.
 - **SPI Buffer Reset Signal:** *rst* is inverted and connected to the SPI input
-buffers *sclr* such that the buffer is cleared when *rst* is pulled low.
+buffer's *sclr* such that the buffer is cleared when *rst* is pulled LOW.
 
 ### Programmer
 
@@ -163,8 +163,6 @@ interpret external commands, the module instantiates the SPI_Interface module,
 reading from the SPI input buffer while idle to search for messages in the
 *Functional TPU Message Protocol* format (defined in `Functional_TPU_Message_Protocol_v0.2.md`).
 The module defines a complex finite state machine to implement these functions.
-Updated definition of IDLE meta-state to discard INPUT headers while in device
-mode.
 
 - **Synchronous Control Signals:**
   - **Inputs:**
@@ -264,7 +262,8 @@ purpose of describing the state machine flow.
 event of undefined state machine behavior, a COM_ERROR state if it attempts to
 decode an invalid code, a WRITE_ERROR state if it attempts to write to an
 invalid memory address, and a PROG_OVERFLOW_ERROR state if the program memory
-runs out of space during programming.
+runs out of space during programming. All error states are considered to be
+unrecoverable and are only exited with a full system reset (*rst* LOW).
 - **IDLE Priority:** The IDLE meta-state can transition into any of the other
 meta-states. The meta-state change priority is PROGRAM > DEVICE_INPUT =
 EXTERNAL_INPUT > DEVICE_OUTPUT = EXTERNAL_OUTPUT.
@@ -290,8 +289,8 @@ program instructions defined by `Functional_TPU_ISA_v0.2.md`.
     defined by the *address* input when asserted HIGH.
   - **Outputs:**
     - ***q***: Data output.
-- **Write and Read Behavior:** The modules output port *q* always outputs the
-data present at the modules *address* input. When *wren* is asserted high, *q*
+- **Write and Read Behavior:** The module's output port *q* always outputs the
+data present at the module's *address* input. When *wren* is asserted high, *q*
 is undefined and the value stored at *address* is overwritten by the *data* input.
 
 ### Weight_Memory
@@ -315,7 +314,7 @@ main memory of the TPU and stores neural network weights.
     - ***q_b***: Data output b.
 - **Dual Port:** The Weight_Memory is dual port, meaning it has two separate
 sets of identical control signals, *a* and *b*.
-- **Write and Read Behavior:** The modules output ports *q_a* and *q_b* always
+- **Write and Read Behavior:** The module's output ports *q_a* and *q_b* always
 output the data present at *address_a* and *address_b* inputs. When *wren_a* or
 *wren_b* is asserted high, *q_a* or *q_b* is undefined and the value stored at
 *address_a* or *address_b* is overwritten by the *data_a* or *data_b* input
@@ -342,7 +341,7 @@ the unique isolated memory required for address 0x1 in `Functional_TPU_ISA_v0.2.
     - ***q_b***: Data output b.
 - **Dual Port:** The 0x1 buffer is dual port, meaning it has two separate sets
 of identical control signals, *a* and *b*.
-- **Write and Read Behavior:** The modules output ports *q_a* and *q_b* always
+- **Write and Read Behavior:** The module's output ports *q_a* and *q_b* always
 output the data present at *address_a* and *address_b* inputs. When *wren_a* or
 *wren_b* is asserted high, *q_a* or *q_b* is undefined and the value stored at
 *address_a* or *address_b* is overwritten by the *data_a* or *data_b* input respectively.
@@ -361,7 +360,7 @@ effectively emulates the FETCH step in a traditional CPU.
     - ***end_reached***: Asserted HIGH for one clock cycle when an *end*
     instruction is retrieved from memory.
 - **Program Counter:** The module contains a program counter register (*pc*)
-that stores the address of the current instruction. When *trst* is asserted low
+that stores the address of the current instruction. When *trst* is asserted LOW
 *pc* should be set to zero.
 - **Stop Condition:** The module stops feeding instructions when an *end*
 instruction is retrieved from memory.
@@ -369,7 +368,7 @@ instruction is retrieved from memory.
   - Retrieve an instruction from Program_Memory at address=*pc*.
   - If the instruction is *end*, enter a DONE state until *trst* resets the module.
   - Else forward the instruction to the controller.
-  - Assert the controllers *controller_start* signal HIGH for one clock cycle.
+  - Assert the controller's *controller_start* signal HIGH for one clock cycle.
   - Wait for the controller to assert *controller_idle* HIGH.
   - When the controller asserts *controller_idle* HIGH, increment the program
   counter and repeat.
@@ -407,20 +406,20 @@ processors at the same clock cycle to ensure synchronization.
   - Wait for the Feeder to assert *controller_start* HIGH.
   - When the Feeder asserts *controller_start* HIGH, assert *controller_idle*
   LOW and continue.
-  - Assert *clear* signals for the vector buffer (via *clear* in the TPU module)
-  , ALU, activator, and systolic array HIGH for one clock cycle to clear all
-  residual data from the previous operation.
+  - Assert *clear* signals for the vector buffer (via *clear* in the TPU
+  module), ALU, activator, and systolic array HIGH for one clock cycle to clear
+  all residual data from the previous operation.
   - Combinationally decode instruction from the Feeder and send control signals
   to other modules. (Decode)
-  - Assert the vector processors *vector_start* signals HIGH for one clock
+  - Assert the vector processors' *vector_start* signals HIGH for one clock
   cycle. (Execute)
   - Wait for vector processors to finish execute operations. (Execute)
   - If the instruction uses the systolic array:
-    - Assert the arrays *systolic_array_start* signal HIGH for one clock cycle.
+    - Assert the array's *systolic_array_start* signal HIGH for one clock cycle.
     (Execute)
     - Wait for the systolic array to finish execute operations. (Execute)
   - Set writeback control signals for Vector_Processors. (Writeback)
-  - Assert the vector processors *vector_start* signals HIGH for one clock cycle.
+  - Assert the vector processors' *vector_start* signals HIGH for one clock cycle.
   (Writeback)
   - Wait for vector processors to finish writeback operations. (Writeback)
   - Assert *controller_idle* signal HIGH.
@@ -439,7 +438,7 @@ Array, and proper formatting of data.
   - **Inputs:**
     - ***clk***: Module input clock.
     - ***trst***: Module reset signal (active LOW).
-    - ***vector_start*** Indicates that the vector processor should begin
+    - ***vector_start***: Indicates that the vector processor should begin
     operations when asserted HIGH for one clock cycle.
   - **Outputs:**
     - ***vector_idle***: Asserted HIGH when the vector processor has finished an
@@ -452,7 +451,7 @@ weight memory and 0x1 buffer in accordance with the
 `Functional_TPU_ISA_v0.2.md`. Likewise, it expects all data read from memory to
 be formatted in accordance with the ISA. As a result, the Vector_Processor
 handles translation of data from flattened arrays in memory to matrices when
-\loading data to the systolic array input buffers and from matrices to
+loading data to the systolic array input buffers and from matrices to
 flattened arrays when reading from the systolic array outputs and writing back
 to memory.
 - **Memory Abstraction:** The Vector_Processor module abstracts the weight
@@ -462,7 +461,7 @@ Vector_Processor module has various combinational control signal inputs and
 output that it uses to interpret data.
   - **Dimensionality:** When interfacing with the systolic array, the vector
   processor checks the *dim0* and *dim1* inputs to determine the dimensionality
-  (*dim0* x *dim1*) of the matrix its processing, and then either reads from the
+  (*dim0* x *dim1*) of the matrix it's processing, and then either reads from the
   systolic array outputs or writes to the systolic array input buffers in the
   proper order.
   - **Length:** When interfacing with modules other than the systolic array, the
@@ -513,7 +512,7 @@ from the `Functional_TPU_ISA_v0.2.md`.
     - ***clk***: Module input clock.
     - ***trst***: Module reset signal (active LOW).
     - ***enable***: Enables the activator (active HIGH)
-    - ***clear***: Clears residual values from the activators input and
+    - ***clear***: Clears residual values from the activator's input and
     intermediate registers when asserted HIGH.
 - **ALU-Like Behavior:** The Activator module is effectively a specialized
 Arithmetic Logic Unit (ALU) that implements operations specified by the ISA.
@@ -523,7 +522,8 @@ Controller sets the Activator function to NO OP.
 - **Enable Behavior:** While *enable* is asserted HIGH, every clock cycle the
 activator takes an input value, applies a function to it based on a control
 signal, and writes the result to the vector buffer. As a result, the activator
-can process a single value by asserting *enable* HIGH for one clock cycle.
+can process a single value by asserting *enable* HIGH for one clock cycle. If
+the Activator's function is set to NO OP buffer writing is suppressed.
 
 ### ALU
 
@@ -534,7 +534,7 @@ can process a single value by asserting *enable* HIGH for one clock cycle.
     - ***clk***: Module input clock.
     - ***trst***: Module reset signal (active LOW).
     - ***enable***: Enables the ALU (active HIGH)
-    - ***clear***: Clears residual values from the ALUs input and intermediate
+    - ***clear***: Clears residual values from the ALU's input and intermediate
     registers when asserted HIGH.
 - **Standard ALU:** The ALU module functions as a standard ALU with two input
 values and one output value.
@@ -542,9 +542,10 @@ values and one output value.
 If the current instruction does not use the ALU, the Controller sets the ALU
 function to NO OP.
 - **Enable Behavior:** While *enable* is asserted HIGH, every clock cycle the
-ALU takes two input values, performs a arithmetic or logical operation on them,
+ALU takes two input values, performs an arithmetic or logical operation on them,
 and writes the result to the vector buffer. As a result, the ALU can process a
-single value by asserting *enable* HIGH for one clock cycle.
+single value by asserting *enable* HIGH for one clock cycle. If
+the ALU's operation is set to NO OP buffer writing is suppressed.
 - **Requantization:** For arithmetic operations, the ALU module requantizes the
 output before writing to the vector buffer.
 
@@ -593,6 +594,7 @@ operation: multiply-accumulate. Every clock cycle the module performs *c* =
 - **Synchronous Control Signals:**
   - **Inputs:**
     - ***clock***: Module input clock.
+    - ***data***: Data input.
     - ***rdreq***: Read request. Asserting *rdreq* HIGH will pop data from the
     buffer every clock cycle to the *q* module output. As such, *rdreq* should
     only be asserted HIGH for a single clock cycle to pop a single value.
@@ -602,6 +604,7 @@ operation: multiply-accumulate. Every clock cycle the module performs *c* =
     - ***sclr***: Flushes the buffer of its contents on the next positive clock
     edge when asserted HIGH.
   - **Outputs**
+    - ***q***: Data output.
     - ***full***: HIGH when the buffer is full.
     - ***empty***: HIGH when the buffer is empty.
 - **Depth:** Variable by input parameter (Depth=N words).
@@ -641,10 +644,11 @@ systolic array. Likewise, the left side buffers are connected to the *b_in*
 inputs of the MACs on the left edge of the systolic array. The buffers on the
 left side are numbered from 0 to N-1, starting from the top and the buffers on
 the top side are numbered from 0 to N-1 starting from the left.
-- **Clear Behavior:** The module passes the *clear* input signal directly to the
-*clear* input signal of every MAC. The module combines *clear* and inverted
-*trst* via a logical OR operation and passes it to the *sclr* input of every
-systolic array input buffer so that either *trst* going LOW or *clear* going
+- **Clear Behavior:** The module passes the *clear* and *trst* input signals
+directly to the *clear* and *trst* input signals of every MAC. The module
+combines *clear* and inverted *trst* via a logical OR operation and passes it to
+the *sclr* input of every systolic array input buffer so that either *trst*
+going LOW or *clear* going
 HIGH will flush the buffers of their contents.
 - **State Machine Flow:**
   - Wait for *systolic_array_start* to be asserted HIGH.

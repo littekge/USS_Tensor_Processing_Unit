@@ -2,6 +2,36 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-06-30 — Functional TPU Hardware Specification v0.2 — Design Fixes
+
+- **Addressed pending design-level fixes.**
+- Updated ALU and activator to suppress vector buffer write behavior when their
+  operation/function is NO OP.
+- Clarified that programmer error states are unrecoverable by any means other
+than a full system reset (conforms with error behavior required by
+`Functional_TPU_Message_Protocol_v0.2.md`)
+- Updated Systolic Array module description to pass *trst* to the MACs in
+addition to *clear*.
+
+## 2026-06-30 — Functional TPU Hardware Specification v0.2 — Mechanical Fixes
+
+- **Whole-spec cleanup pass** (mechanical fixes only; design-level issues
+  deferred).
+- Removed a stray change-log note accidentally left in the *Programmer*
+  description.
+- Added *mode_select* to the *Programmer IO Passthrough* inputs in the *TPU*
+  module.
+- Added the missing *data* input and *q* output to the
+  *Systolic_Array_Input_Buffer* signal lists.
+- Grammar/formatting: removed stray backslash before "loading" in
+  *Vector_Processor*; added missing colon after *vector_start*; "a arithmetic"
+  → "an arithmetic" in *ALU*; reflowed the *clear* bullet comma in *Controller*;
+  "asserted low" → "asserted LOW" in *Feeder* and *SPI_Interface*; fixed missing
+  possessive apostrophes throughout (module's, controller's, array's, vector
+  processors', activator's, ALU's, buffer's; "its" → "it's" in
+  *Vector_Processor*).
+- Files modified: `Functional_TPU_Hardware_Specification_v0.2.md`.
+
 ## 2026-06-30 — Functional TPU Hardware Specification v0.2 — TPU
 
 - **Small updates to TPU module**
