@@ -68,6 +68,13 @@
  *   Test 8: External re-input without re-FLASH — a second INPUT transmission
  *           re-runs the resident program and emits 10 new relu outputs
  *           (steady-state operating loop).
+ *   Test 9: FLASH weights via MEM + a single mult against them — verifies the
+ *           weight-flash + systolic-array mult path end to end (the path a
+ *           neural-network program exercises; previously uncovered in v0.2).
+ *   Test 10: Two consecutive mult instructions in one program — the second
+ *           mult's result must match the first (identical operands), proving
+ *           the MAC accumulators are cleared between operations rather than
+ *           accumulating stale products into saturation.
  * -------------------------------------------------------------------------
  */
 
@@ -153,6 +160,19 @@ module TB_Step8_FullSystem;
     end
 
     // -----------------------------------------------------------------------
+    // Weight-memory shadow — mirrors the muxed weight-memory port-a writes
+    // (both the Programmer's flashed weights and the Vector_Processor's compute
+    // write-backs flow through this port). Lets the compute tests read back the
+    // requantized mult result without referencing any vendor-IP internal array.
+    // -----------------------------------------------------------------------
+    reg [7:0] shadow_wm [0:255];
+    integer si;
+
+    always @(posedge clk) begin
+        if (dut.wm_wren_a) shadow_wm[dut.wm_address_a[7:0]] <= dut.wm_data_a;
+    end
+
+    // -----------------------------------------------------------------------
     // Bookkeeping
     // -----------------------------------------------------------------------
     integer pass_count, fail_count;
@@ -206,6 +226,36 @@ module TB_Step8_FullSystem;
             mk_relu = {4'b1001, rs1, rd, len, 73'd0, 3'd0};
         end
     endfunction
+
+    // mult instruction builder
+    // (opcode 1000 | rs1 | sz11 | sz12 | rs2 | sz21 | sz22 | rd | pad | funct3)
+    function [127:0] mk_mul;
+        input [15:0] rs1;
+        input [3:0]  sz11, sz12;
+        input [15:0] rs2;
+        input [3:0]  sz21, sz22;
+        input [15:0] rd;
+        begin
+            mk_mul = {4'b1000, rs1, sz11, sz12, rs2, sz21, sz22, rd, 57'd0, 3'd0};
+        end
+    endfunction
+
+    // Send a 4-byte MEM command block to a 16-bit ISA address.
+    task send_mem4;
+        input [15:0] addr;
+        input [7:0]  b0, b1, b2, b3;
+        begin
+            send_spi_byte(MEM_CODE);
+            send_spi_byte(addr[7:0]);
+            send_spi_byte(addr[15:8]);
+            send_spi_byte(8'd4);   // LLEN = 4
+            send_spi_byte(8'd0);   // ULEN = 0
+            send_spi_byte(b0);
+            send_spi_byte(b1);
+            send_spi_byte(b2);
+            send_spi_byte(b3);
+        end
+    endtask
 
     // -----------------------------------------------------------------------
     // Wait helpers
@@ -404,6 +454,69 @@ module TB_Step8_FullSystem;
                  out_log[0], out_log[1], out_log[2], out_log[3], out_log[4],
                  out_log[5], out_log[6], out_log[7], out_log[8], out_log[9]);
         check(ext_ok === 1, "second INPUT re-runs program -> outputs [1..10]");
+
+        // ===================================================================
+        // Test 9: FLASH weights via MEM + a single mult against them.
+        //   Verifies the weight-flash + systolic-array mult path end to end.
+        //   Unified map (ISA addr -> WM phys = ISA-2):
+        //     rs1 @0x0002 = [[16,0],[0,16]]   -> WM phys 0..3
+        //     rs2 @0x0006 = [[16,32],[48,64]] -> WM phys 4..7
+        //     rd  @0x000A                      -> WM phys 8..11
+        //   Products 256/512/768/1024 requantized (>>8) -> [[1,2],[3,4]].
+        // ===================================================================
+        $display("Test 9: FLASH weights via MEM + single mult (coverage gap #3)");
+        rst = 0; repeat (4) @(posedge clk); rst = 1; repeat (4) @(posedge clk);
+        mode_select = 1'b0;
+        for (si = 0; si < 256; si = si + 1) shadow_wm[si] = 8'hEE;
+        spi_ss = 0;
+        send_spi_byte(FLASH_CODE);
+        send_mem4(16'h0002, 8'd16, 8'd0,  8'd0,  8'd16); // rs1
+        send_mem4(16'h0006, 8'd16, 8'd32, 8'd48, 8'd64); // rs2
+        send_program(mk_mul(16'h0002, 4'd2, 4'd2, 16'h0006, 4'd2, 4'd2, 16'h000A));
+        send_program(128'd0); // end
+        send_spi_byte(STOP_CODE);
+        spi_ss = 1;
+        wait_feeder_done(200000);
+        repeat (60) @(posedge clk);
+        $display("  mult result WM[8..11] = %0d %0d %0d %0d  (expect 1 2 3 4)",
+                 $signed(shadow_wm[8]),  $signed(shadow_wm[9]),
+                 $signed(shadow_wm[10]), $signed(shadow_wm[11]));
+        check((shadow_wm[8]  === 8'd1) && (shadow_wm[9]  === 8'd2) &&
+              (shadow_wm[10] === 8'd3) && (shadow_wm[11] === 8'd4),
+              "single mult from flashed weights = [1,2,3,4]");
+
+        // ===================================================================
+        // Test 10: two consecutive mult instructions in one program.
+        //   Both mults use the SAME operands and so must produce the SAME
+        //   result. mult1 -> rdA @0x000A (WM 8..11); mult2 -> rdB @0x000E
+        //   (WM 12..15). If the MAC accumulators are not cleared between the
+        //   two mults, mult2 accumulates on top of mult1 (doubling to
+        //   [[2,4],[6,8]] or saturating) and this test fails.
+        // ===================================================================
+        $display("Test 10: two consecutive mults — MAC clear between ops (possibility #2)");
+        rst = 0; repeat (4) @(posedge clk); rst = 1; repeat (4) @(posedge clk);
+        mode_select = 1'b0;
+        for (si = 0; si < 256; si = si + 1) shadow_wm[si] = 8'hEE;
+        spi_ss = 0;
+        send_spi_byte(FLASH_CODE);
+        send_mem4(16'h0002, 8'd16, 8'd0,  8'd0,  8'd16); // rs1
+        send_mem4(16'h0006, 8'd16, 8'd32, 8'd48, 8'd64); // rs2
+        send_program(mk_mul(16'h0002, 4'd2, 4'd2, 16'h0006, 4'd2, 4'd2, 16'h000A)); // mult1 -> WM 8..11
+        send_program(mk_mul(16'h0002, 4'd2, 4'd2, 16'h0006, 4'd2, 4'd2, 16'h000E)); // mult2 -> WM 12..15
+        send_program(128'd0); // end
+        send_spi_byte(STOP_CODE);
+        spi_ss = 1;
+        wait_feeder_done(200000);
+        repeat (80) @(posedge clk);
+        $display("  mult1 WM[8..11]  = %0d %0d %0d %0d",
+                 $signed(shadow_wm[8]),  $signed(shadow_wm[9]),
+                 $signed(shadow_wm[10]), $signed(shadow_wm[11]));
+        $display("  mult2 WM[12..15] = %0d %0d %0d %0d  (expect 1 2 3 4)",
+                 $signed(shadow_wm[12]), $signed(shadow_wm[13]),
+                 $signed(shadow_wm[14]), $signed(shadow_wm[15]));
+        check((shadow_wm[12] === 8'd1) && (shadow_wm[13] === 8'd2) &&
+              (shadow_wm[14] === 8'd3) && (shadow_wm[15] === 8'd4),
+              "second mult result = [1,2,3,4] (MACs cleared between mults)");
 
         // ===================================================================
         // Summary

@@ -2,6 +2,34 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-06-30 — Full-system mult tests (HW debug: constant 0x7F output)
+
+- **Context:** on hardware, a device-mode neural-network program (mult → add →
+  mult → add) outputs 0x7F (int8 positive saturation) regardless of input, while
+  a single-`end` program correctly passes the input through. Added two
+  full-system tests to localize the fault between the candidate causes.
+- **`tests/TB_Step8_FullSystem.v`** (8 → 10 cases): added a weight-memory shadow
+  (snoops the muxed weight-memory port-a writes) plus `mk_mul` / `send_mem4`
+  helpers, and:
+  - **Test 9 (coverage gap):** FLASH weights via MEM, then a single mult against
+    them (rs1 [[16,0],[0,16]] × rs2 [[16,32],[48,64]] → requantized [[1,2],[3,4]]).
+    Exercises the weight-flash + systolic-array mult path end to end — a path the
+    v0.2 full-system test had stopped covering (the rewrite used a relu-over-
+    0x1-buffer program with no weight matrix).
+  - **Test 10 (consecutive mults):** two mult instructions with identical
+    operands in one program (mult1 → WM 8..11, mult2 → WM 12..15). Both must
+    yield [[1,2],[3,4]]; if the MAC accumulators were not cleared between mults,
+    mult2 would double to [[2,4],[6,8]] or saturate.
+- **Result:** both tests PASS (Test 9 = [1,2,3,4]; Test 10 mult2 = [1,2,3,4]).
+  Full-system suite now 10/10. This exonerates the two RTL hypotheses in
+  simulation: the weight-flash+mult path is correct, and the MACs *are* cleared
+  between consecutive mults. The remaining likely cause is the requantization
+  scale (fixed `REQUANT_SHIFT = 8`) vs. how the network weights were quantized —
+  being investigated separately.
+- **Note:** ran in a local scratch work library; the Desktop `work/` dir hit a
+  transient file lock (OneDrive/Defender) during `vopt`. Testbench source
+  unaffected; no RTL changed.
+
 ## 2026-06-30 — Testbench coverage expansion (all 8 testbenches)
 
 - **Context:** lifted the prior 7-test-per-bench convention to add coverage of
