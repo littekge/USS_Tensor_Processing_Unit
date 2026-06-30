@@ -159,6 +159,8 @@ interpret external commands, the module instantiates the SPI_Interface module,
 reading from the SPI input buffer while idle to search for messages in the
 *Functional TPU Message Protocol* format (defined in `Functional_TPU_Message_Protocol_v0.2.md`).
 The module defines a complex finite state machine to implement these functions.
+Updated definition of IDLE meta-state to discard INPUT headers while in device
+mode.
 
 - **Synchronous Control Signals:**
   - **Inputs:**
@@ -187,8 +189,9 @@ mechanism for both modes, but each mode outputs a different number of values.
   SPI signals. External mode supports an input tensor of any size (via the
   *Functional TPU Message Protocol* — limited only by the size of the 0x1
   buffer) and 10 output values.
-- **Input and Output Data:** The module defines two data signals, *input_data*
-and *output_data* for sending output data and receiving input data in device mode.
+- **Input and Output Data:** The module defines two combinational data signals,
+*input_data* and *output_data* for receiving input data in device mode and
+sending output data in both modes.
 - **Meta-states:** The Programmer module defines a number of "meta-states" for the
 purpose of describing the state machine flow.
   - **IDLE:** default meta-state. Module awaits a condition that triggers a
@@ -197,7 +200,7 @@ purpose of describing the state machine flow.
   weight memory, and TPU_0x1_Buffer.
   - **DEVICE_INPUT:** Maintains the current program, but programs a new input by
   reading an *input_data* signal and writing the value to the first address in
-  the 0x1 Buffer.
+  the 0x1 buffer.
   - **DEVICE_OUTPUT:** Outputs the first value in the 0x1 buffer on program end.
   - **EXTERNAL_INPUT:** Maintains the current program, but programs a new input
   from an external *Functional TPU Message Protocol* transmission.
@@ -212,7 +215,8 @@ purpose of describing the state machine flow.
     valid *header code* is found or the buffer is empty. If a FLASH header
     code is found, transition immediately to PROGRAM. If an INPUT header is
     found and the programmer is in external mode, transition to
-    EXTERNAL_INPUT.
+    EXTERNAL_INPUT. If the programmer is in device mode, discard transmissions
+    with the INPUT header.
     - Else if the programmer is in device mode and *input_data_valid* is HIGH,
     transition to DEVICE_INPUT.
     - Else if *end_reached* (see Feeder module description) is HIGH, enter
@@ -227,33 +231,39 @@ purpose of describing the state machine flow.
     - Return to IDLE.
   - **DEVICE_INPUT:**
     - Assert *program* and *tpu_rst* LOW.
-    - Write *input_value* to the first address in the 0x1 buffer.
+    - Write *input_data* to the first address in the 0x1 buffer.
     - Assert *program* and *tpu_rst* HIGH.
     - Return to IDLE.
   - **DEVICE_OUTPUT:**
-    - Assert *program* LOW.
+    - Assert *program* LOW (gives access to 0x1 buffer).
     - Forward the data at the first address in the 0x1 buffer to *output_data*.
     - Assert *output_data_valid* HIGH for one clock cycle.
     - Assert *program* HIGH.
+    - Return to IDLE.
   - **EXTERNAL_INPUT:**
     - Assert *program* and *tpu_rst* LOW.
     - Decode the next *command code* and subsequent values (if needed).
     - Write relevant bytes (dependent on *command code*) to the 0x1 buffer.
     - Repeat the decode-write cycle until a valid *trailer code* is received.
     - Assert *program* and *tpu_rst* HIGH.
+    - Return to IDLE.
   - **EXTERNAL_OUTPUT:**
-    - Assert *program* LOW.
+    - Assert *program* LOW (gives access to 0x1 buffer).
     - Forward the data at the first address in the 0x1 buffer to *output_data*.
     - Assert *output_data_valid* HIGH for one clock cycle.
     - Wait until *device_ready* is pulsed HIGH for one clock cycle.
-    - repeat the forward, assert, wait cycle for the next 9 values in the 0x1 buffer.
+    - Repeat the forward, assert, wait cycle for the next 9 values in the 0x1 buffer.
     - Assert *program* HIGH.
+    - Return to IDLE.
 
 - **Error States:** The state machine defaults to a STATE_ERROR state in the
 event of undefined state machine behavior, a COM_ERROR state if it attempts to
 decode an invalid code, a WRITE_ERROR state if it attempts to write to an
 invalid memory address, and a PROG_OVERFLOW_ERROR state if the program memory
 runs out of space during programming.
+- **IDLE Priority:** The IDLE meta-state can transition into any of the other
+meta-states. The meta-state change priority is PROGRAM > DEVICE_INPUT =
+EXTERNAL_INPUT > DEVICE_OUTPUT = EXTERNAL_OUTPUT.
 - **Program Memory:** When writing to the program memory, the programmer starts
 from address 0x0. Subsequent writes to program memory (in a single transmission)
 should increment the address by 1 such that instructions are stored contiguously.

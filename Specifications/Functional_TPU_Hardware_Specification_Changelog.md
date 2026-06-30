@@ -2,6 +2,15 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-06-30 — Functional TPU Hardware Specification v0.2
+
+- General revision and clarification to Programmer module description (grammar,
+wording, etc.)
+- Clarified that *output_data* is used in both modes of the Programmer.
+- Updated definition of IDLE meta-state to discard INPUT headers while in device
+mode.
+- Added explicit priority to meta-state changes from IDLE.
+
 ## 2026-06-29 — Functional TPU Hardware Specification v0.2
 
 - Updated Programmer module to include multiple methods of IO in addition to programming.
