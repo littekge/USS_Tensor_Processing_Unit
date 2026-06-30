@@ -38,6 +38,8 @@
  *   Test 8:  VSRC_MEM (src=0x0001) → VDST_ACT — 0x1 Buffer as source
  *   Test 9:  VSRC_VEC_BUF → VDST_MEM (dest=0x0001) — 0x1 Buffer as destination
  *   Test 10: VSRC_MEM (src=0x0000) → VDST_ACT — zero source always returns 0x00
+ *   Test 11: VSRC_MEM → VDST_ALU_A — element_valid streaming to the ALU input
+ *   Test 12: VSRC_SA_OUT → VDST_MEM — negative requantization saturates to 0x80
  * -------------------------------------------------------------------------
  */
 
@@ -169,11 +171,17 @@ endtask
 // ---------------------------------------------------------------------------
 reg [31:0] sa_c_stub;
 
+// neg_mode (Test 12): drives MAC(0,0) to a large negative accumulator so the
+// requantizer must saturate to -128 (0x80).
+reg neg_mode;
+
 // Selects specific values used in Test 6:
 //   MAC(row=0,col=0) → 256  → requantized to 0x01
 //   MAC(row=1,col=0) → 40000 → saturates to  0x7F
+// and in Test 12 (neg_mode): MAC(0,0) → -40000 → saturates to 0x80.
 always @(*) begin
-    if      (vp_sa_row == 4'd0 && vp_sa_col == 4'd0) sa_c_stub = 32'd256;
+    if      (neg_mode && vp_sa_row == 4'd0 && vp_sa_col == 4'd0) sa_c_stub = -32'sd40000;
+    else if (vp_sa_row == 4'd0 && vp_sa_col == 4'd0) sa_c_stub = 32'd256;
     else if (vp_sa_row == 4'd1 && vp_sa_col == 4'd0) sa_c_stub = 32'd40000;
     else                                               sa_c_stub = 32'd0;
 end
@@ -301,6 +309,7 @@ initial begin
     sa_ok            = 1;
     capture_sa_top   = 0;
     capture_active   = 0;
+    neg_mode         = 0;
     vb_head          = 4'd0;
     vb_tail          = 4'd0;
     vb_cnt           = 5'd0;
@@ -479,6 +488,38 @@ initial begin
     if (ev_data[1] !== 8'h00) ev_ok = 0;
 
     check(ev_ok === 1, 10);
+
+    // -----------------------------------------------------------------------
+    // TEST 11: VSRC_MEM → VDST_ALU_A  (stream WM data to the ALU input A)
+    //   WM[0..1] = 0xB1, 0xB2. The VP routes ALU destinations the same way as
+    //   the activator: element_valid pulses with o_data = 0xB1, 0xB2.
+    // -----------------------------------------------------------------------
+    do_reset;
+    wm_mem[0] = 8'hB1; wm_mem[1] = 8'hB2;
+    ev_count = 0; ev_ok = 1;
+
+    vp_start_and_wait(VSRC_MEM, VDST_ALU_A, 16'h0002, 16'h0002, 16'd2, 4'd0, 4'd0);
+
+    if (ev_count !== 2)        ev_ok = 0;
+    if (ev_data[0] !== 8'hB1) ev_ok = 0;
+    if (ev_data[1] !== 8'hB2) ev_ok = 0;
+
+    check(ev_ok === 1, 11);
+
+    // -----------------------------------------------------------------------
+    // TEST 12: VSRC_SA_OUT → VDST_MEM  (negative requantization saturation)
+    //   neg_mode drives MAC(0,0) = -40000; -40000 >>> 8 = -157 < -128, so the
+    //   requantizer saturates to -128 = 0x80. dim0=1, dim1=1 (single element).
+    // -----------------------------------------------------------------------
+    do_reset;
+    neg_mode = 1'b1;
+    wm_mem[0] = 8'hFF;  // sentinel
+
+    vp_start_and_wait(VSRC_SA_OUT, VDST_MEM, 16'd0, 16'h0002, 16'd0, 4'd1, 4'd1);
+    @(posedge clk); #1;
+
+    check(wm_mem[0] === 8'h80, 12);
+    neg_mode = 1'b0;
 
     // -----------------------------------------------------------------------
     // Summary

@@ -2,6 +2,35 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-06-30 — Testbench coverage expansion (all 8 testbenches)
+
+- **Context:** lifted the prior 7-test-per-bench convention to add coverage of
+  behaviors that were previously untested. No RTL changed; tests only.
+- **`tests/TB_Step1_Programmer.v`** (7 → 12 cases / 19 sub-checks): added
+  COM_ERROR on an invalid command code; WRITE_ERROR on a MEM command to ISA
+  address 0x0000; EXTERNAL_INPUT unified routing to *weight* memory (not just the
+  0x1 buffer); PROGRAM command inside an INPUT transmission → COM_ERROR (the
+  EXTERNAL_INPUT clarification); and IDLE discarding stray non-header bytes
+  before a valid FLASH. Error tests reset the DUT (error states are terminal).
+- **`tests/TB_Step2_Feeder.v`** (7 → 9): re-added the FEED_ERROR exhaustion test
+  (previously displaced by the end_reached test) and added a check that
+  end_reached never pulses while forwarding non-terminating instructions.
+- **`tests/TB_Step3_Controller.v`** (7 → 9): systolic_array_start is asserted for
+  mult but not for relu/add; function-code decode (relu → activator RELU, add →
+  ALU ADD, mult → both NOOP).
+- **`tests/TB_Step4_VectorProcessor.v`** (10 → 12): VSRC_MEM → VDST_ALU_A
+  element_valid streaming; VSRC_SA_OUT negative requantization saturating to
+  0x80 (added a `neg_mode` to the SA accumulator stub).
+- **`tests/TB_Step5_Activator.v`, `tests/TB_Step6_ALU.v`** (6 → 7 each): invalid
+  function/operation code drives the control-error debug value (29).
+- **`tests/TB_Step7_SystolicArray.v`** (7 → 8): `clear` zeroes a MAC accumulator
+  (residual data flushed between operations).
+- **`tests/TB_Step8_FullSystem.v`** (7 → 8): external re-input without re-FLASH —
+  a second INPUT transmission re-runs the resident program and emits 10 new relu
+  outputs [1..10], exercising the steady-state operating loop.
+- **Verification (Questa 2023.3):** full regression — Step1 19/19, Step2 9/9,
+  Step3 9/9, Step4 12/12, Step5 7/7, Step6 7/7, Step7 8/8, Step8 8/8. All PASS.
+
 ## 2026-06-30 — v0.2 Step 5: Full-system test rewrite (both IO modes) + final regression
 
 - **`tests/TB_Step8_FullSystem.v` rewritten** to drive the top-level `TPU`

@@ -38,6 +38,7 @@
  *   Test 7: A loaded MAC tile accumulates a non-zero product and the o_c
  *           output mux selects MAC(col=i_col, row=i_row); untouched tiles
  *           read back zero.
+ *   Test 8: clear zeroes a MAC accumulator (residual data flushed between ops).
  * -------------------------------------------------------------------------
  */
 
@@ -326,6 +327,40 @@ begin
         #1;
         other_zero = (c_out === 32'd0);
         check(corner_ok && other_zero, 7);
+    end
+
+    // -----------------------------------------------------------------------
+    // Test 8: clear zeroes a MAC accumulator. Accumulate a non-zero product
+    //         into MAC(0,0), then assert clear and confirm the accumulator is
+    //         flushed to zero (residual data does not survive between ops).
+    // -----------------------------------------------------------------------
+    do_reset;
+    push_top(0, 8'd2);
+    push_top(0, 8'd2);
+    push_left(0, 8'd3);
+    push_left(0, 8'd3);
+    pulse_start;
+    guard = 0;
+    while ((sa_idle === 1'b0) && (guard < 128))
+    begin
+        @(posedge clk); #1;
+        guard = guard + 1;
+    end
+    sel_col = 4'd0;
+    sel_row = 4'd0;
+    #1;
+    begin : clear_check
+        reg nonzero_before;
+        nonzero_before = (c_out != 32'd0);
+        // Assert clear for one cycle to flush the MAC accumulators.
+        clear = 1'b1;
+        @(posedge clk); #1;
+        clear = 1'b0;
+        @(posedge clk); #1;
+        sel_col = 4'd0;
+        sel_row = 4'd0;
+        #1;
+        check((nonzero_before === 1'b1) && (c_out === 32'd0), 8);
     end
 
     // -----------------------------------------------------------------------

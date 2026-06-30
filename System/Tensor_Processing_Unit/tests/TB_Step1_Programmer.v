@@ -45,6 +45,15 @@
  *           paced by the i_device_ready handshake.
  *   Test 7: INPUT header — external mode writes a MEM block to memory; device
  *           mode discards the INPUT transmission (no writes).
+ *   Test 8: COM_ERROR — an invalid command code after a FLASH header halts the
+ *           FSM in COM_ERROR with no memory writes.
+ *   Test 9: WRITE_ERROR — a MEM command targeting ISA address 0x0000 halts the
+ *           FSM in WRITE_ERROR with no memory writes.
+ *   Test 10: EXTERNAL_INPUT unified routing — an INPUT/MEM block to ISA 0x0005
+ *           writes to WEIGHT memory (not just the 0x1 buffer).
+ *   Test 11: PROGRAM command inside an INPUT transmission is invalid -> COM_ERROR
+ *           (no program-memory writes).
+ *   Test 12: IDLE discards stray non-header bytes; a following FLASH still works.
  * -------------------------------------------------------------------------
  */
 
@@ -98,6 +107,10 @@ module TB_Step1_Programmer;
     localparam [7:0] MEM_CODE   = 8'h4D;
     localparam [7:0] PROG_CODE  = 8'h50;
     localparam [7:0] STOP_CODE  = 8'h53;
+
+    // Programmer error-state encodings (must match Programmer.v)
+    localparam [5:0] S_COM_ERROR   = 6'd53;
+    localparam [5:0] S_WRITE_ERROR = 6'd54;
 
     // -----------------------------------------------------------------------
     // DUT
@@ -458,6 +471,117 @@ module TB_Step1_Programmer;
         repeat (400) @(posedge clk);
         report((buf_write_count === 0) && (wm_write_count === 0),
                "device-mode INPUT transmission discarded (no writes)");
+
+        // ===================================================================
+        // Test 8: COM_ERROR on an invalid command code after a FLASH header
+        // ===================================================================
+        $display("Test 8: COM_ERROR on invalid command code");
+        rst = 0; repeat (3) @(posedge clk); rst = 1; repeat (3) @(posedge clk);
+        mode_select     = 1'b0;
+        wm_write_count  = 0;
+        buf_write_count = 0;
+        pm_write_count  = 0;
+        spi_ss = 0;
+        send_spi_byte(FLASH_CODE);
+        send_spi_byte(8'hFF);   // invalid command code
+        spi_ss = 1;
+        repeat (300) @(posedge clk);
+        report((dut.S === S_COM_ERROR) && (wm_write_count === 0) &&
+               (buf_write_count === 0) && (pm_write_count === 0),
+               "COM_ERROR, no writes on invalid command code");
+
+        // ===================================================================
+        // Test 9: WRITE_ERROR on a MEM command targeting ISA address 0x0000
+        // ===================================================================
+        $display("Test 9: WRITE_ERROR on MEM to address 0x0000");
+        rst = 0; repeat (3) @(posedge clk); rst = 1; repeat (3) @(posedge clk);
+        mode_select     = 1'b0;
+        wm_write_count  = 0;
+        buf_write_count = 0;
+        spi_ss = 0;
+        send_spi_byte(FLASH_CODE);
+        send_spi_byte(MEM_CODE);
+        send_spi_byte(8'h00); // LADD = 0
+        send_spi_byte(8'h00); // UADD = 0  -> ISA address 0x0000 (illegal)
+        send_spi_byte(8'h01); // LLEN = 1
+        send_spi_byte(8'h00); // ULEN
+        send_spi_byte(8'hAA); // data (must NOT be written)
+        spi_ss = 1;
+        repeat (300) @(posedge clk);
+        report((dut.S === S_WRITE_ERROR) && (wm_write_count === 0) &&
+               (buf_write_count === 0),
+               "WRITE_ERROR, no writes on MEM to address 0");
+
+        // ===================================================================
+        // Test 10: EXTERNAL_INPUT unified routing -> weight memory
+        //   external mode, INPUT + MEM @ISA 0x0005 (WM phys 3), 2 bytes.
+        // ===================================================================
+        $display("Test 10: EXTERNAL_INPUT MEM routes to weight memory");
+        rst = 0; repeat (3) @(posedge clk); rst = 1; repeat (3) @(posedge clk);
+        mode_select    = 1'b1; // external mode
+        wm_write_count = 0;
+        spi_ss = 0;
+        send_spi_byte(INPUT_CODE);
+        send_spi_byte(MEM_CODE);
+        send_spi_byte(8'h05); // LADD = ISA 0x0005
+        send_spi_byte(8'h00); // UADD
+        send_spi_byte(8'h02); // LLEN = 2
+        send_spi_byte(8'h00); // ULEN
+        send_spi_byte(8'h77);
+        send_spi_byte(8'h88);
+        send_spi_byte(STOP_CODE);
+        spi_ss = 1;
+        timeout = 0;
+        while (wm_write_count < 2 && timeout < 6000) begin
+            @(posedge clk); timeout = timeout + 1;
+        end
+        report((wm_write_count === 2) &&
+               (wm_addr_log[0] === 16'd3) && (wm_data_log[0] === 8'h77) &&
+               (wm_addr_log[1] === 16'd4) && (wm_data_log[1] === 8'h88),
+               "external INPUT writes 0x77/0x88 to WM phys 3/4");
+
+        // ===================================================================
+        // Test 11: PROGRAM command inside an INPUT transmission -> COM_ERROR
+        // ===================================================================
+        $display("Test 11: PROGRAM command in INPUT transmission -> COM_ERROR");
+        rst = 0; repeat (3) @(posedge clk); rst = 1; repeat (3) @(posedge clk);
+        mode_select    = 1'b1; // external mode
+        pm_write_count = 0;
+        spi_ss = 0;
+        send_spi_byte(INPUT_CODE);
+        send_spi_byte(PROG_CODE);  // invalid command for an INPUT session
+        spi_ss = 1;
+        repeat (300) @(posedge clk);
+        report((dut.S === S_COM_ERROR) && (pm_write_count === 0),
+               "COM_ERROR, no program-memory writes");
+
+        // ===================================================================
+        // Test 12: IDLE discards stray non-header bytes before a valid FLASH
+        // ===================================================================
+        $display("Test 12: stray non-header bytes discarded; following FLASH works");
+        rst = 0; repeat (3) @(posedge clk); rst = 1; repeat (3) @(posedge clk);
+        mode_select    = 1'b0;
+        wm_write_count = 0;
+        spi_ss = 0;
+        send_spi_byte(8'h00);   // junk (not a header)
+        send_spi_byte(8'hFF);   // junk
+        send_spi_byte(8'h4D);   // junk (MEM code outside a session -> discarded)
+        send_spi_byte(FLASH_CODE);
+        send_spi_byte(MEM_CODE);
+        send_spi_byte(8'h05);   // ISA 0x0005 -> WM phys 3
+        send_spi_byte(8'h00);
+        send_spi_byte(8'h01);   // LLEN = 1
+        send_spi_byte(8'h00);
+        send_spi_byte(8'h5C);
+        send_spi_byte(STOP_CODE);
+        spi_ss = 1;
+        timeout = 0;
+        while (wm_write_count < 1 && timeout < 6000) begin
+            @(posedge clk); timeout = timeout + 1;
+        end
+        report((wm_write_count === 1) && (wm_addr_log[0] === 16'd3) &&
+               (wm_data_log[0] === 8'h5C),
+               "FLASH after junk writes 0x5C to WM phys 3");
 
         // ===================================================================
         // Summary

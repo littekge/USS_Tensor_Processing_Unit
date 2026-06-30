@@ -65,6 +65,9 @@
  *           handshake.
  *   Test 6: External output values equal relu(inputs) (pass-through + clamp).
  *   Test 7: Clean completion — Controller IDLE, Feeder DONE, no fault states.
+ *   Test 8: External re-input without re-FLASH — a second INPUT transmission
+ *           re-runs the resident program and emits 10 new relu outputs
+ *           (steady-state operating loop).
  * -------------------------------------------------------------------------
  */
 
@@ -372,6 +375,35 @@ module TB_Step8_FullSystem;
         check((dut.ctrl.S === CTRL_IDLE) && (dut.feeder.S === FEEDER_DONE) &&
               (dut.program === 1'b1),
               "Controller IDLE, Feeder DONE, program HIGH at end");
+
+        // ===================================================================
+        // Test 8: external re-input without re-FLASH (steady-state loop).
+        //   Send a second INPUT vector (all positive) to the resident len-10
+        //   relu program; expect 10 new pass-through outputs [1..10].
+        // ===================================================================
+        $display("Test 8: external re-input re-runs resident program");
+        for (m = 0; m < 10; m = m + 1) ext_in[m] = m + 1; // 1..10 (all positive)
+        out_count = 0;
+        spi_ss = 0;
+        send_spi_byte(INPUT_CODE);
+        send_spi_byte(MEM_CODE);
+        send_spi_byte(8'h01);   // ISA 0x0001 (0x1 buffer)
+        send_spi_byte(8'h00);
+        send_spi_byte(8'd10);   // LLEN = 10
+        send_spi_byte(8'd0);
+        for (m = 0; m < 10; m = m + 1) send_spi_byte(ext_in[m]);
+        send_spi_byte(STOP_CODE);
+        spi_ss = 1;
+        wait_outputs(10, 400000);
+        repeat (40) @(posedge clk);
+        ext_ok = 1;
+        if (out_count !== 10) ext_ok = 0;
+        for (m = 0; m < 10; m = m + 1)
+            if (out_log[m] !== ext_in[m]) ext_ok = 0;
+        $display("  out: %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d",
+                 out_log[0], out_log[1], out_log[2], out_log[3], out_log[4],
+                 out_log[5], out_log[6], out_log[7], out_log[8], out_log[9]);
+        check(ext_ok === 1, "second INPUT re-runs program -> outputs [1..10]");
 
         // ===================================================================
         // Summary

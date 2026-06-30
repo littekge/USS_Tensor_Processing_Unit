@@ -35,6 +35,8 @@
  *   Test 6: Correct instruction content forwarded (first of two non-end instr)
  *   Test 7: end_reached pulses HIGH for exactly one cycle when end is fetched
  *           (and the Feeder reaches DONE)
+ *   Test 8: FEED_ERROR entered when all PM addresses are exhausted with no end
+ *   Test 9: end_reached never pulses while forwarding non-terminating instrs
  * -------------------------------------------------------------------------
  */
 
@@ -346,6 +348,65 @@ begin
 
     // Exactly one end_reached pulse, Feeder in DONE (4'd7), no controller_start.
     report_test((end_pulse_count == 1) && (dut.S == 4'd7), 7);
+
+    // =======================================================================
+    // Test 8: FEED_ERROR entered when all PM addresses are exhausted (no end).
+    // Fill all 4 addresses with non-terminating instructions and process them
+    // all; after the last ack the Feeder must enter FEED_ERROR and freeze.
+    // =======================================================================
+    pmem[0] = make_mult(16'h0002, 16'h0003, 16'h0004);
+    pmem[1] = make_mult(16'h0002, 16'h0003, 16'h0004);
+    pmem[2] = make_mult(16'h0002, 16'h0003, 16'h0004);
+    pmem[3] = make_mult(16'h0002, 16'h0003, 16'h0004);
+
+    do_reset;
+    ctrl_idle = 1'b0;
+
+    repeat (4)
+    begin
+        for (i = 0; i < 30 && dut_ctrl_start == 1'b0; i = i + 1)
+            @(posedge clk); #1;
+        controller_ack;
+    end
+
+    repeat (5) @(posedge clk); #1;
+
+    feed_error_ok = 1'b1;
+    for (i = 0; i < 10; i = i + 1)
+    begin
+        @(posedge clk); #1;
+        if (dut_ctrl_start == 1'b1)
+            feed_error_ok = 1'b0;
+    end
+    if (pm_address != PM_MAX)
+        feed_error_ok = 1'b0;
+
+    report_test(feed_error_ok, 8);
+
+    // =======================================================================
+    // Test 9: end_reached never pulses while forwarding non-terminating
+    // instructions. No end exists anywhere in memory, so end_reached must stay
+    // LOW regardless of timing as several instructions are forwarded.
+    // =======================================================================
+    pmem[0] = make_mult(16'h0002, 16'h0003, 16'h0004);
+    pmem[1] = make_add_instr(16'h0002, 16'h0003, 16'h0004);
+    pmem[2] = make_mult(16'h0002, 16'h0003, 16'h0004);
+    pmem[3] = make_add_instr(16'h0002, 16'h0003, 16'h0004);
+
+    end_pulse_count = 0;
+    do_reset;
+    ctrl_idle = 1'b0;
+
+    // Forward and ack the two non-terminating instructions, then check no pulse
+    // occurred (the end at address 2 is not fetched).
+    repeat (2)
+    begin
+        for (i = 0; i < 30 && dut_ctrl_start == 1'b0; i = i + 1)
+            @(posedge clk); #1;
+        controller_ack;
+    end
+
+    report_test((end_pulse_count == 0), 9);
 
     // =======================================================================
     // Summary

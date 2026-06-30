@@ -33,6 +33,7 @@
  *   Test 4: i_enable routes to o_write for a non-NOOP function
  *   Test 5: NOOP function — placeholder o_data and o_write suppressed (LOW)
  *   Test 6: ReLu operation functions correctly
+ *   Test 7: invalid function code drives the control-error value (29)
  * -------------------------------------------------------------------------
  */
  
@@ -210,7 +211,19 @@ begin
 		
 		check(relu_pass_count === 2, 6);
 	end
-	
+
+	// -----------------------------------------------------------------------
+   // Test 7: invalid function code -> control-error value (29)
+   // -----------------------------------------------------------------------
+	trst = 1'b1;
+	act_enable = 1'b1;
+	clear = 1'b0;
+	in_data = 8'd20;
+	activator_funct = 3'd2; // neither RELU (0) nor NOOP (7)
+	@(posedge clk); #1;
+	@(posedge clk); #1;
+	check(out_data === 8'd29, 7);
+
 	// -----------------------------------------------------------------------
    // Summary
    // -----------------------------------------------------------------------

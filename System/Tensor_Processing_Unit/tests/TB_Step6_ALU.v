@@ -33,6 +33,7 @@
  *   Test 4: ADD operation functions correctly
  *   Test 5: positive clamping functions correctly
  *   Test 6: negative clamping functions correctly
+ *   Test 7: invalid operation code drives the control-error value (29)
  * -------------------------------------------------------------------------
  */
  
@@ -216,7 +217,19 @@ begin
 	alu_funct = 3'h0;
 	@(posedge clk); #1;
 	check(out_data === -8'd128, 6);
-	
+
+	// -----------------------------------------------------------------------
+   // Test 7: invalid operation code -> control-error value (29)
+   // -----------------------------------------------------------------------
+	trst = 1'b1;
+	alu_enable = 1'b1;
+	clear = 1'b0;
+	in_data_a = 8'd20;
+	in_data_b = 8'd21;
+	alu_funct = 3'd2; // neither ADD (0) nor NOOP (7)
+	@(posedge clk); #1;
+	check(out_data === 8'd29, 7);
+
 	// -----------------------------------------------------------------------
    // Summary
    // -----------------------------------------------------------------------
