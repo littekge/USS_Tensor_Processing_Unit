@@ -26,10 +26,11 @@ module TPU (
     // Programmer IO passthrough
     input             i_mode_select,        // LOW = device mode, HIGH = external mode
     input             i_input_data_valid,   // one-cycle pulse: i_input_data valid
-    input             i_device_ready,       // one-cycle pulse: consumer ready for output
+    input             i_device_ready,       // HIGH while consumer is ready for the next output value
     input      [7:0]  i_input_data,         // device-mode input value
     output wire [7:0] o_output_data,        // output value (both modes)
     output wire       o_output_data_valid,  // one-cycle pulse: o_output_data valid
+	 output wire		 o_end_reached,   // one-cycle pulse when an end instruction is fetched
 
     // ---------- DEBUG ---------- //
 	 output wire [31:0] o_debug_val
@@ -61,6 +62,7 @@ wire prog_tpu_rst;
 
 // feeder end_reached strobe (routed to the Programmer to trigger output)
 wire feeder_end_reached;
+assign o_end_reached = feeder_end_reached;
 
 // trst: LOW when global reset (rst) is LOW OR the Programmer asserts tpu_rst LOW.
 // This lets the Programmer reset the TPU internals independently of its memory

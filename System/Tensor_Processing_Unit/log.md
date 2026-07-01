@@ -2,6 +2,49 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-01 — Hardware Spec minor update (device_ready level, EXTERNAL_OUTPUT order, end_reached exposed)
+
+- **Context:** Hardware Spec changelog 2026-07-01 made three changes affecting
+  the Programmer, Feeder, and TPU modules. Wrapper `Tensor_Processing_Unit.v`
+  intentionally not modified (per instruction; user manages it).
+- **`TPU/PROGRAMMER/Programmer.v`** — EXTERNAL_OUTPUT reordered to match the spec:
+  for each of the 10 values it now **forwards the datum, waits for
+  `i_device_ready` HIGH, then pulses `output_data_valid`** (previously it pulsed
+  valid before waiting). State flow changed to `X_OUT_FWD → X_OUT_WAIT_RDY →
+  X_OUT_VALID → X_OUT_INC`; the valid strobe moved from `X_OUT_FWD` to
+  `X_OUT_VALID`. Updated the `i_device_ready` comment to reflect that it is a
+  level (HIGH while the consumer is ready), not a one-cycle pulse. The existing
+  `X_OUT_WAIT_RDY` logic already treated it as a level, so no other change.
+- **`TPU/TPU.v`** — exposed the Feeder's `end_reached` at the TPU boundary.
+  Corrected the port declaration `O_end_reached` → `o_end_reached` so the port,
+  the internal `assign o_end_reached = feeder_end_reached`, and the wrapper's
+  `.o_end_reached(...)` connection all agree (and conform to the `o_` naming
+  convention). Updated the `i_device_ready` passthrough comment.
+- **`TPU/PROGRAMMER/Feeder.v`** — no change required; it already outputs
+  `o_end_reached` (one-cycle strobe), which the spec change only re-exposes at
+  the TPU level.
+- **Tests:**
+  - `tests/TB_Step8_FullSystem.v` — connect the new `o_end_reached` port
+    (unused); the EXTERNAL_OUTPUT tests still pass under the reordered flow.
+    Pinned `REQUANT_SHIFT = 8` via `defparam` on both VPs so the mult compute
+    tests (9/10) verify the datapath deterministically regardless of the file's
+    requant default (now 11, tuned for the NN under bring-up).
+  - `tests/TB_Step4_VectorProcessor.v` — pinned `REQUANT_SHIFT = 8` via
+    `defparam` for the same reason (Tests 6/12 check SA-output requant and
+    saturation, which are scale-dependent).
+- **Verification (Questa 2023.3):** full regression with the file default
+  `REQUANT_SHIFT = 11` — Step1 19/19, Step2 9/9, Step3 9/9, Step4 12/12,
+  Step5 7/7, Step6 7/7, Step7 8/8, Step8 10/10. All PASS.
+
+## 2026-07-01 — Display Logic Update
+
+- **Updated display logic in `Tensor_Processing_Unit.v`.**
+- Moved debug logic to main code block — display output is an intended feature 
+now.
+- Renamed variables for clarity.
+- Added proper MUX logic for programmer *mode_select*.
+- **In TPU module:** exposed *end_reached* from Feeder module as an output.
+
 ## 2026-06-30 — Full-system mult tests (HW debug: constant 0x7F output)
 
 - **Context:** on hardware, a device-mode neural-network program (mult → add →

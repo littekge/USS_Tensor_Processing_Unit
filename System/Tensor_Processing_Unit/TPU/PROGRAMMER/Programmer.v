@@ -14,8 +14,9 @@
  *   DEVICE_OUTPUT   - device mode: emit the first 0x1-buffer value on end.
  *   EXTERNAL_INPUT  - external mode: INPUT header writes a new input to memory
  *                     (unified address routing; PROGRAM command invalid).
- *   EXTERNAL_OUTPUT - external mode: emit the first 10 0x1-buffer values on end,
- *                     pacing each value with the i_device_ready handshake.
+ *   EXTERNAL_OUTPUT - external mode: emit the first 10 0x1-buffer values on end.
+ *                     For each value the module forwards the datum, waits for
+ *                     i_device_ready HIGH, then pulses output_data_valid.
  *
  * o_program (active LOW) hands the device memory bus to the Programmer.
  * o_tpu_rst (active LOW) holds the TPU processing internals in reset while
@@ -30,7 +31,7 @@ module Programmer (
     // Device-level IO
     input              i_mode_select,       // LOW = device mode, HIGH = external mode
     input              i_input_data_valid,  // one-cycle pulse: i_input_data valid
-    input              i_device_ready,      // one-cycle pulse: consumer ready for next output
+    input              i_device_ready,      // HIGH while the consumer is ready for the next output value
     input      [7:0]   i_input_data,        // device-mode input value
     output reg [7:0]   o_output_data,       // output value (both modes)
     output reg         o_output_data_valid, // one-cycle pulse: o_output_data valid
@@ -292,9 +293,10 @@ always @(*) begin
         X_OUT_ADDR:     NS = X_OUT_WAIT1;
         X_OUT_WAIT1:    NS = X_OUT_WAIT2;
         X_OUT_WAIT2:    NS = X_OUT_FWD;
-        X_OUT_FWD:      NS = X_OUT_VALID;
-        X_OUT_VALID:    NS = X_OUT_WAIT_RDY;
-        X_OUT_WAIT_RDY: NS = (i_device_ready == 1'b1) ? X_OUT_INC : X_OUT_WAIT_RDY;
+        // Forward the datum, then wait for device_ready HIGH before pulsing valid.
+        X_OUT_FWD:      NS = X_OUT_WAIT_RDY;
+        X_OUT_WAIT_RDY: NS = (i_device_ready == 1'b1) ? X_OUT_VALID : X_OUT_WAIT_RDY;
+        X_OUT_VALID:    NS = X_OUT_INC;
         X_OUT_INC:      NS = (out_cnt == EXT_OUTPUT_COUNT - 1) ? X_OUT_DONE : X_OUT_ADDR;
         X_OUT_DONE:     NS = IDLE_CHECK;
 
@@ -486,10 +488,10 @@ always @(posedge i_clk or negedge i_rst) begin
                 end_latched <= 1'b0;
             end
             X_OUT_ADDR: o_buf_address_a <= {12'd0, out_cnt};
-            X_OUT_FWD: begin
-                o_output_data       <= i_buf_q_a;
-                o_output_data_valid <= 1'b1;
-            end
+            // Forward the datum now; valid is asserted only after device_ready.
+            X_OUT_FWD:  o_output_data <= i_buf_q_a;
+            // device_ready seen HIGH -> pulse output_data_valid for one cycle.
+            X_OUT_VALID: o_output_data_valid <= 1'b1;
             X_OUT_INC:  out_cnt   <= out_cnt + 4'd1;
             X_OUT_DONE: o_program <= 1'b1;
 

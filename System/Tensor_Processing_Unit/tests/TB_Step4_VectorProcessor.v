@@ -222,6 +222,11 @@ Vector_Processor dut (
     .i_sa_c               (sa_c_stub)
 );
 
+// Pin the requantization scale so Tests 6/12 (SA-output requant + saturation)
+// verify the datapath deterministically, independent of the file's
+// REQUANT_SHIFT default (which is tuned per neural network).
+defparam dut.REQUANT_SHIFT = 8;
+
 // ---------------------------------------------------------------------------
 // Signal capture registers (updated every clock by always block)
 // ---------------------------------------------------------------------------

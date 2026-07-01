@@ -140,8 +140,16 @@ module TB_Step8_FullSystem;
         .i_input_data        (input_data),
         .o_output_data       (output_data),
         .o_output_data_valid (output_data_valid),
+        .o_end_reached       (),                // exposed at TPU boundary; unused here
         .o_debug_val         (debug_val)
     );
+
+    // Pin the mult requantization scale for the compute tests (Tests 9-10) so
+    // they verify the datapath deterministically, independent of the file's
+    // REQUANT_SHIFT default (which is tuned per neural network). VP_A performs
+    // the systolic-array read-back/requant; VP_B is pinned too for safety.
+    defparam dut.vp_a.REQUANT_SHIFT = 8;
+    defparam dut.vp_b.REQUANT_SHIFT = 8;
 
     initial clk = 0;
     always #CLK_HALF clk = ~clk;
