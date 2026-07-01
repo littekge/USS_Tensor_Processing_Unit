@@ -40,9 +40,11 @@ parameter [2:0]
 // ---------- END PARAMETERS ---------- //
 
 // ---------- CODE ---------- //
-// The ALU implementation is combinational, so i_enable is passed through to o_write
-// for writing to the vector buffer.
-assign o_write = i_enable;
+// The ALU implementation is combinational, so i_enable drives o_write for
+// writing to the vector buffer. Buffer writing is suppressed when the operation
+// is NO OP (per the hardware spec) so a non-ALU operation cannot push
+// stale/placeholder data into the vector buffer.
+assign o_write = i_enable & (i_alu_op != NOOP);
 
 // Unused; applicable for operations like element-wise multiplication, which
 // is not currently implemented.

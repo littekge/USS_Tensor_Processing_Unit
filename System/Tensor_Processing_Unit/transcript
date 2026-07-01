@@ -14,14 +14,14 @@
 # //  18 U.S.C. Section 1905.
 # //
 # vsim -L altera_mf_ver -voptargs="+acc" -gui work.TB_Step8_FullSystem -do "add wave -r /*; run -all" 
-# Start time: 14:15:11 on Jun 22,2026
+# Start time: 16:36:36 on Jun 30,2026
 # ** Note: (vsim-3812) Design is being optimized...
 # ** Warning: (vopt-10587) Some optimizations are turned off because the +acc switch is in effect. This will cause your simulation to run slowly. Please use -access/-debug to maintain needed visibility.
+# ** Note: (vopt-143) Recognized 1 FSM in module "Systolic_Array(fast)".
 # ** Note: (vopt-143) Recognized 1 FSM in module "Programmer(fast)".
+# ** Note: (vopt-143) Recognized 1 FSM in module "Vector_Processor(fast)".
 # ** Note: (vopt-143) Recognized 1 FSM in module "Controller(fast)".
 # ** Note: (vopt-143) Recognized 1 FSM in module "Feeder(fast)".
-# ** Note: (vopt-143) Recognized 1 FSM in module "Systolic_Array(fast)".
-# ** Note: (vopt-143) Recognized 1 FSM in module "Vector_Processor(fast)".
 # ** Note: (vsim-12126) Error and warning message counts have been restored: Errors=0, Warnings=1.
 # Loading work.TB_Step8_FullSystem(fast)
 # Loading work.TPU(fast)
@@ -53,33 +53,37 @@
 # Loading work.Multiply_Accumulate_Unit(fast)
 # add wave -r /*
 #  run -all
-# 
-# feeder.S = 7 (DONE=7), ctrl.S = 2 (IDLE=2), program=1, wait=185
-# mult inputs  WM[0..3]  = 16 0 0 16
-# mult inputs  WM[4..7]  = 16 32 48 64
-# mult result  WM[8..11] = 1 2 3 4  (expect 1 2 3 4)
-# relu result  WM[16..19]= 0 7 0 100  (expect 0 7 0 100)
-# add  result  WM[28..31]= 15 17 -128 127  (expect 15 17 -128 127)
-# 
-# Test 1: programming over SPI completes and weights stored
-#   PASS: and mult inputs in weight memory
-# Test 2: syscall terminates instruction fetch
-#   PASS: eeder reached DONE after syscall
-# Test 3: mult result C = rs1 * rs2 (requantized)
-#   PASS: mult result [1,2,3,4]
-# Test 4: relu result max(0,x)
-#   PASS: relu result [0,7,0,100]
-# Test 5: add result element-wise sum
-#   PASS: esult first two elements [15,17]
-# Test 6: add saturation clamps to int8 range
-#   PASS: add saturates [-128, 127]
-# Test 7: program ran to completion with no fault states
-#   PASS: ller IDLE and Feeder DONE at end
+# Test 1: device-mode FLASH completes
+#   PASS: st HIGH, Feeder DONE after FLASH
+# Test 2: device input 42 -> relu -> output 42
+#   PASS: device output equals 42
+# Test 3: device input -9 -> relu -> output 0
+#   PASS: ice output equals 0 (relu clamp)
+# Test 4: external-mode re-FLASH completes
+#   PASS: Feeder DONE after external FLASH
+# Test 5: external output emits 10 values
+#   PASS: tted with device_ready handshake
+# Test 6: external output values equal relu(inputs)
+#   out: 10 0 0 127 0 5 0 100 0 64
+#   exp: 10 0 0 127 0 5 0 100 0 64
+#   PASS: ll 10 outputs equal relu(inputs)
+# Test 7: clean completion (no fault states)
+#   PASS: Feeder DONE, program HIGH at end
+# Test 8: external re-input re-runs resident program
+#   out: 1 2 3 4 5 6 7 8 9 10
+#   PASS: -runs program -> outputs [1..10]
+# Test 9: FLASH weights via MEM + single mult (coverage gap #3)
+#   mult result WM[8..11] = 1 2 3 4  (expect 1 2 3 4)
+#   PASS: from flashed weights = [1,2,3,4]
+# Test 10: two consecutive mults — MAC clear between ops (possibility #2)
+#   mult1 WM[8..11]  = 1 2 3 4
+#   mult2 WM[12..15] = 1 2 3 4  (expect 1 2 3 4)
+#   PASS: ,4] (MACs cleared between mults)
 # 
 # ================================
-# Results: 7 PASS, 0 FAIL
+# Results: 10 PASS, 0 FAIL
 # ================================
-# ** Note: $finish    : tests/TB_Step8_FullSystem.v(390)
-#    Time: 188830 ns  Iteration: 1  Instance: /TB_Step8_FullSystem
-# End time: 14:15:58 on Jun 22,2026, Elapsed time: 0:00:47
+# ** Note: $finish    : tests/TB_Step8_FullSystem.v(528)
+#    Time: 392730 ns  Iteration: 1  Instance: /TB_Step8_FullSystem
+# End time: 16:36:45 on Jun 30,2026, Elapsed time: 0:00:09
 # Errors: 0, Warnings: 1

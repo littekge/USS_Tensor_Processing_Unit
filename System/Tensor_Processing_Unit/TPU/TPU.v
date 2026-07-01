@@ -23,6 +23,15 @@ module TPU (
     input       i_SPI_MOSI,
     input       i_SPI_SS,
 
+    // Programmer IO passthrough
+    input             i_mode_select,        // LOW = device mode, HIGH = external mode
+    input             i_input_data_valid,   // one-cycle pulse: i_input_data valid
+    input             i_device_ready,       // HIGH while consumer is ready for the next output value
+    input      [7:0]  i_input_data,         // device-mode input value
+    output wire [7:0] o_output_data,        // output value (both modes)
+    output wire       o_output_data_valid,  // one-cycle pulse: o_output_data valid
+	 output wire		 o_end_reached,   // one-cycle pulse when an end instruction is fetched
+
     // ---------- DEBUG ---------- //
 	 output wire [31:0] o_debug_val
     // ---------- END DEBUG ---------- //
@@ -44,13 +53,23 @@ wire [7:0]   prog_buf_data_a;
 wire [15:0]  prog_buf_address_a;
 wire         prog_buf_wren_a;
 
-// program: LOW while Programmer is actively programming the TPU
+// program: LOW while the Programmer owns the device memory bus
 wire program;
 
-// trst: LOW when global reset (rst) OR program signal is LOW.
-// Prevents TPU internals from modifying memory during programming.
+// tpu_rst: LOW while the Programmer is resetting the TPU processing internals
+// (during PROGRAM / DEVICE_INPUT / EXTERNAL_INPUT).
+wire prog_tpu_rst;
+
+// feeder end_reached strobe (routed to the Programmer to trigger output)
+wire feeder_end_reached;
+assign o_end_reached = feeder_end_reached;
+
+// trst: LOW when global reset (rst) is LOW OR the Programmer asserts tpu_rst LOW.
+// This lets the Programmer reset the TPU internals independently of its memory
+// bus access (program), so output meta-states can read memory without resetting
+// a finished program.
 wire trst;
-assign trst = i_rst & program;
+assign trst = i_rst & prog_tpu_rst;
 
 // MUX-selected inputs to memories.
 // Programmer controls all ports when program=LOW.
@@ -192,22 +211,31 @@ assign buf_address_a = (program == 1'b0) ? prog_buf_address_a : vpa_buf_address;
 assign buf_wren_a    = (program == 1'b0) ? prog_buf_wren_a    : vpa_buf_wren;
 
 Programmer prog (
-    .i_clk          (i_clk),
-    .i_rst          (i_rst),
-    .o_pm_data      (prog_pm_data),
-    .o_pm_address   (prog_pm_address),
-    .o_pm_wren      (prog_pm_wren),
-    .o_wm_data_a    (prog_wm_data_a),
-    .o_wm_address_a (prog_wm_address_a),
-    .o_wm_wren_a    (prog_wm_wren_a),
-    .o_buf_data_a   (prog_buf_data_a),
-    .o_buf_address_a(prog_buf_address_a),
-    .o_buf_wren_a   (prog_buf_wren_a),
-    .o_program      (program),
-    .i_SPI_Clk      (i_SPI_Clk),
-    .o_SPI_MISO     (o_SPI_MISO),
-    .i_SPI_MOSI     (i_SPI_MOSI),
-    .i_SPI_SS       (i_SPI_SS)
+    .i_clk              (i_clk),
+    .i_rst              (i_rst),
+    .i_mode_select      (i_mode_select),
+    .i_input_data_valid (i_input_data_valid),
+    .i_device_ready     (i_device_ready),
+    .i_input_data       (i_input_data),
+    .o_output_data      (o_output_data),
+    .o_output_data_valid(o_output_data_valid),
+    .i_end_reached      (feeder_end_reached),
+    .o_pm_data          (prog_pm_data),
+    .o_pm_address       (prog_pm_address),
+    .o_pm_wren          (prog_pm_wren),
+    .o_wm_data_a        (prog_wm_data_a),
+    .o_wm_address_a     (prog_wm_address_a),
+    .o_wm_wren_a        (prog_wm_wren_a),
+    .o_buf_data_a       (prog_buf_data_a),
+    .o_buf_address_a    (prog_buf_address_a),
+    .o_buf_wren_a       (prog_buf_wren_a),
+    .i_buf_q_a          (buf_q_a),
+    .o_program          (program),
+    .o_tpu_rst          (prog_tpu_rst),
+    .i_SPI_Clk          (i_SPI_Clk),
+    .o_SPI_MISO         (o_SPI_MISO),
+    .i_SPI_MOSI         (i_SPI_MOSI),
+    .i_SPI_SS           (i_SPI_SS)
 );
 
 Program_Memory pm (
@@ -250,7 +278,8 @@ Feeder feeder (
     .o_pm_wren          (feeder_pm_wren),
     .i_controller_idle  (ctrl_controller_idle),
     .o_instruction      (feeder_instruction),
-    .o_controller_start (feeder_controller_start)
+    .o_controller_start (feeder_controller_start),
+    .o_end_reached      (feeder_end_reached)
 );
 
 Controller ctrl (

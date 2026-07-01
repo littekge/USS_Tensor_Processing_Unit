@@ -142,6 +142,9 @@ TPU/
 │   └── Systolic_Array.v (top-level for systolic array subsystem)
 └── VGA_DEBUG/
     ├── debug.v
+    ├── seven_segment.v
+    ├── seven_segment_negative.v
+    ├── three_decimal_vals_w_neg.v
     └── VGA_CONTROLLER/
         ├── ascii_master_controller.v
         ├── clock_divider.v
@@ -199,7 +202,7 @@ module to route control signals from the controller to the systolic array.~~
 Adds improved IO functionality to the Programmer module to better demonstrate
 TPU functionality.
 
-#### Step 1 — Programmer Module
+#### Step 1 — Programmer Module — ✅ Complete (2026-06-30)
 
 Update the Programmer module to reflect the current version of the
 *Functional TPU Hardware Specification*.
@@ -211,7 +214,14 @@ machine, whatever you think is easier to read).
 - Rewrite Programmer unit test to thoroughly test new functionality
 (`./tests/TB_Step1_Programmer.v`).
 
-#### Step 2 — TPU Module
+> **Clarification (2026-06-30):** In `EXTERNAL_INPUT` (an INPUT-header
+> transmission), MEM command addresses use **unified address routing** —
+> interpreted exactly as in `PROGRAM`/FLASH mode (routed to weight memory or the
+> 0x1 buffer by address). `EXTERNAL_INPUT` differs from `PROGRAM` only in that it
+> maintains the current program (does not reset or write Program_Memory), so the
+> PROGRAM command code is invalid inside an INPUT transmission.
+
+#### Step 2 — TPU Module — ✅ Complete (2026-06-30)
 
 Update the TPU module to reflect the current version of the
 *Functional TPU Hardware Specification*.
@@ -219,7 +229,13 @@ Update the TPU module to reflect the current version of the
 - Update *trst* implementation.
 - Implement signal passthrough for programmer.
 
-#### Step 3 — Feeder Module
+> **Clarification (2026-06-30):** The new Programmer IO (*mode_select*,
+> *input_data*, *input_data_valid*, *device_ready*, *output_data*,
+> *output_data_valid*) is exposed **at the TPU module boundary only**. The FPGA
+> wrapper (`Tensor_Processing_Unit.v`) pin mapping is left to the user and is not
+> modified by this build step (respects the "do not modify debug sections" rule).
+
+#### Step 3 — Feeder Module — ✅ Complete (2026-06-30)
 
 Update the Feeder module to reflect the current version of the
 *Functional TPU Hardware Specification*.
@@ -228,17 +244,23 @@ Update the Feeder module to reflect the current version of the
 - Rewrite Feeder unit test to thoroughly test new functionality
 (`./tests/TB_Step2_Feeder.v`).
 
-#### Step 4 — Additional Minor Changes
+#### Step 4 — Additional Minor Changes — ✅ Complete (2026-06-30)
 
 Search the *Functional TPU Hardware Specification* for additional changes.
 
 - Implement additional changes.
 - Revise relevant tests and run to confirm functionality.
 
-#### Step 5 — Final Test
+#### Step 5 — Final Test — ✅ Complete (2026-06-30)
 
 Revise the full system test to test new functionality.
 
 - Rewrite System test to thoroughly test new functionality
 (`./tests/TB_Step8_FullSystem.v`).
 - Run full system test and fix any issues that arise.
+
+> **Clarification (2026-06-30):** The revised full-system test exercises **both**
+> IO modes end-to-end: device mode (single input via *input_data* /
+> *input_data_valid* → program runs → single *output_data* value) and external
+> mode (INPUT transmission over SPI → program runs → 10 *output_data* values with
+> the *device_ready* handshake).

@@ -28,11 +28,12 @@
  *
  * TEST CASES:
  *   Test 1: o_data is forced to 45 when i_trst LOW, i_enable LOW, or i_clear HIGH
- *   Test 2: i_enable routes to o_write
- *   Test 3: NOOP operation functions correctly
+ *   Test 2: i_enable routes to o_write for a non-NOOP operation
+ *   Test 3: NOOP operation — placeholder o_data and o_write suppressed (LOW)
  *   Test 4: ADD operation functions correctly
  *   Test 5: positive clamping functions correctly
  *   Test 6: negative clamping functions correctly
+ *   Test 7: invalid operation code drives the control-error value (29)
  * -------------------------------------------------------------------------
  */
  
@@ -153,14 +154,24 @@ begin
 	end
 	
 	// -----------------------------------------------------------------------
-   // Test 2: i_enable routes to o_write
+   // Test 2: i_enable routes to o_write for a non-NOOP operation (ADD)
    // -----------------------------------------------------------------------
-	alu_enable = 1'b1;
-	@(posedge clk); #1;
-	check(write === alu_enable, 2);
+	begin : write_route_test
+		integer write_pass_count;
+		write_pass_count = 0;
+		alu_funct = 3'h0; // ADD (non-NOOP)
+		alu_enable = 1'b1;
+		@(posedge clk); #1;
+		if (write === 1'b1) write_pass_count = write_pass_count + 1;
+		alu_enable = 1'b0;
+		@(posedge clk); #1;
+		if (write === 1'b0) write_pass_count = write_pass_count + 1;
+		check(write_pass_count === 2, 2);
+	end
 
 	// -----------------------------------------------------------------------
-   // Test 3: NOOP operation functions correctly
+   // Test 3: NOOP — placeholder o_data (98) and o_write suppressed even with
+   //         i_enable HIGH (buffer writing is suppressed for NOOP per spec)
    // -----------------------------------------------------------------------
 	trst = 1'b1;
 	alu_enable = 1'b1;
@@ -169,7 +180,7 @@ begin
 	in_data_b = 8'd21;
 	alu_funct = 3'h7;
 	@(posedge clk); #1;
-	check(out_data === 8'd98, 3);
+	check((out_data === 8'd98) && (write === 1'b0), 3);
 	
 	// -----------------------------------------------------------------------
    // Test 4: ADD operation functions correctly
@@ -206,7 +217,19 @@ begin
 	alu_funct = 3'h0;
 	@(posedge clk); #1;
 	check(out_data === -8'd128, 6);
-	
+
+	// -----------------------------------------------------------------------
+   // Test 7: invalid operation code -> control-error value (29)
+   // -----------------------------------------------------------------------
+	trst = 1'b1;
+	alu_enable = 1'b1;
+	clear = 1'b0;
+	in_data_a = 8'd20;
+	in_data_b = 8'd21;
+	alu_funct = 3'd2; // neither ADD (0) nor NOOP (7)
+	@(posedge clk); #1;
+	check(out_data === 8'd29, 7);
+
 	// -----------------------------------------------------------------------
    // Summary
    // -----------------------------------------------------------------------

@@ -14,6 +14,7 @@ module debug (
 	
 	input [31:0]i_data, //signed integer to write to the screen
 	input i_write_next, //pulse high for one clock cycle to write the integer in i_data
+	input i_clear, //clears ASCII buffer
 	output reg o_write_ready, //high if the module is ready for the next integer
 
 	//VGA signal passthrough
@@ -37,15 +38,15 @@ module debug (
 // ---------- PARAMETERS ---------- //
 //state machine states
 parameter 
-	ERROR = 3'd0,
-	START = 3'd1,
-	WAIT_WREN = 3'd2,
-	COL_CHECK = 3'd3,
-	WRITE = 3'd4,
-	COL_INC = 3'd5,
-	ROW_INC = 3'd6;
+	ERROR = 4'd0,
+	START = 4'd1,
+	WAIT_WREN = 4'd2,
+	COL_CHECK = 4'd3,
+	WRITE = 4'd4,
+	COL_INC = 4'd5,
+	ROW_INC = 4'd6,
+	CLEAR = 4'd7;
 // ---------- END PARAMETERS ---------- //
-
 
 // ---------- CODE ---------- //
 reg [3:0] col_num; //column number
@@ -54,7 +55,9 @@ reg [7:0] row_num; //row number
 reg [31:0] data; //register to store input data
 
 //State machine variables
-reg [2:0]S, NS;
+reg [3:0]S, NS;
+
+reg [12:0]clear_count;
 
 //ASCII VGA Controller variables
 reg [7:0]ascii_code;
@@ -80,11 +83,23 @@ always @ (*)
 begin
 	case (S)
 		START: NS = WAIT_WREN;
-		WAIT_WREN: NS = (i_write_next == 1'b1)?(COL_CHECK):(WAIT_WREN);  //idles in WAIT_WREN until write next signal is recieved
+		WAIT_WREN:
+		begin
+			if (i_clear == 1'b1) begin
+				NS = CLEAR;
+			end 
+			else if (i_write_next == 1'b1) begin
+				NS = COL_CHECK;
+			end
+			else begin
+				NS = WAIT_WREN; //idles in WAIT_WREN until write next or clear signal is recieved
+			end
+		end
 		COL_CHECK: NS = (col_num < 4'd9)?(WRITE):(ROW_INC); //operates a for loop 
 		WRITE: NS = COL_INC;
 		COL_INC: NS = COL_CHECK;
 		ROW_INC: NS = WAIT_WREN;
+		CLEAR: NS = (clear_count == 13'd8191)?(WAIT_WREN):(CLEAR);
 		default: NS = ERROR;
 	endcase
 end
@@ -100,6 +115,7 @@ begin
 		ascii_wren <= 1'd0;
 		o_write_ready <= 1'd0;
 		data <= 32'd0;
+		clear_count <= 13'd0;
 	end
 	else
 	begin
@@ -108,6 +124,8 @@ begin
 			begin
 				o_write_ready <= 1'b1; //indicates waiting for next input
 				data <= i_data;  //save current data (avoids strange behavior if input is changed asynchronously)
+				clear_count <= 13'd0;
+				ascii_wren <= 1'b0;
 			end
 			COL_CHECK:
 			begin
@@ -127,6 +145,14 @@ begin
 			begin
 				row_num <= row_num + 8'd1; //increment row number
 			end
+			CLEAR:
+			begin
+				clear_count = clear_count + 13'd1;
+				ascii_wren = 1'b1;
+				o_write_ready <= 1'b0;
+				row_num <= 8'd0;
+				col_num <= 4'd0;
+			end
 			default:; //do nothing
 		endcase
 	end
@@ -137,7 +163,7 @@ wire is_negative;
 wire [31:0]two_comp;
 wire [3:0]current_char_val;
 
-assign ascii_addr = (13'd80 * (row_num % 8'd60)) + col_num + ((row_num / 60) * 8'd10); //decode address
+assign ascii_addr = (S == CLEAR || NS == CLEAR)?(clear_count):((13'd80 * (row_num % 8'd60)) + col_num + ((row_num / 60) * 8'd10)); //decode address
 assign is_negative = data[31]; //check sign
 assign two_comp = (is_negative == 1'b1)?((~data) + 1'b1):data; //convert from two's complement
 assign current_char_val = two_comp >> 4*(4'd8-col_num);//find value of current character from two's comp and column number
@@ -173,9 +199,7 @@ begin
 	end
 end
 
-
-
-assign ascii_data = {ascii_code, 24'hFFFFFF}; //assign color of text to be white
+assign ascii_data = (S == CLEAR || S == WAIT_WREN)?(32'd0):({ascii_code, 24'hFFFFFF}); //assign color of text to be white
 
 //ASCII VGA Controller instantiation
 ascii_master_controller controller (

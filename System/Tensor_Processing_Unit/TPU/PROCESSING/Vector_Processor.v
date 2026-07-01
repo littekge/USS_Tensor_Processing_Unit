@@ -84,7 +84,7 @@ module Vector_Processor (
 
 // ---------- PARAMETERS ---------- //
 
-parameter integer REQUANT_SHIFT = 8; // Right-shift bits for requantization
+parameter integer REQUANT_SHIFT = 11; // Right-shift bits for requantization
 
 // State machine states
 parameter [3:0]

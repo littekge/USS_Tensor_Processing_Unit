@@ -34,6 +34,9 @@
  *   Test 5: relu instruction — correct VP_A execute-phase signals, VP_B not started
  *   Test 6: add instruction — correct VP_A and VP_B execute-phase signals
  *   Test 7: controller_idle returns HIGH after writeback completes
+ *   Test 8: systolic_array_start is asserted for mult but not for relu/add
+ *   Test 9: function-code decode — relu→activator RELU, add→ALU ADD,
+ *           mult→both NOOP
  * -------------------------------------------------------------------------
  */
 
@@ -143,6 +146,14 @@ localparam [2:0] VDST_ACT     = 3'd3;
 localparam [2:0] VDST_ALU_A   = 3'd4;
 localparam [2:0] VDST_ALU_B   = 3'd5;
 localparam [2:0] FUNCT_NOOP   = 3'd7;
+localparam [2:0] FUNCT_RELU   = 3'd0;
+localparam [2:0] FUNCT_ADD    = 3'd0;
+
+// Count systolic_array_start pulses (used by Test 8)
+integer sa_start_count;
+always @(posedge clk)
+    if (trst === 1'b1 && systolic_array_start === 1'b1)
+        sa_start_count = sa_start_count + 1;
 
 // Build a mult instruction:
 // opcode | rs1 | sz11 | sz12 | rs2 | sz21 | sz22 | rd | reserved | funct3
@@ -222,6 +233,8 @@ reg [15:0] captured_mem_src_b;
 reg [3:0] captured_dim0_b, captured_dim1_b;
 reg [2:0] captured_vect_source_b2, captured_vect_dest_b2;
 reg [15:0] captured_length_a, captured_length_b;
+reg mult_saw_sa, relu_saw_sa, add_saw_sa;
+reg [2:0] cap_relu_act, cap_add_alu, cap_mult_act, cap_mult_alu;
 
 initial
 begin
@@ -480,6 +493,72 @@ begin
         end
         check(saw_idle === 1, 7);
     end
+
+    // -----------------------------------------------------------------------
+    // Test 8: systolic_array_start asserted for mult, not for relu/add.
+    // Keep all idle stubs HIGH so each instruction runs to completion.
+    // -----------------------------------------------------------------------
+    do_reset;
+    vector_idle_a = 1'b1; vector_idle_b = 1'b1; systolic_array_idle = 1'b1;
+
+    sa_start_count = 0;
+    send_instruction(make_mult(16'h0010, 16'h0020, 16'h0030, 4'd2, 4'd2, 4'd2, 4'd2));
+    mult_saw_sa = (sa_start_count > 0);
+
+    sa_start_count = 0;
+    send_instruction(make_relu(16'h0050, 16'h0060, 16'd4));
+    relu_saw_sa = (sa_start_count > 0);
+
+    sa_start_count = 0;
+    send_instruction(make_add(16'h0070, 16'h0080, 16'h0090, 8'd2, 8'd2));
+    add_saw_sa = (sa_start_count > 0);
+
+    check((mult_saw_sa === 1'b1) && (relu_saw_sa === 1'b0) &&
+          (add_saw_sa === 1'b0), 8);
+
+    // -----------------------------------------------------------------------
+    // Test 9: function-code decode. Hold a VP non-idle to sample the
+    // combinational function outputs during the execute phase.
+    // -----------------------------------------------------------------------
+    // relu -> activator RELU
+    do_reset;
+    vector_idle_a = 1'b0; vector_idle_b = 1'b1; systolic_array_idle = 1'b1;
+    instruction = make_relu(16'h0050, 16'h0060, 16'd4);
+    @(posedge clk); #1; controller_start = 1'b1;
+    @(posedge clk); #1; controller_start = 1'b0;
+    @(posedge clk); #1; // CLEAR
+    @(posedge clk); #1; // EXEC_VP_START
+    cap_relu_act = activator_funct;
+    vector_idle_a = 1'b1;
+    while (!controller_idle) @(posedge clk); #1;
+
+    // add -> ALU ADD
+    do_reset;
+    vector_idle_a = 1'b0; vector_idle_b = 1'b0; systolic_array_idle = 1'b1;
+    instruction = make_add(16'h0070, 16'h0080, 16'h0090, 8'd2, 8'd2);
+    @(posedge clk); #1; controller_start = 1'b1;
+    @(posedge clk); #1; controller_start = 1'b0;
+    @(posedge clk); #1; // CLEAR
+    @(posedge clk); #1; // EXEC_VP_START
+    cap_add_alu = alu_funct;
+    vector_idle_a = 1'b1; vector_idle_b = 1'b1;
+    while (!controller_idle) @(posedge clk); #1;
+
+    // mult -> both NOOP
+    do_reset;
+    vector_idle_a = 1'b0; vector_idle_b = 1'b0; systolic_array_idle = 1'b0;
+    instruction = make_mult(16'h0010, 16'h0020, 16'h0030, 4'd2, 4'd2, 4'd2, 4'd2);
+    @(posedge clk); #1; controller_start = 1'b1;
+    @(posedge clk); #1; controller_start = 1'b0;
+    @(posedge clk); #1; // CLEAR
+    @(posedge clk); #1; // EXEC_VP_START
+    cap_mult_act = activator_funct;
+    cap_mult_alu = alu_funct;
+    vector_idle_a = 1'b1; vector_idle_b = 1'b1; systolic_array_idle = 1'b1;
+    while (!controller_idle) @(posedge clk); #1;
+
+    check((cap_relu_act === FUNCT_RELU) && (cap_add_alu === FUNCT_ADD) &&
+          (cap_mult_act === FUNCT_NOOP) && (cap_mult_alu === FUNCT_NOOP), 9);
 
     // -----------------------------------------------------------------------
     // Summary

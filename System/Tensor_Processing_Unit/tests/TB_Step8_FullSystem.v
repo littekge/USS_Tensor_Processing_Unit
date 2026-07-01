@@ -1,29 +1,33 @@
 /*
  * File: TB_Step8_FullSystem.v
- * Date: 2026-06-22
+ * Date: 2026-06-30
  *
- * Testbench for Build Step 8: full-system integration test of the TPU.
+ * Full-system integration test for the v0.2 TPU. Drives the top-level TPU
+ * module exactly as real hardware would, exercising BOTH improved-IO modes of
+ * the v0.2 Programmer end to end:
  *
- * This testbench drives the top-level TPU module exactly as the real hardware
- * would be driven: a single SPI session (per the Functional TPU Message
- * Protocol) programs test weights and a program that exercises every ISA
- * instruction (mult, relu, add, end). After the STOP code the Programmer
- * releases the TPU (program HIGH -> trst HIGH) and the Feeder/Controller run
- * the program to completion. Results are checked by snooping the (muxed)
- * weight-memory and 0x1-buffer write ports into shadow memories, which mirror
- * exactly what the real RAMs store. No internal RAM array is referenced.
+ *   DEVICE MODE (mode_select = 0):
+ *     A FLASH session programs a self-contained ReLU program
+ *     (relu 0x0001 -> 0x0001, len 1) that activates the single 0x1-buffer value.
+ *     A device input is supplied via i_input_data / i_input_data_valid; the
+ *     Programmer writes it to the 0x1 buffer, pulses tpu_rst so the program
+ *     re-runs, and on end emits the activated value on o_output_data with a
+ *     one-cycle o_output_data_valid pulse.
  *
- * Unified address space: a MEM-packet address and an ISA instruction address
- * refer to the SAME logical location (the ISA reserves 0x0 and 0x1; weight
- * memory begins at ISA 0x2). The physical weight-memory address for ISA
- * address A (A >= 2) is A - 2.
+ *   EXTERNAL MODE (mode_select = 1):
+ *     A FLASH session programs relu 0x0001 -> 0x0001 over len 10. An INPUT
+ *     transmission (Message Protocol v0.2) writes a 10-element vector to the
+ *     0x1 buffer; the program re-runs and, on end, the Programmer emits all 10
+ *     activated values, pacing each with the i_device_ready handshake.
+ *
+ * The program reads from and writes to the 0x1 buffer, so the Programmer's
+ * output meta-states read back exactly what the program computed via the real
+ * RAM IP (true end-to-end; no internal RAM array referenced).
  *
  * -------------------------------------------------------------------------
- * HOW TO RUN (Questa Intel FPGA simulation from Quartus Prime Lite):
+ * HOW TO RUN (Questa Intel FPGA simulation):
  *
- *   1. Open a terminal and cd to the project root:
- *        cd <path>/Tensor_Processing_Unit
- *
+ *   1. cd <path>/Tensor_Processing_Unit
  *   2. Compile the full hierarchy (altera_mf required for the RAM/FIFO IP):
  *        vlib work
  *        vlog -work work TPU/PROGRAMMER/SPI_LINK/SPI_Slave.v
@@ -44,27 +48,33 @@
  *        vlog -work work TPU/SYSTOLIC_ARRAY/Systolic_Array.v
  *        vlog -work work TPU/TPU.v
  *        vlog -work work tests/TB_Step8_FullSystem.v
- *
  *   3. Simulate (do NOT optimize signals away; log all waveforms):
  *        vsim -L altera_mf_ver -voptargs=+acc -gui work.TB_Step8_FullSystem -do "add wave -r /*; run -all"
  *
  * -------------------------------------------------------------------------
  * PASS / FAIL CRITERIA:
- *   Each test prints "PASS" or "FAIL" to the transcript.
- *   A final summary prints total pass/fail counts.
+ *   Each test prints "PASS" or "FAIL". A final summary prints pass/fail counts.
  *   All 7 tests should show PASS for a correct implementation.
  *
  * TEST CASES:
- *   Test 1: Programming completes — program returns HIGH after STOP and the
- *           programmed input weights land in weight memory (SPI -> Programmer
- *           -> Weight_Memory path).
- *   Test 2: end terminates fetch — the Feeder reaches its DONE state.
- *   Test 3: mult — C = rs1 * rs2 written row-major and requantized correctly.
- *   Test 4: relu — max(0, x) applied element-wise and written to dest.
- *   Test 5: add  — element-wise sum written to dest.
- *   Test 6: add saturation — operands that overflow int8 clamp to -128 / +127.
- *   Test 7: clean completion — Controller returns to IDLE with no error state
- *           and the Feeder is in DONE (whole program executed without faults).
+ *   Test 1: Device-mode FLASH completes — program/tpu_rst return HIGH after STOP.
+ *   Test 2: Device input (positive) — relu pass-through: input 42 -> output 42.
+ *   Test 3: Device input (negative) — relu clamps: input -9 -> output 0.
+ *   Test 4: External-mode re-FLASH completes (len-10 relu program loaded).
+ *   Test 5: External output emits exactly 10 values with the device_ready
+ *           handshake.
+ *   Test 6: External output values equal relu(inputs) (pass-through + clamp).
+ *   Test 7: Clean completion — Controller IDLE, Feeder DONE, no fault states.
+ *   Test 8: External re-input without re-FLASH — a second INPUT transmission
+ *           re-runs the resident program and emits 10 new relu outputs
+ *           (steady-state operating loop).
+ *   Test 9: FLASH weights via MEM + a single mult against them — verifies the
+ *           weight-flash + systolic-array mult path end to end (the path a
+ *           neural-network program exercises; previously uncovered in v0.2).
+ *   Test 10: Two consecutive mult instructions in one program — the second
+ *           mult's result must match the first (identical operands), proving
+ *           the MAC accumulators are cleared between operations rather than
+ *           accumulating stale products into saturation.
  * -------------------------------------------------------------------------
  */
 
@@ -84,59 +94,96 @@ module TB_Step8_FullSystem;
     wire spi_miso;
     wire [31:0] debug_val;
 
-    // -----------------------------------------------------------------------
-    // Timing parameters
-    // -----------------------------------------------------------------------
-    localparam CLK_HALF = 10;   // 10 ns => 50 MHz FPGA clock
-    localparam SPI_HALF = 100;  // 100 ns => 5 MHz SPI clock
+    reg         mode_select;
+    reg         input_data_valid;
+    reg  [7:0]  input_data;
+    wire [7:0]  output_data;
+    wire        output_data_valid;
 
-    // Protocol function codes
-    localparam [7:0] START_CODE = 8'h55;
+    // -----------------------------------------------------------------------
+    // Timing / constants
+    // -----------------------------------------------------------------------
+    localparam CLK_HALF = 10;   // 50 MHz
+    localparam SPI_HALF = 100;  // 5 MHz SPI
+
+    localparam [7:0] FLASH_CODE = 8'h55;
+    localparam [7:0] INPUT_CODE = 8'h49;
     localparam [7:0] STOP_CODE  = 8'h53;
     localparam [7:0] MEM_CODE   = 8'h4D;
     localparam [7:0] PROG_CODE  = 8'h50;
 
-    // FSM state encodings to observe (must match the DUT modules)
-    localparam [3:0] FEEDER_DONE = 4'd7;   // Feeder.v DONE
-    localparam [3:0] CTRL_IDLE   = 4'd2;   // Controller.v IDLE
+    // Observed FSM state encodings (must match the DUT modules)
+    localparam [3:0] FEEDER_DONE       = 4'd7;   // Feeder.v DONE
+    localparam [3:0] CTRL_IDLE         = 4'd2;   // Controller.v IDLE
+    localparam [5:0] PROG_X_OUT_WAITRDY = 6'd49; // Programmer.v X_OUT_WAIT_RDY
 
     // -----------------------------------------------------------------------
-    // DUT instantiation
+    // device_ready auto-handshake: assert whenever the Programmer is waiting in
+    // EXTERNAL_OUTPUT for the consumer to accept the next value.
+    // -----------------------------------------------------------------------
+    wire device_ready;
+    assign device_ready = (dut.prog.S == PROG_X_OUT_WAITRDY);
+
+    // -----------------------------------------------------------------------
+    // DUT
     // -----------------------------------------------------------------------
     TPU dut (
-        .i_clk       (clk),
-        .i_rst       (rst),
-        .i_SPI_Clk   (spi_clk),
-        .o_SPI_MISO  (spi_miso),
-        .i_SPI_MOSI  (spi_mosi),
-        .i_SPI_SS    (spi_ss),
-        .o_debug_val (debug_val)
+        .i_clk               (clk),
+        .i_rst               (rst),
+        .i_SPI_Clk           (spi_clk),
+        .o_SPI_MISO          (spi_miso),
+        .i_SPI_MOSI          (spi_mosi),
+        .i_SPI_SS            (spi_ss),
+        .i_mode_select       (mode_select),
+        .i_input_data_valid  (input_data_valid),
+        .i_device_ready      (device_ready),
+        .i_input_data        (input_data),
+        .o_output_data       (output_data),
+        .o_output_data_valid (output_data_valid),
+        .o_end_reached       (),                // exposed at TPU boundary; unused here
+        .o_debug_val         (debug_val)
     );
 
-    // -----------------------------------------------------------------------
-    // Clock generation
-    // -----------------------------------------------------------------------
+    // Pin the mult requantization scale for the compute tests (Tests 9-10) so
+    // they verify the datapath deterministically, independent of the file's
+    // REQUANT_SHIFT default (which is tuned per neural network). VP_A performs
+    // the systolic-array read-back/requant; VP_B is pinned too for safety.
+    defparam dut.vp_a.REQUANT_SHIFT = 8;
+    defparam dut.vp_b.REQUANT_SHIFT = 8;
+
     initial clk = 0;
     always #CLK_HALF clk = ~clk;
 
     // -----------------------------------------------------------------------
-    // Shadow memories — mirror the muxed write ports of the device RAMs.
-    // These reproduce exactly what the real RAMs store (write on posedge when
-    // wren HIGH) without referencing any vendor-IP internal array.
+    // Output capture (sampled when output_data_valid is HIGH)
     // -----------------------------------------------------------------------
-    reg [7:0] shadow_wm  [0:255];
-    reg [7:0] shadow_buf [0:255];
+    integer out_count;
+    reg [7:0] out_log [0:31];
 
     always @(posedge clk) begin
-        if (dut.wm_wren_a)  shadow_wm [dut.wm_address_a[7:0]]  <= dut.wm_data_a;
-        if (dut.buf_wren_a) shadow_buf[dut.buf_address_a[7:0]] <= dut.buf_data_a;
+        if (output_data_valid && out_count < 32) begin
+            out_log[out_count] = output_data;
+            out_count = out_count + 1;
+        end
     end
 
     // -----------------------------------------------------------------------
-    // Test bookkeeping
+    // Weight-memory shadow — mirrors the muxed weight-memory port-a writes
+    // (both the Programmer's flashed weights and the Vector_Processor's compute
+    // write-backs flow through this port). Lets the compute tests read back the
+    // requantized mult result without referencing any vendor-IP internal array.
     // -----------------------------------------------------------------------
-    integer pass_count;
-    integer fail_count;
+    reg [7:0] shadow_wm [0:255];
+    integer si;
+
+    always @(posedge clk) begin
+        if (dut.wm_wren_a) shadow_wm[dut.wm_address_a[7:0]] <= dut.wm_data_a;
+    end
+
+    // -----------------------------------------------------------------------
+    // Bookkeeping
+    // -----------------------------------------------------------------------
+    integer pass_count, fail_count;
 
     task check;
         input         ok;
@@ -152,10 +199,7 @@ module TB_Step8_FullSystem;
         end
     endtask
 
-    // -----------------------------------------------------------------------
-    // SPI byte transmission (mode 0, MSB first). SS is held LOW for the whole
-    // session; bytes are streamed back-to-back.
-    // -----------------------------------------------------------------------
+    // SPI byte (mode 0, MSB first)
     task send_spi_byte;
         input [7:0] byte_val;
         integer i;
@@ -170,7 +214,41 @@ module TB_Step8_FullSystem;
         end
     endtask
 
-    // Send a 4-element MEM block to a 16-bit address.
+    // Send a 128-bit instruction as a PROGRAM command (LSB byte first)
+    task send_program;
+        input [127:0] instr;
+        integer i;
+        begin
+            send_spi_byte(PROG_CODE);
+            for (i = 0; i < 16; i = i + 1)
+                send_spi_byte(instr[i*8 +: 8]);
+        end
+    endtask
+
+    // ReLU instruction builder (opcode 1001 | rs1 | rd | len | pad | funct3)
+    function [127:0] mk_relu;
+        input [15:0] rs1;
+        input [15:0] rd;
+        input [15:0] len;
+        begin
+            mk_relu = {4'b1001, rs1, rd, len, 73'd0, 3'd0};
+        end
+    endfunction
+
+    // mult instruction builder
+    // (opcode 1000 | rs1 | sz11 | sz12 | rs2 | sz21 | sz22 | rd | pad | funct3)
+    function [127:0] mk_mul;
+        input [15:0] rs1;
+        input [3:0]  sz11, sz12;
+        input [15:0] rs2;
+        input [3:0]  sz21, sz22;
+        input [15:0] rd;
+        begin
+            mk_mul = {4'b1000, rs1, sz11, sz12, rs2, sz21, sz22, rd, 57'd0, 3'd0};
+        end
+    endfunction
+
+    // Send a 4-byte MEM command block to a 16-bit ISA address.
     task send_mem4;
         input [15:0] addr;
         input [7:0]  b0, b1, b2, b3;
@@ -187,202 +265,270 @@ module TB_Step8_FullSystem;
         end
     endtask
 
-    // Send a 128-bit instruction as a PROGRAM packet (LSB byte first).
-    task send_program;
-        input [127:0] instr;
-        integer i;
-        begin
-            send_spi_byte(PROG_CODE);
-            for (i = 0; i < 16; i = i + 1)
-                send_spi_byte(instr[i*8 +: 8]);
-        end
-    endtask
-
     // -----------------------------------------------------------------------
-    // ISA instruction builders (see Functional_TPU_ISA_v0.1.md)
+    // Wait helpers
     // -----------------------------------------------------------------------
-    function [127:0] mk_mul;
-        input [15:0] rs1;
-        input [3:0]  sz11, sz12;
-        input [15:0] rs2;
-        input [3:0]  sz21, sz22;
-        input [15:0] rd;
-        begin
-            mk_mul = {4'b1000, rs1, sz11, sz12, rs2, sz21, sz22, rd, 57'd0, 3'd0};
-        end
-    endfunction
-
-    function [127:0] mk_relu;
-        input [15:0] rs1;
-        input [15:0] rd;
-        input [15:0] len;
-        begin
-            mk_relu = {4'b1001, rs1, rd, len, 73'd0, 3'd0};
-        end
-    endfunction
-
-    function [127:0] mk_add;
-        input [15:0] rs1;
-        input [15:0] rs2;
-        input [7:0]  sz1, sz2;
-        input [15:0] rd;
-        begin
-            mk_add = {4'b1010, rs1, rs2, sz1, sz2, rd, 57'd0, 3'd0};
-        end
-    endfunction
-
-    // -----------------------------------------------------------------------
-    // Wait helper: poll the Feeder until it reaches DONE (end fetched).
-    // Returns the number of cycles waited; caller checks for timeout.
-    // -----------------------------------------------------------------------
-    integer wait_cycles;
+    integer wc;
     task wait_feeder_done;
         input integer max_cycles;
         begin
-            wait_cycles = 0;
-            while ((dut.feeder.S !== FEEDER_DONE) && (wait_cycles < max_cycles)) begin
-                @(posedge clk);
-                wait_cycles = wait_cycles + 1;
+            wc = 0;
+            while ((dut.feeder.S !== FEEDER_DONE) && (wc < max_cycles)) begin
+                @(posedge clk); wc = wc + 1;
+            end
+        end
+    endtask
+
+    // Wait until out_count reaches a target (or timeout)
+    task wait_outputs;
+        input integer target;
+        input integer max_cycles;
+        begin
+            wc = 0;
+            while ((out_count < target) && (wc < max_cycles)) begin
+                @(posedge clk); wc = wc + 1;
             end
         end
     endtask
 
     // -----------------------------------------------------------------------
-    // Main test sequence
+    // External-mode input vector and its expected relu output
     // -----------------------------------------------------------------------
-    integer i;
+    reg [7:0] ext_in  [0:9];
+    reg [7:0] ext_exp [0:9];
+    integer m;
+    integer ext_ok;
 
+    // -----------------------------------------------------------------------
+    // Main
+    // -----------------------------------------------------------------------
     initial begin
-        // Init
-        rst        = 0;
-        spi_clk    = 0;
-        spi_mosi   = 0;
-        spi_ss     = 1;
-        pass_count = 0;
-        fail_count = 0;
-        for (i = 0; i < 256; i = i + 1) begin
-            shadow_wm[i]  = 8'd0;
-            shadow_buf[i] = 8'd0;
-        end
+        rst              = 0;
+        spi_clk          = 0;
+        spi_mosi         = 0;
+        spi_ss           = 1;
+        mode_select      = 0;     // device mode
+        input_data_valid = 0;
+        input_data       = 0;
+        pass_count       = 0;
+        fail_count       = 0;
+        out_count        = 0;
 
-        // Apply and release global reset
         repeat (4) @(posedge clk);
         rst = 1;
         repeat (4) @(posedge clk);
 
-        // -------------------------------------------------------------------
-        // Single SPI programming session.
-        //
-        // Memory map (ISA address -> physical weight-memory address = ISA-2):
-        //   MULT  rs1 @0x02 = [[16,0],[0,16]]       (2x2)
-        //         rs2 @0x06 = [[16,32],[48,64]]     (2x2)
-        //         rd  @0x0A  expect [[1,2],[3,4]]    (256/512/768/1024 >> 8)
-        //   RELU  rs1 @0x0E = [-5, 7, -1, 100]      (len 4)
-        //         rd  @0x12  expect [0, 7, 0, 100]
-        //   ADD   rs1 @0x16 = [10, 20, -100, 50]    (2x2)
-        //         rs2 @0x1A = [5, -3, -50, 80]      (2x2)
-        //         rd  @0x1E  expect [15, 17, -128, 127] (saturating)
-        // -------------------------------------------------------------------
+        // ===================================================================
+        // DEVICE MODE
+        // ===================================================================
+        mode_select = 1'b0;
+
+        // FLASH a 1-element relu program: relu 0x0001 -> 0x0001, len 1, then end.
         spi_ss = 0;
-        send_spi_byte(START_CODE);
-
-        // Input weights / activations
-        send_mem4(16'h0002, 8'd16, 8'd0,  8'd0,  8'd16);  // mult rs1
-        send_mem4(16'h0006, 8'd16, 8'd32, 8'd48, 8'd64);  // mult rs2
-        send_mem4(16'h000E, 8'hFB, 8'h07, 8'hFF, 8'h64);  // relu src (-5,7,-1,100)
-        send_mem4(16'h0016, 8'h0A, 8'h14, 8'h9C, 8'h32);  // add  rs1 (10,20,-100,50)
-        send_mem4(16'h001A, 8'h05, 8'hFD, 8'hCE, 8'h50);  // add  rs2 (5,-3,-50,80)
-
-        // Program: mult, relu, add, end
-        send_program(mk_mul(16'h0002, 4'd2, 4'd2, 16'h0006, 4'd2, 4'd2, 16'h000A));
-        send_program(mk_relu(16'h000E, 16'h0012, 16'd4));
-        send_program(mk_add(16'h0016, 16'h001A, 8'd2, 8'd2, 16'h001E));
-        send_program(128'd0);   // end (opcode 0000, funct7 0x0)
-
+        send_spi_byte(FLASH_CODE);
+        send_program(mk_relu(16'h0001, 16'h0001, 16'd1));
+        send_program(128'd0); // end
         send_spi_byte(STOP_CODE);
         spi_ss = 1;
 
-        // -------------------------------------------------------------------
-        // Run the program to completion (Feeder reaches DONE at the end instr).
-        // -------------------------------------------------------------------
+        // The program auto-runs once on the initial 0x1-buffer contents.
         wait_feeder_done(200000);
-        repeat (50) @(posedge clk);   // margin for final writeback to settle
+        repeat (60) @(posedge clk);
 
-        // -------------------------------------------------------------------
-        // Diagnostics
-        // -------------------------------------------------------------------
-        $display("");
-        $display("feeder.S = %0d (DONE=%0d), ctrl.S = %0d (IDLE=%0d), program=%b, wait=%0d",
-                 dut.feeder.S, FEEDER_DONE, dut.ctrl.S, CTRL_IDLE, dut.program, wait_cycles);
-        $display("mult inputs  WM[0..3]  = %0d %0d %0d %0d",
-                 $signed(shadow_wm[0]), $signed(shadow_wm[1]), $signed(shadow_wm[2]), $signed(shadow_wm[3]));
-        $display("mult inputs  WM[4..7]  = %0d %0d %0d %0d",
-                 $signed(shadow_wm[4]), $signed(shadow_wm[5]), $signed(shadow_wm[6]), $signed(shadow_wm[7]));
-        $display("mult result  WM[8..11] = %0d %0d %0d %0d  (expect 1 2 3 4)",
-                 $signed(shadow_wm[8]), $signed(shadow_wm[9]), $signed(shadow_wm[10]), $signed(shadow_wm[11]));
-        $display("relu result  WM[16..19]= %0d %0d %0d %0d  (expect 0 7 0 100)",
-                 $signed(shadow_wm[16]), $signed(shadow_wm[17]), $signed(shadow_wm[18]), $signed(shadow_wm[19]));
-        $display("add  result  WM[28..31]= %0d %0d %0d %0d  (expect 15 17 -128 127)",
-                 $signed(shadow_wm[28]), $signed(shadow_wm[29]), $signed(shadow_wm[30]), $signed(shadow_wm[31]));
-        $display("");
+        $display("Test 1: device-mode FLASH completes");
+        check((dut.program === 1'b1) && (dut.prog.o_tpu_rst === 1'b1) &&
+              (dut.feeder.S === FEEDER_DONE),
+              "program HIGH, tpu_rst HIGH, Feeder DONE after FLASH");
 
-        // -------------------------------------------------------------------
-        // Test 1: programming completed and inputs landed in memory
-        // -------------------------------------------------------------------
-        $display("Test 1: programming over SPI completes and weights stored");
-        check((dut.program === 1'b1) &&
-              (shadow_wm[0] === 8'd16) && (shadow_wm[1] === 8'd0) &&
-              (shadow_wm[2] === 8'd0)  && (shadow_wm[3] === 8'd16) &&
-              (shadow_wm[4] === 8'd16) && (shadow_wm[7] === 8'd64),
-              "program HIGH after STOP and mult inputs in weight memory");
+        // ---- Test 2: positive device input passes through relu -------------
+        $display("Test 2: device input 42 -> relu -> output 42");
+        out_count = 0;
+        @(posedge clk); #1;
+        input_data       = 8'd42;
+        input_data_valid = 1'b1;
+        @(posedge clk); #1;
+        input_data_valid = 1'b0;
+        wait_outputs(1, 200000);
+        repeat (20) @(posedge clk);
+        check((out_count >= 1) && (out_log[0] === 8'd42),
+              "device output equals 42");
 
-        // -------------------------------------------------------------------
-        // Test 2: end stops the Feeder
-        // -------------------------------------------------------------------
-        $display("Test 2: end terminates instruction fetch");
-        check((dut.feeder.S === FEEDER_DONE) && (wait_cycles < 200000),
-              "Feeder reached DONE after end");
+        // ---- Test 3: negative device input clamps to 0 ---------------------
+        $display("Test 3: device input -9 -> relu -> output 0");
+        out_count = 0;
+        @(posedge clk); #1;
+        input_data       = 8'hF7;  // -9
+        input_data_valid = 1'b1;
+        @(posedge clk); #1;
+        input_data_valid = 1'b0;
+        wait_outputs(1, 200000);
+        repeat (20) @(posedge clk);
+        check((out_count >= 1) && (out_log[0] === 8'd0),
+              "device output equals 0 (relu clamp)");
 
-        // -------------------------------------------------------------------
-        // Test 3: mult result
-        // -------------------------------------------------------------------
-        $display("Test 3: mult result C = rs1 * rs2 (requantized)");
+        // ===================================================================
+        // EXTERNAL MODE
+        // ===================================================================
+        mode_select = 1'b1;
+
+        // Re-FLASH a 10-element relu program: relu 0x0001 -> 0x0001, len 10.
+        spi_ss = 0;
+        send_spi_byte(FLASH_CODE);
+        send_program(mk_relu(16'h0001, 16'h0001, 16'd10));
+        send_program(128'd0); // end
+        send_spi_byte(STOP_CODE);
+        spi_ss = 1;
+
+        // Auto-run + the initial EXTERNAL_OUTPUT (10 values) drains here.
+        wait_feeder_done(200000);
+        repeat (40) @(posedge clk);
+        wait_outputs(10, 200000);   // let the initial 10-value output complete
+        repeat (40) @(posedge clk);
+
+        $display("Test 4: external-mode re-FLASH completes");
+        check((dut.program === 1'b1) && (dut.feeder.S === FEEDER_DONE),
+              "program HIGH and Feeder DONE after external FLASH");
+
+        // Define the input vector and its expected relu output.
+        ext_in[0]=8'd10;  ext_in[1]=8'hFD; ext_in[2]=8'd0;   ext_in[3]=8'd127;
+        ext_in[4]=8'h80;  ext_in[5]=8'd5;  ext_in[6]=8'hCE;  ext_in[7]=8'd100;
+        ext_in[8]=8'hFF;  ext_in[9]=8'd64;
+        for (m = 0; m < 10; m = m + 1)
+            ext_exp[m] = ($signed(ext_in[m]) > 0) ? ext_in[m] : 8'd0;
+
+        // ---- INPUT transmission: write the 10-element vector to 0x1 buffer -
+        out_count = 0;
+        spi_ss = 0;
+        send_spi_byte(INPUT_CODE);
+        send_spi_byte(MEM_CODE);
+        send_spi_byte(8'h01);   // LADD = ISA 0x0001 (0x1 buffer)
+        send_spi_byte(8'h00);   // UADD
+        send_spi_byte(8'd10);   // LLEN = 10
+        send_spi_byte(8'd0);    // ULEN
+        for (m = 0; m < 10; m = m + 1) send_spi_byte(ext_in[m]);
+        send_spi_byte(STOP_CODE);
+        spi_ss = 1;
+
+        // Program re-runs (relu over 10 elements), then EXTERNAL_OUTPUT emits 10.
+        wait_outputs(10, 400000);
+        repeat (40) @(posedge clk);
+
+        $display("Test 5: external output emits 10 values");
+        check(out_count === 10, "exactly 10 values emitted with device_ready handshake");
+
+        $display("Test 6: external output values equal relu(inputs)");
+        ext_ok = 1;
+        for (m = 0; m < 10; m = m + 1)
+            if (out_log[m] !== ext_exp[m]) ext_ok = 0;
+        $display("  out: %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d",
+                 out_log[0], out_log[1], out_log[2], out_log[3], out_log[4],
+                 out_log[5], out_log[6], out_log[7], out_log[8], out_log[9]);
+        $display("  exp: %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d",
+                 ext_exp[0], ext_exp[1], ext_exp[2], ext_exp[3], ext_exp[4],
+                 ext_exp[5], ext_exp[6], ext_exp[7], ext_exp[8], ext_exp[9]);
+        check(ext_ok === 1, "all 10 outputs equal relu(inputs)");
+
+        // ---- Test 7: clean completion --------------------------------------
+        $display("Test 7: clean completion (no fault states)");
+        check((dut.ctrl.S === CTRL_IDLE) && (dut.feeder.S === FEEDER_DONE) &&
+              (dut.program === 1'b1),
+              "Controller IDLE, Feeder DONE, program HIGH at end");
+
+        // ===================================================================
+        // Test 8: external re-input without re-FLASH (steady-state loop).
+        //   Send a second INPUT vector (all positive) to the resident len-10
+        //   relu program; expect 10 new pass-through outputs [1..10].
+        // ===================================================================
+        $display("Test 8: external re-input re-runs resident program");
+        for (m = 0; m < 10; m = m + 1) ext_in[m] = m + 1; // 1..10 (all positive)
+        out_count = 0;
+        spi_ss = 0;
+        send_spi_byte(INPUT_CODE);
+        send_spi_byte(MEM_CODE);
+        send_spi_byte(8'h01);   // ISA 0x0001 (0x1 buffer)
+        send_spi_byte(8'h00);
+        send_spi_byte(8'd10);   // LLEN = 10
+        send_spi_byte(8'd0);
+        for (m = 0; m < 10; m = m + 1) send_spi_byte(ext_in[m]);
+        send_spi_byte(STOP_CODE);
+        spi_ss = 1;
+        wait_outputs(10, 400000);
+        repeat (40) @(posedge clk);
+        ext_ok = 1;
+        if (out_count !== 10) ext_ok = 0;
+        for (m = 0; m < 10; m = m + 1)
+            if (out_log[m] !== ext_in[m]) ext_ok = 0;
+        $display("  out: %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d",
+                 out_log[0], out_log[1], out_log[2], out_log[3], out_log[4],
+                 out_log[5], out_log[6], out_log[7], out_log[8], out_log[9]);
+        check(ext_ok === 1, "second INPUT re-runs program -> outputs [1..10]");
+
+        // ===================================================================
+        // Test 9: FLASH weights via MEM + a single mult against them.
+        //   Verifies the weight-flash + systolic-array mult path end to end.
+        //   Unified map (ISA addr -> WM phys = ISA-2):
+        //     rs1 @0x0002 = [[16,0],[0,16]]   -> WM phys 0..3
+        //     rs2 @0x0006 = [[16,32],[48,64]] -> WM phys 4..7
+        //     rd  @0x000A                      -> WM phys 8..11
+        //   Products 256/512/768/1024 requantized (>>8) -> [[1,2],[3,4]].
+        // ===================================================================
+        $display("Test 9: FLASH weights via MEM + single mult (coverage gap #3)");
+        rst = 0; repeat (4) @(posedge clk); rst = 1; repeat (4) @(posedge clk);
+        mode_select = 1'b0;
+        for (si = 0; si < 256; si = si + 1) shadow_wm[si] = 8'hEE;
+        spi_ss = 0;
+        send_spi_byte(FLASH_CODE);
+        send_mem4(16'h0002, 8'd16, 8'd0,  8'd0,  8'd16); // rs1
+        send_mem4(16'h0006, 8'd16, 8'd32, 8'd48, 8'd64); // rs2
+        send_program(mk_mul(16'h0002, 4'd2, 4'd2, 16'h0006, 4'd2, 4'd2, 16'h000A));
+        send_program(128'd0); // end
+        send_spi_byte(STOP_CODE);
+        spi_ss = 1;
+        wait_feeder_done(200000);
+        repeat (60) @(posedge clk);
+        $display("  mult result WM[8..11] = %0d %0d %0d %0d  (expect 1 2 3 4)",
+                 $signed(shadow_wm[8]),  $signed(shadow_wm[9]),
+                 $signed(shadow_wm[10]), $signed(shadow_wm[11]));
         check((shadow_wm[8]  === 8'd1) && (shadow_wm[9]  === 8'd2) &&
               (shadow_wm[10] === 8'd3) && (shadow_wm[11] === 8'd4),
-              "mult result [1,2,3,4]");
+              "single mult from flashed weights = [1,2,3,4]");
 
-        // -------------------------------------------------------------------
-        // Test 4: relu result
-        // -------------------------------------------------------------------
-        $display("Test 4: relu result max(0,x)");
-        check((shadow_wm[16] === 8'd0) && (shadow_wm[17] === 8'd7) &&
-              (shadow_wm[18] === 8'd0) && (shadow_wm[19] === 8'd100),
-              "relu result [0,7,0,100]");
+        // ===================================================================
+        // Test 10: two consecutive mult instructions in one program.
+        //   Both mults use the SAME operands and so must produce the SAME
+        //   result. mult1 -> rdA @0x000A (WM 8..11); mult2 -> rdB @0x000E
+        //   (WM 12..15). If the MAC accumulators are not cleared between the
+        //   two mults, mult2 accumulates on top of mult1 (doubling to
+        //   [[2,4],[6,8]] or saturating) and this test fails.
+        // ===================================================================
+        $display("Test 10: two consecutive mults — MAC clear between ops (possibility #2)");
+        rst = 0; repeat (4) @(posedge clk); rst = 1; repeat (4) @(posedge clk);
+        mode_select = 1'b0;
+        for (si = 0; si < 256; si = si + 1) shadow_wm[si] = 8'hEE;
+        spi_ss = 0;
+        send_spi_byte(FLASH_CODE);
+        send_mem4(16'h0002, 8'd16, 8'd0,  8'd0,  8'd16); // rs1
+        send_mem4(16'h0006, 8'd16, 8'd32, 8'd48, 8'd64); // rs2
+        send_program(mk_mul(16'h0002, 4'd2, 4'd2, 16'h0006, 4'd2, 4'd2, 16'h000A)); // mult1 -> WM 8..11
+        send_program(mk_mul(16'h0002, 4'd2, 4'd2, 16'h0006, 4'd2, 4'd2, 16'h000E)); // mult2 -> WM 12..15
+        send_program(128'd0); // end
+        send_spi_byte(STOP_CODE);
+        spi_ss = 1;
+        wait_feeder_done(200000);
+        repeat (80) @(posedge clk);
+        $display("  mult1 WM[8..11]  = %0d %0d %0d %0d",
+                 $signed(shadow_wm[8]),  $signed(shadow_wm[9]),
+                 $signed(shadow_wm[10]), $signed(shadow_wm[11]));
+        $display("  mult2 WM[12..15] = %0d %0d %0d %0d  (expect 1 2 3 4)",
+                 $signed(shadow_wm[12]), $signed(shadow_wm[13]),
+                 $signed(shadow_wm[14]), $signed(shadow_wm[15]));
+        check((shadow_wm[12] === 8'd1) && (shadow_wm[13] === 8'd2) &&
+              (shadow_wm[14] === 8'd3) && (shadow_wm[15] === 8'd4),
+              "second mult result = [1,2,3,4] (MACs cleared between mults)");
 
-        // -------------------------------------------------------------------
-        // Test 5: add result
-        // -------------------------------------------------------------------
-        $display("Test 5: add result element-wise sum");
-        check((shadow_wm[28] === 8'd15) && (shadow_wm[29] === 8'd17),
-              "add result first two elements [15,17]");
-
-        // -------------------------------------------------------------------
-        // Test 6: add saturation (-150 -> -128, +130 -> +127)
-        // -------------------------------------------------------------------
-        $display("Test 6: add saturation clamps to int8 range");
-        check((shadow_wm[30] === 8'h80) && (shadow_wm[31] === 8'h7F),
-              "add saturates [-128, 127]");
-
-        // -------------------------------------------------------------------
-        // Test 7: clean completion (no error states)
-        // -------------------------------------------------------------------
-        $display("Test 7: program ran to completion with no fault states");
-        check((dut.ctrl.S === CTRL_IDLE) && (dut.feeder.S === FEEDER_DONE),
-              "Controller IDLE and Feeder DONE at end");
-
-        // -------------------------------------------------------------------
+        // ===================================================================
         // Summary
-        // -------------------------------------------------------------------
+        // ===================================================================
         $display("");
         $display("================================");
         $display("Results: %0d PASS, %0d FAIL", pass_count, fail_count);

@@ -2,6 +2,218 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-01 — Display Logic Update part 3
+
+- Pulled over 7-segment display code from another project — located in
+`TPU/VGA_DEBUG/`.
+- instantiated `three_decimal_vals_w_neg` module to display *output_val* in
+device mode.
+  - Output to 7-segment displays is disabled in external mode to give an
+  additional visual indicator of mode.
+- modified `Tensor_Processing_Unit.sdc` to properly constrain VGA clock and
+SPI clock.
+
+## 2026-07-01 — Display Logic Update part 2
+
+- **Updated `TPU/VGA_DEBUG/debug.v`**
+- Added *i_clear* input signal — clears ASCII buffer when asserted HIGH.
+- Added CLEAR state to FSM to implement clear behavior (transitions to 
+WAIT_WREN when complete). 
+- *write_ready* held LOW, *col_num* and *row_num* held at 0 in CLEAR state.
+- Modified *ascii_wren* behavior — now held LOW in WAIT_WREN state and 
+HIGH in CLEAR state.
+- Implemented a *clear_count* variable to loop through all ASCII buffer
+addresses while in the CLEAR state.
+- Updated combinational ASCII address decoding to set *ascii_addr* to 
+*clear_count* while the current state or next state is CLEAR.
+- Updated combinational ASCII data decoding to force *ascii_data* to 0 when
+in the CLEAR or WAIT_WREN states.
+- **Added clear behavior to `Tensor_Processing_Unit.v`**
+- Wired *end_reached* from `TPU/TPU.v` to *i_clear* in `TPU/VGA_DEBUG/debug.v`
+so that the screen is cleared on program end.
+
+## 2026-07-01 — Hardware Spec minor update (device_ready level, EXTERNAL_OUTPUT order, end_reached exposed)
+
+- **Context:** Hardware Spec changelog 2026-07-01 made three changes affecting
+  the Programmer, Feeder, and TPU modules. Wrapper `Tensor_Processing_Unit.v`
+  intentionally not modified (per instruction; user manages it).
+- **`TPU/PROGRAMMER/Programmer.v`** — EXTERNAL_OUTPUT reordered to match the spec:
+  for each of the 10 values it now **forwards the datum, waits for
+  `i_device_ready` HIGH, then pulses `output_data_valid`** (previously it pulsed
+  valid before waiting). State flow changed to `X_OUT_FWD → X_OUT_WAIT_RDY →
+  X_OUT_VALID → X_OUT_INC`; the valid strobe moved from `X_OUT_FWD` to
+  `X_OUT_VALID`. Updated the `i_device_ready` comment to reflect that it is a
+  level (HIGH while the consumer is ready), not a one-cycle pulse. The existing
+  `X_OUT_WAIT_RDY` logic already treated it as a level, so no other change.
+- **`TPU/TPU.v`** — exposed the Feeder's `end_reached` at the TPU boundary.
+  Corrected the port declaration `O_end_reached` → `o_end_reached` so the port,
+  the internal `assign o_end_reached = feeder_end_reached`, and the wrapper's
+  `.o_end_reached(...)` connection all agree (and conform to the `o_` naming
+  convention). Updated the `i_device_ready` passthrough comment.
+- **`TPU/PROGRAMMER/Feeder.v`** — no change required; it already outputs
+  `o_end_reached` (one-cycle strobe), which the spec change only re-exposes at
+  the TPU level.
+- **Tests:**
+  - `tests/TB_Step8_FullSystem.v` — connect the new `o_end_reached` port
+    (unused); the EXTERNAL_OUTPUT tests still pass under the reordered flow.
+    Pinned `REQUANT_SHIFT = 8` via `defparam` on both VPs so the mult compute
+    tests (9/10) verify the datapath deterministically regardless of the file's
+    requant default (now 11, tuned for the NN under bring-up).
+  - `tests/TB_Step4_VectorProcessor.v` — pinned `REQUANT_SHIFT = 8` via
+    `defparam` for the same reason (Tests 6/12 check SA-output requant and
+    saturation, which are scale-dependent).
+- **Verification (Questa 2023.3):** full regression with the file default
+  `REQUANT_SHIFT = 11` — Step1 19/19, Step2 9/9, Step3 9/9, Step4 12/12,
+  Step5 7/7, Step6 7/7, Step7 8/8, Step8 10/10. All PASS.
+
+## 2026-07-01 — Display Logic Update
+
+- **Updated display logic in `Tensor_Processing_Unit.v`.**
+- Moved debug logic to main code block — display output is an intended feature 
+now.
+- Renamed variables for clarity.
+- Added proper MUX logic for programmer *mode_select*.
+- **In TPU module:** exposed *end_reached* from Feeder module as an output.
+
+## 2026-06-30 — Full-system mult tests (HW debug: constant 0x7F output)
+
+- **Context:** on hardware, a device-mode neural-network program (mult → add →
+  mult → add) outputs 0x7F (int8 positive saturation) regardless of input, while
+  a single-`end` program correctly passes the input through. Added two
+  full-system tests to localize the fault between the candidate causes.
+- **`tests/TB_Step8_FullSystem.v`** (8 → 10 cases): added a weight-memory shadow
+  (snoops the muxed weight-memory port-a writes) plus `mk_mul` / `send_mem4`
+  helpers, and:
+  - **Test 9 (coverage gap):** FLASH weights via MEM, then a single mult against
+    them (rs1 [[16,0],[0,16]] × rs2 [[16,32],[48,64]] → requantized [[1,2],[3,4]]).
+    Exercises the weight-flash + systolic-array mult path end to end — a path the
+    v0.2 full-system test had stopped covering (the rewrite used a relu-over-
+    0x1-buffer program with no weight matrix).
+  - **Test 10 (consecutive mults):** two mult instructions with identical
+    operands in one program (mult1 → WM 8..11, mult2 → WM 12..15). Both must
+    yield [[1,2],[3,4]]; if the MAC accumulators were not cleared between mults,
+    mult2 would double to [[2,4],[6,8]] or saturate.
+- **Result:** both tests PASS (Test 9 = [1,2,3,4]; Test 10 mult2 = [1,2,3,4]).
+  Full-system suite now 10/10. This exonerates the two RTL hypotheses in
+  simulation: the weight-flash+mult path is correct, and the MACs *are* cleared
+  between consecutive mults. The remaining likely cause is the requantization
+  scale (fixed `REQUANT_SHIFT = 8`) vs. how the network weights were quantized —
+  being investigated separately.
+- **Note:** ran in a local scratch work library; the Desktop `work/` dir hit a
+  transient file lock (OneDrive/Defender) during `vopt`. Testbench source
+  unaffected; no RTL changed.
+
+## 2026-06-30 — Testbench coverage expansion (all 8 testbenches)
+
+- **Context:** lifted the prior 7-test-per-bench convention to add coverage of
+  behaviors that were previously untested. No RTL changed; tests only.
+- **`tests/TB_Step1_Programmer.v`** (7 → 12 cases / 19 sub-checks): added
+  COM_ERROR on an invalid command code; WRITE_ERROR on a MEM command to ISA
+  address 0x0000; EXTERNAL_INPUT unified routing to *weight* memory (not just the
+  0x1 buffer); PROGRAM command inside an INPUT transmission → COM_ERROR (the
+  EXTERNAL_INPUT clarification); and IDLE discarding stray non-header bytes
+  before a valid FLASH. Error tests reset the DUT (error states are terminal).
+- **`tests/TB_Step2_Feeder.v`** (7 → 9): re-added the FEED_ERROR exhaustion test
+  (previously displaced by the end_reached test) and added a check that
+  end_reached never pulses while forwarding non-terminating instructions.
+- **`tests/TB_Step3_Controller.v`** (7 → 9): systolic_array_start is asserted for
+  mult but not for relu/add; function-code decode (relu → activator RELU, add →
+  ALU ADD, mult → both NOOP).
+- **`tests/TB_Step4_VectorProcessor.v`** (10 → 12): VSRC_MEM → VDST_ALU_A
+  element_valid streaming; VSRC_SA_OUT negative requantization saturating to
+  0x80 (added a `neg_mode` to the SA accumulator stub).
+- **`tests/TB_Step5_Activator.v`, `tests/TB_Step6_ALU.v`** (6 → 7 each): invalid
+  function/operation code drives the control-error debug value (29).
+- **`tests/TB_Step7_SystolicArray.v`** (7 → 8): `clear` zeroes a MAC accumulator
+  (residual data flushed between operations).
+- **`tests/TB_Step8_FullSystem.v`** (7 → 8): external re-input without re-FLASH —
+  a second INPUT transmission re-runs the resident program and emits 10 new relu
+  outputs [1..10], exercising the steady-state operating loop.
+- **Verification (Questa 2023.3):** full regression — Step1 19/19, Step2 9/9,
+  Step3 9/9, Step4 12/12, Step5 7/7, Step6 7/7, Step7 8/8, Step8 8/8. All PASS.
+
+## 2026-06-30 — v0.2 Step 5: Full-system test rewrite (both IO modes) + final regression
+
+- **`tests/TB_Step8_FullSystem.v` rewritten** to drive the top-level `TPU`
+  through both v0.2 Programmer IO modes end to end, using the real RAM IP for
+  the readback path (no internal RAM array referenced):
+  - **Device mode** (`mode_select`=0): FLASH a self-contained `relu 0x0001 ->
+    0x0001, len 1` program; supply a single input via `i_input_data` /
+    `i_input_data_valid`; verify `o_output_data` / `o_output_data_valid` emit the
+    activated value. Tests pass-through (42 -> 42) and negative clamp (-9 -> 0).
+  - **External mode** (`mode_select`=1): re-FLASH `relu 0x0001 -> 0x0001, len 10`;
+    send an INPUT transmission (MEM @ISA 0x0001, len 10) with a mixed-sign
+    vector; verify exactly 10 outputs are emitted with the `i_device_ready`
+    handshake and that each equals `relu(input)`. A continuous-assign
+    `device_ready = (prog.S == X_OUT_WAIT_RDY)` models the consumer handshake.
+- **7 test cases:** device FLASH completion; device positive input; device
+  negative input (clamp); external re-FLASH completion; external emits exactly 10
+  values; external values equal relu(inputs); clean completion (Controller IDLE,
+  Feeder DONE, program HIGH, no fault states). **All 7 PASS.**
+- **Full regression (Questa 2023.3, `-L altera_mf_ver -voptargs=+acc`):**
+  Step1 14/14, Step2 7/7, Step3 7/7, Step4 10/10, Step5 6/6, Step6 6/6,
+  Step7 7/7, Step8 7/7 — **no regressions** from the v0.2 changes.
+- **`main.md`:** marked all five v0.2 build steps ✅ Complete. v0.2 build done.
+
+## 2026-06-30 — v0.2 Steps 1-4: Programmer IO rewrite, Feeder end_reached, TPU passthrough, NO OP write suppression
+
+- **Clarifications recorded in `main.md`** (per user request before building): (1)
+  `EXTERNAL_INPUT` uses unified address routing like FLASH (PROGRAM command
+  invalid in an INPUT transmission); (2) new Programmer IO is exposed at the TPU
+  module boundary only (FPGA wrapper pin mapping left to the user); (3) the
+  revised full-system test exercises both device and external IO modes.
+- **Build-step order:** built Programmer (Step 1) → Feeder `end_reached`
+  (Step 3) → TPU (Step 2) → minor changes (Step 4). Feeder/TPU were reordered
+  because the TPU rewiring consumes the Feeder's new `end_reached` output.
+
+- **`TPU/PROGRAMMER/Programmer.v` — full meta-state rewrite (v0.2).**
+  - New IO: `i_mode_select`, `i_input_data_valid`, `i_device_ready`,
+    `i_input_data[7:0]`, `o_output_data[7:0]`, `o_output_data_valid`,
+    `i_end_reached`, `i_buf_q_a[7:0]` (0x1-buffer readback), and `o_tpu_rst`
+    (active LOW) now separate from `o_program`.
+  - Single flat FSM organized into six meta-states: IDLE (scan SPI for a
+    FLASH/INPUT header; service latched device input / program end by priority
+    PROGRAM > DEVICE_INPUT > OUTPUT), PROGRAM (FLASH: overwrite program memory,
+    MEM/PROGRAM commands), DEVICE_INPUT (write `i_input_data` to 0x1-buffer addr
+    0, pulse `tpu_rst`), DEVICE_OUTPUT (emit 0x1-buffer[0]), EXTERNAL_INPUT
+    (INPUT header, unified MEM routing, PROGRAM command → COM_ERROR),
+    EXTERNAL_OUTPUT (emit 0x1-buffer[0..9] paced by `i_device_ready`).
+  - Protocol v0.2 codes: FLASH `U`, INPUT `I`, MEM `M`, PROGRAM `P`, STOP `S`.
+  - One-cycle pulses (`i_end_reached`, `i_input_data_valid`) are latched so they
+    are not missed while the FSM is busy; consumed on entering the relevant
+    meta-state. 0x1-buffer reads honor the 2-cycle RAM read latency.
+  - Retains error states STATE_ERROR / COM_ERROR / WRITE_ERROR /
+    PROG_OVERFLOW_ERROR (unrecoverable except by `i_rst`).
+- **`TPU/PROGRAMMER/Feeder.v`** — added `o_end_reached` output, pulsed HIGH for
+  one clock cycle in CHECK when an `end` instruction is fetched (HIGH during the
+  first DONE cycle). Added a default deassert so it is a clean one-cycle strobe.
+- **`TPU/TPU.v`** — `trst` is now `i_rst & prog_tpu_rst` (was `i_rst & program`),
+  letting the Programmer reset the internals independently of its memory-bus
+  access so output meta-states can read memory without disturbing a finished
+  program. Added the Programmer IO passthrough ports at the TPU boundary; wired
+  the Feeder `o_end_reached → Programmer i_end_reached`, `buf_q_a → Programmer
+  i_buf_q_a`, and `Programmer o_tpu_rst → prog_tpu_rst`. Debug section untouched.
+- **`TPU/PROCESSING/Activator.v`, `TPU/PROCESSING/ALU.v`** — `o_write` now
+  suppressed when the function/operation is NO OP
+  (`o_write = i_enable & (op != NOOP)`), per the v0.2 hardware-spec design fix,
+  so a non-activation/non-ALU instruction cannot push placeholder data into the
+  vector buffer. Verified the Systolic_Array already passes `i_trst` to every MAC
+  (the other listed design fix) — no change needed.
+
+- **Tests:**
+  - `tests/TB_Step1_Programmer.v` — rewritten: reset defaults; FLASH+MEM with
+    program/tpu_rst toggling; PROGRAM instruction assembly + program-memory
+    overwrite; DEVICE_INPUT; DEVICE_OUTPUT; EXTERNAL_OUTPUT (10 values with
+    device_ready handshake); INPUT-header routing (external writes, device-mode
+    discards). 7 cases / 14 sub-checks — **all PASS**.
+  - `tests/TB_Step2_Feeder.v` — Test 7 replaced with an `end_reached` one-cycle
+    strobe check (count == 1 and Feeder in DONE). **7/7 PASS**.
+  - `tests/TB_Step5_Activator.v`, `tests/TB_Step6_ALU.v` — Test 4/Test 2 updated
+    to drive a non-NOOP function when checking `o_write` follows `i_enable`;
+    NOOP test now also asserts `o_write` is suppressed. **6/6 PASS each**.
+- **Verification:** full TPU hierarchy recompiles with **0 errors / 0 warnings**
+  under Questa 2023.3. Full-system test rewrite (Step 5) pending.
+
 ## 2026-06-25 — Feeder Program_Memory 2-cycle read latency fix
 
 - **Context:** `main.md` Build Parameters now specify a 2-cycle memory read

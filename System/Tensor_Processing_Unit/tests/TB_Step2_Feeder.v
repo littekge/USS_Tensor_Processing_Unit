@@ -33,7 +33,10 @@
  *   Test 4: controller_start is HIGH for exactly one clock cycle
  *   Test 5: PC increments to 1 after controller acknowledges first instruction
  *   Test 6: Correct instruction content forwarded (first of two non-end instr)
- *   Test 7: FEED_ERROR entered when all PM addresses exhausted (no end)
+ *   Test 7: end_reached pulses HIGH for exactly one cycle when end is fetched
+ *           (and the Feeder reaches DONE)
+ *   Test 8: FEED_ERROR entered when all PM addresses are exhausted with no end
+ *   Test 9: end_reached never pulses while forwarding non-terminating instrs
  * -------------------------------------------------------------------------
  */
 
@@ -121,6 +124,7 @@ reg ctrl_idle;
 // ---------------------------------------------------------------------------
 wire [127:0] dut_instruction;
 wire         dut_ctrl_start;
+wire         dut_end_reached;
 
 Feeder #(.PM_MAX_ADDRESS(PM_MAX)) dut (
     .i_clk              (clk),
@@ -130,8 +134,17 @@ Feeder #(.PM_MAX_ADDRESS(PM_MAX)) dut (
     .o_pm_wren          (pm_wren),
     .i_controller_idle  (ctrl_idle),
     .o_instruction      (dut_instruction),
-    .o_controller_start (dut_ctrl_start)
+    .o_controller_start (dut_ctrl_start),
+    .o_end_reached      (dut_end_reached)
 );
+
+// Count end_reached pulses to confirm it is a one-cycle strobe.
+integer end_pulse_count;
+always @(posedge clk)
+begin
+    if (trst == 1'b1 && dut_end_reached == 1'b1)
+        end_pulse_count = end_pulse_count + 1;
+end
 
 // ---------------------------------------------------------------------------
 // Test bookkeeping
@@ -191,6 +204,7 @@ begin
     ctrl_idle  = 1'b0;
     pass_count = 0;
     fail_count = 0;
+    end_pulse_count = 0;
 
     // =======================================================================
     // Test 1: After reset — controller_start=LOW and pm_address=0
@@ -313,9 +327,32 @@ begin
     report_test((captured_instr[127:124] == OPCODE_MULT), 6);
 
     // =======================================================================
-    // Test 7: FEED_ERROR entered when all PM addresses exhausted (no end)
-    // Fill all 4 addresses with non-terminating instructions and process them all.
-    // After the last ack, the feeder should enter FEED_ERROR and freeze.
+    // Test 7: end_reached pulses HIGH for exactly one cycle when end is fetched.
+    // Place an end at address 0; the Feeder fetches it, pulses end_reached once,
+    // and settles in DONE. A non-end at addr 0 (already covered) must not pulse.
+    // =======================================================================
+    pmem[0] = make_end(1'b0);
+    pmem[1] = make_mult(16'h0002, 16'h0003, 16'h0004);
+    pmem[2] = make_mult(16'h0002, 16'h0003, 16'h0004);
+    pmem[3] = make_mult(16'h0002, 16'h0003, 16'h0004);
+
+    end_pulse_count = 0;
+    do_reset;
+    ctrl_idle = 1'b0;
+
+    // Run long enough to fetch the end and settle in DONE.
+    for (i = 0; i < 20; i = i + 1)
+    begin
+        @(posedge clk); #1;
+    end
+
+    // Exactly one end_reached pulse, Feeder in DONE (4'd7), no controller_start.
+    report_test((end_pulse_count == 1) && (dut.S == 4'd7), 7);
+
+    // =======================================================================
+    // Test 8: FEED_ERROR entered when all PM addresses are exhausted (no end).
+    // Fill all 4 addresses with non-terminating instructions and process them
+    // all; after the last ack the Feeder must enter FEED_ERROR and freeze.
     // =======================================================================
     pmem[0] = make_mult(16'h0002, 16'h0003, 16'h0004);
     pmem[1] = make_mult(16'h0002, 16'h0003, 16'h0004);
@@ -325,7 +362,6 @@ begin
     do_reset;
     ctrl_idle = 1'b0;
 
-    // Process instructions at addresses 0, 1, 2, 3 (all non-terminating)
     repeat (4)
     begin
         for (i = 0; i < 30 && dut_ctrl_start == 1'b0; i = i + 1)
@@ -333,10 +369,8 @@ begin
         controller_ack;
     end
 
-    // Allow cycles for FEED_ERROR state to be reached
     repeat (5) @(posedge clk); #1;
 
-    // In FEED_ERROR: controller_start stays LOW and pm_address stays at PM_MAX
     feed_error_ok = 1'b1;
     for (i = 0; i < 10; i = i + 1)
     begin
@@ -347,7 +381,32 @@ begin
     if (pm_address != PM_MAX)
         feed_error_ok = 1'b0;
 
-    report_test(feed_error_ok, 7);
+    report_test(feed_error_ok, 8);
+
+    // =======================================================================
+    // Test 9: end_reached never pulses while forwarding non-terminating
+    // instructions. No end exists anywhere in memory, so end_reached must stay
+    // LOW regardless of timing as several instructions are forwarded.
+    // =======================================================================
+    pmem[0] = make_mult(16'h0002, 16'h0003, 16'h0004);
+    pmem[1] = make_add_instr(16'h0002, 16'h0003, 16'h0004);
+    pmem[2] = make_mult(16'h0002, 16'h0003, 16'h0004);
+    pmem[3] = make_add_instr(16'h0002, 16'h0003, 16'h0004);
+
+    end_pulse_count = 0;
+    do_reset;
+    ctrl_idle = 1'b0;
+
+    // Forward and ack the two non-terminating instructions, then check no pulse
+    // occurred (the end at address 2 is not fetched).
+    repeat (2)
+    begin
+        for (i = 0; i < 30 && dut_ctrl_start == 1'b0; i = i + 1)
+            @(posedge clk); #1;
+        controller_ack;
+    end
+
+    report_test((end_pulse_count == 0), 9);
 
     // =======================================================================
     // Summary

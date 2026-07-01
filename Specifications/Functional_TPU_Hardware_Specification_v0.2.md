@@ -66,6 +66,8 @@ serves as a passthrough for relevant signals (clk, rst, SPI Signals, etc.).
 *input_data_valid*, *device_ready*, and *mode_select* from the programmer module
 as module inputs, and *output_data* and *output_data_valid* from the programmer
 as module outputs.
+- ***end_reached* Passthrough:** The TPU module exposes the *end_reached* output
+signal from the Feeder module as a module output.
 - **Dual Vector Processors:** The TPU module instantiates two Vector_Processor
 modules, a primary processor *a* and a secondary processor *b*. Relevant
 connections are described below.
@@ -172,7 +174,7 @@ The module defines a complex finite state machine to implement these functions.
     mode.
     - ***input_data_valid***: Asserted HIGH for one clock cycle when input data
     is valid.
-    - ***device_ready***: Asserted HIGH for one clock cycle when the device is
+    - ***device_ready***: Asserted HIGH when the device is
     ready to receive the next output value.
   - **Outputs:**
     - ***program***: Indicates that the module is currently programming the
@@ -252,9 +254,10 @@ purpose of describing the state machine flow.
   - **EXTERNAL_OUTPUT:**
     - Assert *program* LOW (gives access to 0x1 buffer).
     - Forward the data at the first address in the 0x1 buffer to *output_data*.
-    - Assert *output_data_valid* HIGH for one clock cycle.
-    - Wait until *device_ready* is pulsed HIGH for one clock cycle.
-    - Repeat the forward, assert, wait cycle for the next 9 values in the 0x1 buffer.
+    - Wait until *device_ready* is asserted HIGH.
+    - Once *device_ready* is asserted HIGH, assert *output_data_valid* HIGH for
+    one clock cycle.
+    - Repeat the forward, wait, assert cycle for the next 9 values in the 0x1 buffer.
     - Assert *program* HIGH.
     - Return to IDLE.
 
