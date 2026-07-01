@@ -2,6 +2,17 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-01 — Display Logic Update part 3
+
+- Pulled over 7-segment display code from another project — located in
+`TPU/VGA_DEBUG/`.
+- instantiated `three_decimal_vals_w_neg` module to display *output_val* in
+device mode.
+  - Output to 7-segment displays is disabled in external mode to give an
+  additional visual indicator of mode.
+- modified `Tensor_Processing_Unit.sdc` to properly constrain VGA clock and
+SPI clock.
+
 ## 2026-07-01 — Display Logic Update part 2
 
 - **Updated `TPU/VGA_DEBUG/debug.v`**

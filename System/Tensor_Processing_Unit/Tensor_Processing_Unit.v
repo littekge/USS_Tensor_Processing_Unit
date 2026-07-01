@@ -46,10 +46,10 @@ module Tensor_Processing_Unit (
 	// inout 		          		FPGA_I2C_SDAT,
 
 	//////////// SEG7 //////////
-	//output		     [6:0]		HEX0,
-	//output		     [6:0]		HEX1,
-	//output		     [6:0]		HEX2,
-	//output		     [6:0]		HEX3,
+	output		     [6:0]		HEX0,
+	output		     [6:0]		HEX1,
+	output		     [6:0]		HEX2,
+	output		     [6:0]		HEX3,
 	//output		     [6:0]		HEX4,
 	//output		     [6:0]		HEX5,
 
@@ -121,6 +121,12 @@ assign input_data = (mode_select == 1'b0)?(SW[7:0]):(8'd0);
 wire input_data_valid;
 assign input_data_valid = (mode_select == 1'b0)?(~KEY[1]):(1'd0);
 
+wire [6:0]hex_out[0:3];
+assign HEX0 = (mode_select == 1'b0)?(hex_out[0]):(7'b1111111);
+assign HEX1 = (mode_select == 1'b0)?(hex_out[1]):(7'b1111111);
+assign HEX2 = (mode_select == 1'b0)?(hex_out[2]):(7'b1111111);
+assign HEX3 = (mode_select == 1'b0)?(hex_out[3]):(7'b1111111);
+
 wire end_reached;
 
 reg write_next;
@@ -139,6 +145,14 @@ begin
 		end
 	end
 end
+
+three_decimal_vals_w_neg seg (
+	.val(output_val),
+	.seg7_neg_sign(hex_out[3]),
+	.seg7_dig0(hex_out[0]),
+	.seg7_dig1(hex_out[1]),
+	.seg7_dig2(hex_out[2])
+);
 
 debug dbg (
    .i_clk(clk),
