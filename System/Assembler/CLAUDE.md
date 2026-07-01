@@ -12,9 +12,9 @@
 (includes build plan).
 - **Change Log:** `log.md` — append an entry every time you make a change.
 - **Specifications:** — located at `../../Specifications/`
-  - **Instruction Set Architecture:** `Functional_TPU_ISA_v0.2.md` — TPU
+  - **Instruction Set Architecture:** `Functional_TPU_ISA.md` — TPU
   instruction set
-  - **Messaging Protocol:** `Functional_TPU_Message_Protocol_v0.2.md` —
+  - **Messaging Protocol:** `Functional_TPU_Message_Protocol.md` —
   defines byte format for communicating with the TPU
 - **Development Platform:** Debian 13 Linux
 - **Languages:** Python 3.13, MLIR, C/C++

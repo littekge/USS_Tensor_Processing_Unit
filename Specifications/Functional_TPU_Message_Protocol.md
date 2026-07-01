@@ -1,6 +1,8 @@
 # Functional TPU Message Protocol
->
+
 > **Purpose:** This document outlines the *Functional TPU* messaging protocol.
+>
+> **Version: 0.2.0**
 
 ## General Protocol Description
 

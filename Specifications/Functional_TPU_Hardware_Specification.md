@@ -1,7 +1,9 @@
 # Functional TPU - Hardware Specification
->
+
 > **Purpose:** This document outlines the Functional TPU hardware specification,
-including module instantiation hierarchy and functional descriptions of modules.
+>including module instantiation hierarchy and functional descriptions of modules.
+>
+> **Version: 0.2.0**
 
 ## Module Instantiation Hierarchy
 

@@ -13,20 +13,20 @@
 - **License:** MIT License
 - **Change Log:** `log.md`
 - **Specifications:** — located at `../../Specifications/`
-  - **Instruction Set Architecture:** `Functional_TPU_ISA_v0.2.md` — TPU
+  - **Instruction Set Architecture:** `Functional_TPU_ISA.md` — TPU
   instruction set
-  - **Messaging Protocol:** `Functional_TPU_Message_Protocol_v0.2.md` — defines
+  - **Messaging Protocol:** `Functional_TPU_Message_Protocol.md` — defines
   byte format for communicating with the TPU
 
 ## General Project Description
 
 This project aims to assemble neural network computation graphs and weights into
 a formatted binary message according to the
-`Functional_TPU_Message_Protocol_v0.2.md` and `Functional_TPU_ISA_v0.2.md`. It
+`Functional_TPU_Message_Protocol.md` and `Functional_TPU_ISA.md`. It
 has two main flows:
 
 - Quantization and mapping of neural network weights to ISA compliant memory locations.
-- Assembly of `Functional_TPU_ISA_v0.2.md` machine code from a StableHLO MLIR
+- Assembly of `Functional_TPU_ISA.md` machine code from a StableHLO MLIR
 computation graph.
 
 **Design Goals:**
@@ -42,7 +42,7 @@ parameter `MAX_MATMUL_SIZE`.
 
 ## Lowering Pipeline
 
-The lowering pipeline to the `Functional_TPU_Message_Protocol_v0.2.md` format
+The lowering pipeline to the `Functional_TPU_Message_Protocol.md` format
 has 4 stages:
 
 1. Neural Network Import
@@ -53,7 +53,7 @@ has 4 stages:
     2. Quantize neural network weights from f32 to Q0.7 fixed point (1 sign bit
     \+ 0 integer bits + 7 fractional bits = 8 bits total).
     3. Algorithmically map weights to ISA compliant memory locations.
-    4. Convert mapped weights to the `Functional_TPU_Message_Protocol_v0.2.md`
+    4. Convert mapped weights to the `Functional_TPU_Message_Protocol.md`
     MEM format and save as `/tmp/MEM.bin`.
     5. Save weight addresses as `/tmp/weight_map.json` — should correspond to
     the input arguments in `/tmp/initial.mlir`. This should be easy since
@@ -63,9 +63,9 @@ has 4 stages:
     the result as `/tmp/optimized.mlir`.
     2. Legalize `/tmp/optimized.mlir` to the *Functional_TPU* MLIR dialect,
     saving the result as `/tmp/optimized.tpu.mlir`.
-    3. Assemble `/tmp/optimized.tpu.mlir` into `Functional_TPU_ISA_v0.2.md`
+    3. Assemble `/tmp/optimized.tpu.mlir` into `Functional_TPU_ISA.md`
     machine code referencing `/tmp/weight_map.json` to determine weight addresses.
-    4. Convert machine code to the `Functional_TPU_Message_Protocol_v0.2.md`
+    4. Convert machine code to the `Functional_TPU_Message_Protocol.md`
     PROGRAM format and save as `/tmp/PROGRAM.bin`.
 4. Final Conversion
     1. Concatenate `/tmp/MEM.bin` and `/tmp/PROGRAM.bin` into a single string of
@@ -183,14 +183,14 @@ as possible.
 
 #### Step 2: Weight Mapping ✅
 
-Reference the `Functional_TPU_ISA_v0.2.md` and build logic to...
+Reference the `Functional_TPU_ISA.md` and build logic to...
 
 - Map the neural network input to address 0x1.
 - Map the remaining weights to valid memory addresses.
 
 #### Step 3: Weight Formatting ✅
 
-Reference the `Functional_TPU_Message_Protocol_v0.2.md` and build logic to...
+Reference the `Functional_TPU_Message_Protocol.md` and build logic to...
 
 - Export the memory map in the *Functional TPU Message Protocol* format and save
 it as `/tmp/MEM.bin`.
@@ -203,7 +203,7 @@ and files in that directory are entirely up to you; you may choose the coding
 language (likely tablegen and c++ to conform to what MLIR expects). However, the
 dialect must follow a few key rules:
 
-- **Direct translation** to the `Functional_TPU_ISA_v0.2.md`. The custom dialect
+- **Direct translation** to the `Functional_TPU_ISA.md`. The custom dialect
 must have a nearly 1:1 relation to machine code, and I should be able to easily
 determine the layout of the machine code from the custom dialect.
 - **Minimize** functions that will be synthesized away during assembly.
@@ -228,12 +228,12 @@ after the first optimization pass.
 Build `/nn_assembler/Assembler.py`:
 
 - Reference the weight map json file to convert the output of the final MLIR
-pass to `Functional_TPU_ISA_v0.2.md` machine code.
+pass to `Functional_TPU_ISA.md` machine code.
 - Prioritize using address 0x1 for intermediate results.
 
 #### Step 7: Assembler Export ✅
 
-Reference the `Functional_TPU_Message_Protocol_v0.2.md` and build logic to...
+Reference the `Functional_TPU_Message_Protocol.md` and build logic to...
 
 - Export the machine instructions to the *Functional TPU Message Protocol*
 format and save it as `/tmp/PROGRAM.bin`

@@ -15,18 +15,18 @@
 - **License:** MIT License
 - **Change Log:** `log.md`
 - **Specifications:** — located at `../../Specifications/`
-  - **Instruction Set Architecture:** `Functional_TPU_ISA_v0.2.md` (TPU
+  - **Instruction Set Architecture:** `Functional_TPU_ISA.md` (TPU
   instruction set)
-  - **Messaging Protocol:** `Functional_TPU_Message_Protocol_v0.2.md` (defines
+  - **Messaging Protocol:** `Functional_TPU_Message_Protocol.md` (defines
   byte format for communicating with the TPU)
-  - **Hardware Spec:** `Functional_TPU_Hardware_Specification_v0.2.md`
+  - **Hardware Spec:** `Functional_TPU_Hardware_Specification.md`
   (detailed description of Verilog module implementations)
 
 ## General Project Description
 
 The Functional TPU is a tensor processing unit roughly based on Google's first
 generation TPU. This project aims to create Verilog HDL code that implements the
-instruction set detailed in `Functional_TPU_ISA_v0.2.md` in order to accelerate
+instruction set detailed in `Functional_TPU_ISA.md` in order to accelerate
 small neural networks using an FPGA.
 
 **Design Goals:**
@@ -78,7 +78,7 @@ verified to properly receive and store data from the SPI slave module.
 integers as hexadecimal values on a monitor connected to the FPGA via it's VGA port.
 - **TPU Memory Modules:** `Program_Memory.v`, `TPU_0x1_Buffer.v`,
 `Vector_Buffer.v`, and `Weight_Memory.v` have been generated using the Quartus
-IP Catalog as device RAMs or FIFO Buffers in accordance with the `Functional_TPU_Hardware_Specification_v0.2.md`.
+IP Catalog as device RAMs or FIFO Buffers in accordance with the `Functional_TPU_Hardware_Specification.md`.
 - **Programmer:** `Programmer.v` implements the Functional TPU Messaging
 Protocol FSM. Verified to correctly decode START/MEM/PROGRAM/STOP function codes
 and write to Program_Memory, Weight_Memory port a, and TPU_0x1_Buffer port a.
@@ -106,7 +106,7 @@ signed integer. Debug values are correctly outputted when in a non-operational s
 ## Architecture
 
 The project architecture is depicted below, with each .v file corresponding to a
-module in the `Functional_TPU_Hardware_Specification_v0.2.md`. Note that the
+module in the `Functional_TPU_Hardware_Specification.md`. Note that the
 VGA_DEBUG folder is not a part of the main project or hardware spec but may be
 used to debug the TPU.
 
@@ -159,7 +159,7 @@ implement the final design goals of the project; simpler logic will be tested
 and verified to work before more complex behavior is added. Build steps for
 future versions will be added incrementally as needed, and the design
 goals/lowering pipeline may be updated to reflect new versions. See
-`Functional_TPU_Hardware_Specification_v0.2.md` for detailed descriptions
+`Functional_TPU_Hardware_Specification.md` for detailed descriptions
 of each module.
 
 ### v0.1 — Basic Functionality

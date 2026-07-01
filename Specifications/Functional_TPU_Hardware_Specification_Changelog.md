@@ -2,13 +2,22 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-01 — Specification Structure Update
+
+- **Changed specification naming scheme:**
+- Changed name of `Functional_TPU_Hardware_Specification_v0.2.md` to
+`Functional_TPU_Hardware_Specification.md` — most recent version of spec will
+always be referenced by this filename. Old versions will still have a version
+number specified in the filename.
+- Updated top level header of spec to include a version number.
+
 ## 2026-07-01 — Functional TPU Hardware Specification v0.2 — Minor change
 
 - Exposed *end_reached* output from Feeder module as an output of the TPU
 module.
 - Updated description of *device_ready* signal in programmer to note that
 it's asserted HIGH as long as the device is ready, not for one clock cycle.
-- Updated description of **EXTERNAL_OUTPUT** meta-state to wait for 
+- Updated description of **EXTERNAL_OUTPUT** meta-state to wait for
 *device_ready* before asserting *output_data_valid*.
 
 ## 2026-06-30 — Functional TPU Hardware Specification v0.2 — Design Fixes
