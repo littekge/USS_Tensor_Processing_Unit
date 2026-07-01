@@ -2,6 +2,25 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-01 — Display Logic Update part 2
+
+- **Updated `TPU/VGA_DEBUG/debug.v`**
+- Added *i_clear* input signal — clears ASCII buffer when asserted HIGH.
+- Added CLEAR state to FSM to implement clear behavior (transitions to 
+WAIT_WREN when complete). 
+- *write_ready* held LOW, *col_num* and *row_num* held at 0 in CLEAR state.
+- Modified *ascii_wren* behavior — now held LOW in WAIT_WREN state and 
+HIGH in CLEAR state.
+- Implemented a *clear_count* variable to loop through all ASCII buffer
+addresses while in the CLEAR state.
+- Updated combinational ASCII address decoding to set *ascii_addr* to 
+*clear_count* while the current state or next state is CLEAR.
+- Updated combinational ASCII data decoding to force *ascii_data* to 0 when
+in the CLEAR or WAIT_WREN states.
+- **Added clear behavior to `Tensor_Processing_Unit.v`**
+- Wired *end_reached* from `TPU/TPU.v` to *i_clear* in `TPU/VGA_DEBUG/debug.v`
+so that the screen is cleared on program end.
+
 ## 2026-07-01 — Hardware Spec minor update (device_ready level, EXTERNAL_OUTPUT order, end_reached exposed)
 
 - **Context:** Hardware Spec changelog 2026-07-01 made three changes affecting

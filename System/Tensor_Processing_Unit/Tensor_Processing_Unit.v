@@ -97,18 +97,68 @@ module Tensor_Processing_Unit (
 
 
 );
+
+// ---------- CODE ---------- //
 wire clk, rst;
 assign clk = CLOCK_50;
 assign rst = KEY[0];
-
-wire [31:0] debug_val;
 
 //ensure that Quartus knows that these GPIO pins are inputs
 assign GPIO_0[7] = 1'bz;
 assign GPIO_0[3] = 1'bz;
 assign GPIO_0[1] = 1'bz;
 
-// ---------- CODE ---------- //
+wire display_ready;
+wire output_valid;
+wire [7:0] output_val;
+
+wire mode_select;
+assign mode_select = SW[9];
+
+wire [7:0]input_data;
+assign input_data = (mode_select == 1'b0)?(SW[7:0]):(8'd0);
+
+wire input_data_valid;
+assign input_data_valid = (mode_select == 1'b0)?(~KEY[1]):(1'd0);
+
+wire end_reached;
+
+reg write_next;
+always @ (posedge clk or negedge rst)
+begin
+	if (rst == 1'b0)
+	begin
+		write_next <= 1'b0;
+	end
+	else
+	begin
+		if (output_valid && display_ready) begin
+			write_next <= 1'b1;
+		end else begin
+			write_next <= 1'b0;
+		end
+	end
+end
+
+debug dbg (
+   .i_clk(clk),
+	.i_rst(rst),
+	.i_data(output_val),
+	.i_write_next(write_next), 
+	.i_clear(end_reached),
+	.o_write_ready(display_ready),
+	
+	//VGA signal passthrough
+	.vga_blank(VGA_BLANK_N),
+	.vga_b(VGA_B),
+	.vga_r(VGA_R),
+	.vga_g(VGA_G),
+	.vga_clk(VGA_CLK),
+	.vga_hs(VGA_HS),
+	.vga_vs(VGA_VS),
+	.vga_sync(VGA_SYNC_N)
+);
+
 // SPI signals routed through GPIO_0 (same pins as prior SPI test)
 //   GPIO_0[7] = SPI_Clk (input)
 //   GPIO_0[5] = SPI_MISO (output, tri-stated when inactive)
@@ -121,46 +171,32 @@ TPU tpu (
 	.o_SPI_MISO(GPIO_0[5]),
 	.i_SPI_MOSI(GPIO_0[3]),
 	.i_SPI_SS (GPIO_0[1]),
-	.o_debug_val(),
 	
-	.i_mode_select(SW[9]),        // LOW = device mode, HIGH = external mode
-   .i_input_data_valid(~KEY[1]),   // one-cycle pulse: i_input_data valid
-   .i_device_ready(write_ready),       // one-cycle pulse: consumer ready for output
-   .i_input_data(SW[7:0]),         // device-mode input value
-   .o_output_data(debug_val),        // output value (both modes)
-   .o_output_data_valid(valid) // one-cycle pulse: o_output_data valid
+	.i_mode_select(mode_select),        // LOW = device mode, HIGH = external mode
+   .i_input_data_valid(input_data_valid),   // one-cycle pulse: i_input_data valid
+   .i_device_ready(display_ready),       // one-cycle pulse: consumer ready for output
+   .i_input_data(input_data),         // device-mode input value
+   .o_output_data(output_val),        // output value (both modes)
+   .o_output_data_valid(output_valid), // one-cycle pulse: o_output_data valid
+	.o_end_reached(end_reached),
+	
+	.o_debug_val()
 );
 
 // ---------- END CODE ---------- //
 
 // ---------- DEBUG ---------- //
+assign LEDR[9:0] = SW[9:0];
 
 
-wire write_ready, valid;
-reg write;
-assign LEDR[7:0] = debug_val;
-always @ (posedge clk or negedge rst)
-begin
-	if (rst == 1'b0)
-	begin
-		write <= 1'b0;
-	end
-	else
-	begin
-		if (valid && write_ready) begin
-			write <= 1'b1;
-		end else begin
-			write <= 1'b0;
-		end
-	end
-end
-
+/*
 debug dbg (
    .i_clk(clk),
 	.i_rst(rst),
-	.i_data(debug_val),
-	.i_write_next(write), 
-	.o_write_ready(write_ready),
+	.i_data(32'd3232),
+	.i_write_next(~KEY[1]), 
+	.i_clear(~KEY[2]),
+	.o_write_ready(),
 	
 	//VGA signal passthrough
 	.vga_blank(VGA_BLANK_N),
@@ -172,5 +208,7 @@ debug dbg (
 	.vga_vs(VGA_VS),
 	.vga_sync(VGA_SYNC_N)
 );
+
+*/
 // ---------- END DEBUG ---------- //
 endmodule
