@@ -142,6 +142,9 @@ TPU/
 │   └── Systolic_Array.v (top-level for systolic array subsystem)
 └── VGA_DEBUG/
     ├── debug.v
+    ├── seven_segment.v
+    ├── seven_segment_negative.v
+    ├── three_decimal_vals_w_neg.v
     └── VGA_CONTROLLER/
         ├── ascii_master_controller.v
         ├── clock_divider.v
