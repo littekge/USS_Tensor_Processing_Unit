@@ -20,7 +20,7 @@ changelogs, and previous versions of spec sheets.
 
 - Functional TPU ISA (v0.2 complete)
 - Functional TPU Message Protocol (v0.2 complete)
-- Functional TPU Hardware Spec (v0.1.1 complete, v0.2 in progress)
+- Functional TPU Hardware Spec (v0.2 complete)
 
 #### Old
 
@@ -50,7 +50,7 @@ the TPU hardware starting from a StableHLO MLIR representation. All of the
 data conversion is done here, and additional steps in the synth flow simply
 forward data using various communication protocols.
 
-- StableHLO to machine code assembler (v0.1 complete, v0.1.1 pending)
+- StableHLO to machine code assembler (v0.1.1 complete)
 
 #### Communication
 
@@ -78,7 +78,7 @@ the binary stream to the Arduino.
 The *Tensor_Processing_Unit* folder contains the TPU hardware written in Verilog
 HDL.
 
-- Verilog code for TPU (v0.1.1 complete)
+- Verilog code for TPU (v0.2 complete)
 
 ### Tests
 
