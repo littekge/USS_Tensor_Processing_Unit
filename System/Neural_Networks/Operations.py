@@ -50,13 +50,14 @@ def Start(model_params, training_params, trainSet=None, testSet=None, exportSet=
     if model_params.TRAIN: assert trainSet != None # assert that trainSet exists if training
     if model_params.RUN: assert testSet != None # assert that testSet exisits if running
     if model_params.EXPORT: assert exportSet != None # assert that exportSet exisits if exporting
+    if model_params.EXPORT: assert testSet != None # export calibration reuses the test set to measure activation ranges for M
 
     # determining path variables
     CURRENT_DIR = Path(__file__).parent # determining file path
     PATH = CURRENT_DIR / model_params.MODEL_NAME / str(model_params.MODEL_NAME + "_" + model_params.RUN_NAME) # setting save path
 
     if model_params.TRAIN: Train(model=model_params.MODEL, dataset=trainSet, save_file_path=PATH, params=training_params)
-    if model_params.EXPORT: Save(model=model_params.MODEL, sample_input=exportSet, save_file_path=PATH)
+    if model_params.EXPORT: Save(model=model_params.MODEL, sample_input=exportSet, save_file_path=PATH, calibration_set=testSet)
     if model_params.RUN: Run(model=model_params.MODEL, dataset=testSet, load_file_path=PATH, params=training_params)
     
     
@@ -154,7 +155,65 @@ def Run(model, dataset, load_file_path, params):
     print('\nAccuracy of the network: %d %%' % (
     100 * correct / total))
    
-def Save(model, sample_input, save_file_path):
+def _calibrate_scales(model, dataset, batch_size=64):
+    """Measure the per-layer requantization multiplier M for every Linear/Conv layer.
+
+    For each layer M = (S_in * S_w) / S_out, where S = r_max / 127 is the symmetric
+    int8 scale of that tensor. S_w comes from the weights; S_in / S_out come from
+    activation ranges measured over `dataset` (the calibration set).
+
+    S_in is CHAINED, not measured per layer: S_in(n) = S_out(n-1). On the TPU the
+    int8 tensor handed between layers carries the previous layer's output scale, and
+    ReLU/pooling are scale-preserving integer ops that never requantize -- so the
+    scale the hardware actually sees at a layer's input is the prior layer's S_out.
+    The first layer's S_in comes from the network input range.
+
+    Returns {"<layer>.weight": {"M", "S_in", "S_w", "S_out"}}, keyed to match the
+    weight tensor names stored in the .npz.
+    """
+    layers = [(name, mod) for name, mod in model.named_modules()
+              if isinstance(mod, (nn.Linear, nn.Conv2d))]
+    assert layers, "No Linear/Conv2d layers found to calibrate."
+    layer_by_name = dict(layers)
+
+    absmax_in = {name: 0.0 for name, _ in layers}
+    absmax_out = {name: 0.0 for name, _ in layers}
+    fire_order = []  # execution order, recorded from the order hooks first fire
+
+    def make_hook(nm):
+        def hook(_module, inp, out):
+            if nm not in fire_order:
+                fire_order.append(nm)
+            absmax_in[nm] = max(absmax_in[nm], inp[0].detach().abs().max().item())
+            absmax_out[nm] = max(absmax_out[nm], out.detach().abs().max().item())
+        return hook
+
+    handles = [mod.register_forward_hook(make_hook(name)) for name, mod in layers]
+    loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    model.eval()
+    with torch.no_grad():
+        for batch in loader:
+            inputs = batch[0] if isinstance(batch, (list, tuple)) else batch
+            model(inputs)
+    for h in handles:
+        h.remove()
+
+    scales = {}
+    prev_S_out = None
+    for idx, name in enumerate(fire_order):
+        S_w = layer_by_name[name].weight.detach().abs().max().item() / 127.0
+        S_out = absmax_out[name] / 127.0
+        S_in = (absmax_in[name] / 127.0) if idx == 0 else prev_S_out
+        # A dead layer (all-zero activations over the calibration set) has no
+        # meaningful output scale; emit M=0 rather than divide by zero so the
+        # downstream tool can surface it.
+        M = 0.0 if S_out == 0.0 else (S_in * S_w) / S_out
+        scales[f"{name}.weight"] = {"M": M, "S_in": S_in, "S_w": S_w, "S_out": S_out}
+        prev_S_out = S_out
+    return scales
+
+
+def Save(model, sample_input, save_file_path, calibration_set):
     model = model.eval()
     exportedModel = torch.export.export(model, sample_input) # converted to ExportedProgram
     torch.export.save(exportedModel, Path(str(save_file_path) + ".pt2")) # save as pt2 archive
@@ -181,6 +240,21 @@ def Save(model, sample_input, save_file_path):
     # Save an explicit ordered name list so the downstream step can preserve @main-arg order
     # for sequential address assignment (dict order is preserved, but this is unambiguous).
     weight_arrays["__order__"] = np.array(list(names))
+
+    # v0.3 requantization scales: measure per-layer M = (S_in*S_w)/S_out over the
+    # calibration set and store it ALONGSIDE the weights. These extra keys are
+    # ignored by the weight loader (Process_Weights reads only __order__ and the
+    # named weight tensors), so they cannot disrupt the existing weight export.
+    # Keys are prefixed and suffixed with the layer's weight name so the assembler
+    # can attach each M to the matmul that consumes that weight. The component
+    # scales are kept for traceability/debugging.
+    scales = _calibrate_scales(model, calibration_set)
+    for weight_name, s in scales.items():
+        weight_arrays[f"__M__{weight_name}"] = np.float64(s["M"])
+        weight_arrays[f"__scales__{weight_name}"] = np.array(
+            [s["S_in"], s["S_w"], s["S_out"]], dtype=np.float64
+        )
+
     np.savez(Path(str(save_file_path) + ".weights.npz"), **weight_arrays)
     print(weight_arrays)
     print("Weights exported to .weights.npz successfully!")
