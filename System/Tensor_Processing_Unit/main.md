@@ -7,7 +7,7 @@
 ## Project Identity
 
 - **Name:** Functional TPU
-- **Version:** 0.2
+- **Version:** 0.2.1
 - **Target Platform:** Terasic DE1-SoC FPGA
 - **Language:** Verilog HDL 2001
 - **Development Environment:** Quartus Prime Lite Edition
@@ -264,3 +264,37 @@ Revise the full system test to test new functionality.
 > *input_data_valid* → program runs → single *output_data* value) and external
 > mode (INPUT transmission over SPI → program runs → 10 *output_data* values with
 > the *device_ready* handshake).
+
+### v0.2.1 — Systolic Array Signed Multiplication Fix
+
+Corrects a latent datatype bug in the systolic array. The Build Parameters
+declare the Memory Datatype as an 8-bit *signed* integer, but the
+Multiply_Accumulate_Unit performs an *unsigned* multiply. As a result, negative
+operands (e.g. a weight of −1 = 0xFF) accumulate as large positive values (255)
+instead of their true signed value, corrupting any dot product that contains a
+negative operand and biasing results strongly positive. This is a suspected
+contributor to the requantization saturation (constant 0x7F output) previously
+investigated. The Hardware Specification requires no change — signed operands are
+already implied by the Memory Datatype; only the RTL must be corrected to match.
+
+#### Step 1 — Multiply_Accumulate_Unit Signed Multiply — ⬜ Pending
+
+Correct the multiply in the Multiply_Accumulate_Unit module to operate on signed
+operands.
+
+- Treat *a_in* and *b_in* as signed 8-bit values in the *c* = *c* + *a_in* *
+  *b_in* accumulation so the 32-bit accumulator holds the correct signed product.
+- Confirm the accumulator and the downstream Vector_Processor requantization
+  (which already interprets the value as signed) now agree.
+- Update the Systolic Array unit test (`./tests/TB_Step7_SystolicArray.v`) to
+  exercise negative operands through the array and verify the signed product.
+
+#### Step 2 — Regression and Requantization Impact — ⬜ Pending
+
+Confirm the fix resolves negative-operand corruption without regressions.
+
+- Run the full testbench regression suite and fix any issues that arise.
+- Add or extend a full-system test (`./tests/TB_Step8_FullSystem.v`) that streams
+  negative weights through the systolic array end to end.
+- Record the impact on the previously observed 0x7F saturation behavior in
+  `log.md`.

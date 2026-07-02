@@ -34,7 +34,7 @@ def send_2_arduino(file_path):
         timeout = 1
     )
     print("Attempting serial write...")
-    time.sleep(3)
+    time.sleep(2)
     ser.reset_input_buffer()
     expected = len(content);
     sent = ser.write(content)
