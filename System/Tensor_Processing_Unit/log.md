@@ -2,6 +2,30 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-02 — v0.2.1 verification: full Questa regression PASS
+
+- **Ran the pending v0.2.1 regression** in Questa Intel FPGA Edition 2023.3
+  (`intelFPGA_lite/23.1std/questa_fse`) on the Windows dev machine — the step
+  the prior session could not run. Each testbench compiled into its own fresh
+  work library (behavioral stubs collide with real RTL otherwise) and simulated
+  batch-mode with `-L altera_mf_ver -voptargs=+acc ... -do "run -all; quit -f"`.
+- **Results — all PASS, no regressions:** Step1 19/19, Step2 9/9, Step3 9/9,
+  Step4 12/12, Step5 7/7, Step6 7/7, **Step7 9/9, Step8 11/11**.
+  - `TB_Step7_SystolicArray` **Test 9** (negative operand 0xFE = −2 × 3 through
+    MAC(0,0)) reads back a negative multiple of 6 — passes only with the signed
+    multiply; confirms the fix.
+  - `TB_Step8_FullSystem` **Test 11** (mixed-sign weights rs2 =
+    [[−16,32],[48,−64]] × identity·16) requantizes to **[−1,2,3,−4]** end to end
+    through SPI → weight flash → systolic array → requant → memory.
+- **Requantization-impact note (0x7F saturation):** the signed multiply removes
+  the positive bias that unsigned MACs injected — a −1 operand (0xFF) no longer
+  accumulates as +255. Dot products containing negatives now carry their true
+  sign into requant instead of piling up large positives that clamped to 0x7F,
+  so the constant-0x7F saturation is expected to be resolved for any program with
+  negative weights/activations. Test 11 demonstrates negative requant outputs
+  (−1, −4) surviving end to end, which the old RTL could not produce.
+- **`main.md`:** v0.2.1 Step 1 and Step 2 marked ✅ Complete. v0.2.1 build done.
+
 ## 2026-07-02 — v0.2.1: Systolic array signed-multiply fix
 
 - **Context:** The Multiply_Accumulate_Unit performed an *unsigned* multiply

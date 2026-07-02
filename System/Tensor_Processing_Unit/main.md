@@ -277,7 +277,7 @@ contributor to the requantization saturation (constant 0x7F output) previously
 investigated. The Hardware Specification requires no change — signed operands are
 already implied by the Memory Datatype; only the RTL must be corrected to match.
 
-#### Step 1 — Multiply_Accumulate_Unit Signed Multiply — ⬜ Pending
+#### Step 1 — Multiply_Accumulate_Unit Signed Multiply — ✅ Complete (2026-07-02)
 
 Correct the multiply in the Multiply_Accumulate_Unit module to operate on signed
 operands.
@@ -289,7 +289,7 @@ operands.
 - Update the Systolic Array unit test (`./tests/TB_Step7_SystolicArray.v`) to
   exercise negative operands through the array and verify the signed product.
 
-#### Step 2 — Regression and Requantization Impact — ⬜ Pending
+#### Step 2 — Regression and Requantization Impact — ✅ Complete (2026-07-02)
 
 Confirm the fix resolves negative-operand corruption without regressions.
 
