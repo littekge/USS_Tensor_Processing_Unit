@@ -20,7 +20,9 @@ module Multiply_Accumulate_Unit (
 	input [7:0] i_b,
 	output reg [7:0] o_a,
 	output reg [7:0] o_b,
-	output reg [31:0] o_c
+	//signed accumulator: keeps the c = c + a*b expression fully signed so the
+	//signed product is sign-extended (not zero-extended) into the 32-bit sum.
+	output reg signed [31:0] o_c
 
 	// ---------- PARAMETERS ---------- //
 	// ---------- END PARAMETERS ---------- //
@@ -53,7 +55,10 @@ begin
 		begin
 			o_a <= i_a;
 			o_b <= i_b;
-			o_c <= o_c + (i_a * i_b);
+			//operands are 8-bit signed (two's complement) per the ISA datatype;
+			//$signed forces a signed multiply so negative operands accumulate
+			//their true signed value rather than a large unsigned product.
+			o_c <= o_c + ($signed(i_a) * $signed(i_b));
 		end
 	end
 end

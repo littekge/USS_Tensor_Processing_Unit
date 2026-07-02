@@ -75,6 +75,11 @@
  *           mult's result must match the first (identical operands), proving
  *           the MAC accumulators are cleared between operations rather than
  *           accumulating stale products into saturation.
+ *   Test 11: Signed mult (v0.2.1) — a mult with NEGATIVE operands streamed
+ *           through the systolic array requantizes to negative results
+ *           ([[-1,2],[3,-4]]). Fails on the old unsigned MAC multiply, which
+ *           reads a negative int8 (e.g. 0xF0 = -16) as +240 and produces a
+ *           large positive product instead.
  * -------------------------------------------------------------------------
  */
 
@@ -525,6 +530,40 @@ module TB_Step8_FullSystem;
         check((shadow_wm[12] === 8'd1) && (shadow_wm[13] === 8'd2) &&
               (shadow_wm[14] === 8'd3) && (shadow_wm[15] === 8'd4),
               "second mult result = [1,2,3,4] (MACs cleared between mults)");
+
+        // ===================================================================
+        // Test 11: Signed mult (v0.2.1) — negative operands through the array.
+        //   rs1 @0x0002 = [[16,0],[0,16]]        -> WM phys 0..3  (identity*16)
+        //   rs2 @0x0006 = [[-16,32],[48,-64]]    -> WM phys 4..7  (mixed sign)
+        //   rd  @0x000A                           -> WM phys 8..11
+        //   With rs1 = identity*16, C = rs2 * 16, requantized (>>>8) = rs2/16:
+        //     C[0][0] = 16*(-16) = -256  >>>8 = -1
+        //     C[0][1] = 16*  32  =  512  >>>8 =  2
+        //     C[1][0] = 16*  48  =  768  >>>8 =  3
+        //     C[1][1] = 16*(-64) = -1024 >>>8 = -4  -> [[-1,2],[3,-4]]
+        //   Old unsigned MAC: -16 (0xF0) reads as +240 -> 16*240 = 3840 >>>8 =
+        //   15 (positive), so shadow_wm[8] would be +15, failing this check.
+        // ===================================================================
+        $display("Test 11: signed mult with negative operands (v0.2.1 MAC fix)");
+        rst = 0; repeat (4) @(posedge clk); rst = 1; repeat (4) @(posedge clk);
+        mode_select = 1'b0;
+        for (si = 0; si < 256; si = si + 1) shadow_wm[si] = 8'hEE;
+        spi_ss = 0;
+        send_spi_byte(FLASH_CODE);
+        send_mem4(16'h0002, 8'd16, 8'd0, 8'd0, 8'd16);            // rs1 identity*16
+        send_mem4(16'h0006, -8'sd16, 8'd32, 8'd48, -8'sd64);      // rs2 mixed sign
+        send_program(mk_mul(16'h0002, 4'd2, 4'd2, 16'h0006, 4'd2, 4'd2, 16'h000A));
+        send_program(128'd0); // end
+        send_spi_byte(STOP_CODE);
+        spi_ss = 1;
+        wait_feeder_done(200000);
+        repeat (60) @(posedge clk);
+        $display("  signed mult WM[8..11] = %0d %0d %0d %0d  (expect -1 2 3 -4)",
+                 $signed(shadow_wm[8]),  $signed(shadow_wm[9]),
+                 $signed(shadow_wm[10]), $signed(shadow_wm[11]));
+        check(($signed(shadow_wm[8])  === -8'sd1) && (shadow_wm[9]  === 8'd2) &&
+              (shadow_wm[10] === 8'd3) && ($signed(shadow_wm[11]) === -8'sd4),
+              "signed mult with negative operands = [-1,2,3,-4]");
 
         // ===================================================================
         // Summary

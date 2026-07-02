@@ -25,7 +25,7 @@
  * PASS / FAIL CRITERIA:
  *   Each test prints "PASS" or "FAIL" to the transcript.
  *   A final summary prints total pass/fail counts.
- *   All 7 tests should show PASS for a correct implementation.
+ *   All 9 tests should show PASS for a correct implementation.
  *
  * TEST CASES:
  *   Test 1: Reset state — idle HIGH, ramp counter and rdreq cleared.
@@ -39,6 +39,9 @@
  *           output mux selects MAC(col=i_col, row=i_row); untouched tiles
  *           read back zero.
  *   Test 8: clear zeroes a MAC accumulator (residual data flushed between ops).
+ *   Test 9: signed multiply — a negative operand streamed through MAC(0,0)
+ *           accumulates a NEGATIVE product (fails on the old unsigned multiply,
+ *           which would treat 0xFE as +254 and accumulate a large positive).
  * -------------------------------------------------------------------------
  */
 
@@ -362,6 +365,31 @@ begin
         #1;
         check((nonzero_before === 1'b1) && (c_out === 32'd0), 8);
     end
+
+    // -----------------------------------------------------------------------
+    // Test 9 (v0.2.1): Signed multiply. Stream a NEGATIVE operand through
+    //         MAC(0,0): top_buf[0] = -2 (0xFE), left_buf[0] = 3. Each valid
+    //         accumulate is (-2)*3 = -6, so the accumulator must read back
+    //         NEGATIVE and be a multiple of 6. Under the old unsigned multiply
+    //         0xFE would be read as +254 (254*3 = 762 per op), accumulating a
+    //         large POSITIVE value -> the sign check below fails on buggy RTL.
+    // -----------------------------------------------------------------------
+    do_reset;
+    push_top(0, -8'sd2);      // 0xFE
+    push_top(0, -8'sd2);
+    push_left(0, 8'sd3);
+    push_left(0, 8'sd3);
+    pulse_start;
+    guard = 0;
+    while ((sa_idle === 1'b0) && (guard < 128))
+    begin
+        @(posedge clk); #1;
+        guard = guard + 1;
+    end
+    sel_col = 4'd0;
+    sel_row = 4'd0;
+    #1;
+    check(($signed(c_out) < 0) && (($signed(c_out) % 32'sd6) == 32'sd0), 9);
 
     // -----------------------------------------------------------------------
     // Summary

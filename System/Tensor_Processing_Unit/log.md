@@ -2,6 +2,43 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-02 — v0.2.1: Systolic array signed-multiply fix
+
+- **Context:** The Multiply_Accumulate_Unit performed an *unsigned* multiply
+  while the ISA Memory Datatype is 8-bit *signed*. A negative operand (e.g. a
+  weight of −1 = 0xFF) accumulated as a large positive value (255), corrupting
+  any dot product containing negatives and biasing results strongly positive —
+  a suspected contributor to the constant-0x7F requantization saturation.
+- **`TPU/SYSTOLIC_ARRAY/Multiply_Accumulate_Unit.v`** (Step 1):
+  - Changed the accumulation to `o_c <= o_c + ($signed(i_a) * $signed(i_b))` so
+    the operands multiply as signed two's-complement values.
+  - Declared the accumulator `output reg signed [31:0] o_c`. This is required,
+    not cosmetic: with an *unsigned* `o_c` the mixed-sign addition would coerce
+    the signed product to unsigned and **zero-extend** it into the 32-bit sum,
+    re-introducing the bug. A signed accumulator keeps the expression fully
+    signed so the product is sign-extended. Bit pattern at the port is
+    unchanged, so the unsigned `unit_out` net in Systolic_Array and the
+    `$signed(i_sa_c)` requant in Vector_Processor are unaffected.
+  - No specification change required — signed operands were already implied by
+    the Memory Datatype; only the RTL was out of conformance.
+- **Tests (Step 1 + Step 2):**
+  - `tests/TB_Step7_SystolicArray.v` — added **Test 9**: streams a negative
+    operand (top_buf[0] = −2 = 0xFE, left_buf[0] = 3) through MAC(0,0); asserts
+    the accumulator reads back **negative** and a multiple of 6. The old
+    unsigned RTL would read 0xFE as +254 and accumulate a large positive, so
+    this test passes only with the signed multiply. (8 → 9 tests.)
+  - `tests/TB_Step8_FullSystem.v` — added **Test 11**: a full-system mult with
+    mixed-sign weights rs2 = [[−16,32],[48,−64]] against rs1 = identity*16,
+    expecting requantized result [[−1,2],[3,−4]]. Exercises signed operands end
+    to end through SPI → weight flash → systolic array → requant → memory.
+    (10 → 11 tests.)
+- **Verification:** **PENDING.** This session's environment has no Questa/vsim
+  (and the array needs Altera `altera_mf`/scfifo), so the regression could not
+  be run here. Must be run in Questa on the Windows dev machine:
+  `TB_Step7_SystolicArray` (expect 9/9) and `TB_Step8_FullSystem` (expect 11/11),
+  plus the full suite for regressions. `main.md` v0.2.1 steps left unmarked until
+  that run confirms.
+
 ## 2026-07-01 — Display Logic Update part 3
 
 - Pulled over 7-segment display code from another project — located in
