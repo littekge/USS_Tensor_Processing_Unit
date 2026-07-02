@@ -214,6 +214,15 @@ def _calibrate_scales(model, dataset, batch_size=64):
 
 
 def Save(model, sample_input, save_file_path, calibration_set):
+    # Export the TRAINED network. Load weights from the .pth exactly as Run does so
+    # that `-e` exports an already-trained model (and matches the just-trained weights
+    # when `-t` runs in the same invocation), rather than exporting random init.
+    load_path = Path(str(save_file_path) + ".pth")
+    assert load_path.is_file(), (
+        f"Cannot export: no trained weights found at {load_path}. "
+        f"Train the model first with -t, or ensure the .pth exists."
+    )
+    model.load_state_dict(torch.load(load_path, weights_only=True))
     model = model.eval()
     exportedModel = torch.export.export(model, sample_input) # converted to ExportedProgram
     torch.export.save(exportedModel, Path(str(save_file_path) + ".pt2")) # save as pt2 archive
