@@ -68,3 +68,17 @@ incremental_db/
 db/
 _output_files/
 PLLJ_PLLSPE_INFO.txt
+
+# ignore ModelSim/Questa simulation byproducts (regenerated on every sim run)
+transcript
+msim_transcript
+modelsim.ini
+*.wlf
+wlf*
+*.vcd
+vsim_stacktrace.vstf
+vish_stacktrace.vstf
+.vsim_prefs
+# compiled simulation libraries
+work/
+*_lib/
