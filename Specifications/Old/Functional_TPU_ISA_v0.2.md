@@ -3,7 +3,7 @@
 > **Purpose:** This document contains the *Functional TPU* instruction set
 >architecture specification.
 >
-> **Version: 0.3.0**
+> **Version: 0.2.0**
 
 ## Memory
 
@@ -59,10 +59,10 @@ Each instruction format is described below:
 
 **Description by Bit:**
 
-| 127-124 | 123-108 | 107-104 | 103-100 | 99-84 | 83-80 | 79-76 | 75-60 | 59-52 | 51-44 | 43-3 | 2-0 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 4 | 16 | 4 | 4 | 16 | 4 | 4 | 16 | 8 | 8 | 41 | 3 |
-| opcode | rs1 | sz11 | sz12 | rs2 | sz21 | sz22 | rd | M0 | n | reserved | funct3 |
+| 127-124 | 123-108 | 107-104 | 103-100 | 99-84 | 83-80 | 79-76 | 75-60 | 59-3 | 2-0 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 4 | 16 | 4 | 4 | 16 | 4 | 4 | 16 | 57 | 3 |
+| opcode | rs1 | sz11 | sz12 | rs2 | sz21 | sz22 | rd | reserved | funct3 |
 
 ### SHAPE Format
 
@@ -106,21 +106,19 @@ ISA.
 
 **Description by Bit:**
 
-| 127-124 | 123-108 | 107-104 | 103-100 | 99-84 | 83-80 | 79-76 | 75-60 | 59-52 | 51-44 | 43-3 | 2-0 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 4 | 16 | 4 | 4 | 16 | 4 | 4 | 16 | 8 | 8 | 41 | 3 |
-| opcode | rs1 | sz11 | sz12 | rs2 | sz21 | sz22 | rd | M0 | n | reserved | funct3 |
-| MUL | src1 | dim11 | dim12 | src2 | dim21 | dim22 | dest | scale | shift | 0 | MULT |
+| 127-124 | 123-108 | 107-104 | 103-100 | 99-84 | 83-80 | 79-76 | 75-60 | 59-3 | 2-0 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 4 | 16 | 4 | 4 | 16 | 4 | 4 | 16 | 57 | 3 |
+| opcode | rs1 | sz11 | sz12 | rs2 | sz21 | sz22 | rd | reserved | funct3 |
+| MUL | src1 | dim11 | dim12 | src2 | dim21 | dim22 | dest | 0 | MULT |
 
 #### mult
 
 *mult* takes a matrix of dimensions *dim11* x *dim12* located at address *src1*
 and multiplies it by a matrix of dimensions *dim21* x *dim22* located at address
 *src2*, storing the result contiguously starting from address *dest* in
-Row-Major order. Before storage, each resultant value is requantized according to
-the following equation: result = clamp((*scale* * x + (1 << (*shift* - 1))) >>
-*shift*). *reserved* bits are set to 0. Note that the current revision of the
-ISA does not support matrix dimensions greater than 15x15 for this instruction.
+Row-Major order. *reserved* bits are set to 0. Note that the current revision of
+the ISA does not support matrix dimensions greater than 15x15 for this instruction.
 
 ### Activation Instructions
 

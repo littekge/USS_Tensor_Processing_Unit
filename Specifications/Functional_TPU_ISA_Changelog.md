@@ -2,6 +2,16 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-06 — Functional TPU ISA v0.3
+
+- **Added precise requantization functionality** for MUL instructions.
+- MUL instructions now encode an *M0* and *n* field, both 8-bit unsigned integers.
+- The *mult* instruction now utilizes the *M0* and *n* fields as *scale* and
+*shift* values respectively.
+- Updated the *mult* instruction description to include the necessary
+requantization equation: result = clamp((*scale* * x + (1 << (*shift* - 1))) >>
+*shift*).
+
 ## 2026-07-01 — Specification Structure Update
 
 - **Changed specification naming scheme:**
