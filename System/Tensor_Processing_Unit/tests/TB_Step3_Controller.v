@@ -24,7 +24,7 @@
  * PASS / FAIL CRITERIA:
  *   Each test prints "PASS" or "FAIL" to the transcript.
  *   A final summary prints total pass/fail counts.
- *   All 7 tests should show PASS for a correct implementation.
+ *   All 10 tests should show PASS for a correct implementation.
  *
  * TEST CASES:
  *   Test 1: After reset — controller_idle HIGH, clear LOW
@@ -37,6 +37,8 @@
  *   Test 8: systolic_array_start is asserted for mult but not for relu/add
  *   Test 9: function-code decode — relu→activator RELU, add→ALU ADD,
  *           mult→both NOOP
+ *   Test 10: mult requant params (M0/n) decoded and asserted to VP_A during
+ *            writeback (VSRC_SA_OUT), and held at 0 during the execute decode
  * -------------------------------------------------------------------------
  */
 
@@ -83,6 +85,8 @@ wire [15:0] mem_dest_address_a;
 wire [15:0] length_a;
 wire [3:0]  dim0_a;
 wire [3:0]  dim1_a;
+wire [7:0]  scale_a;
+wire [7:0]  shift_a;
 wire        vector_start_b_out;
 wire [2:0]  vect_source_b;
 wire [2:0]  vect_dest_b;
@@ -115,6 +119,8 @@ Controller dut (
     .o_length_a             (length_a),
     .o_dim0_a               (dim0_a),
     .o_dim1_a               (dim1_a),
+    .o_scale_a              (scale_a),
+    .o_shift_a              (shift_a),
     .o_vector_start_b       (vector_start_b_out),
     .o_vect_source_b        (vect_source_b),
     .o_vect_dest_b          (vect_dest_b),
@@ -155,12 +161,22 @@ always @(posedge clk)
     if (trst === 1'b1 && systolic_array_start === 1'b1)
         sa_start_count = sa_start_count + 1;
 
-// Build a mult instruction:
-// opcode | rs1 | sz11 | sz12 | rs2 | sz21 | sz22 | rd | reserved | funct3
+// Build a mult instruction with explicit requant parameters:
+// opcode | rs1 | sz11 | sz12 | rs2 | sz21 | sz22 | rd | M0 | n | reserved | funct3
+function [127:0] make_mult_rq;
+    input [15:0] rs1, rs2, rd;
+    input [3:0]  sz11, sz12, sz21, sz22;
+    input [7:0]  scale, shift;
+    make_mult_rq = {OP_MULT, rs1, sz11, sz12, rs2, sz21, sz22, rd,
+                    scale, shift, 41'd0, 3'd0};
+endfunction
+
+// Build a mult instruction with zero requant parameters (existing tests do not
+// inspect scale/shift, so M0=n=0 keeps their behavior unchanged).
 function [127:0] make_mult;
     input [15:0] rs1, rs2, rd;
     input [3:0]  sz11, sz12, sz21, sz22;
-    make_mult = {OP_MULT, rs1, sz11, sz12, rs2, sz21, sz22, rd, 57'd0, 3'd0};
+    make_mult = make_mult_rq(rs1, rs2, rd, sz11, sz12, sz21, sz22, 8'd0, 8'd0);
 endfunction
 
 // Build a relu instruction:
@@ -235,6 +251,8 @@ reg [2:0] captured_vect_source_b2, captured_vect_dest_b2;
 reg [15:0] captured_length_a, captured_length_b;
 reg mult_saw_sa, relu_saw_sa, add_saw_sa;
 reg [2:0] cap_relu_act, cap_add_alu, cap_mult_act, cap_mult_alu;
+reg [7:0] cap_scale_wb, cap_shift_wb;
+reg       wb_captured, exec_rq_zero;
 
 initial
 begin
@@ -559,6 +577,45 @@ begin
 
     check((cap_relu_act === FUNCT_RELU) && (cap_add_alu === FUNCT_ADD) &&
           (cap_mult_act === FUNCT_NOOP) && (cap_mult_alu === FUNCT_NOOP), 9);
+
+    // -----------------------------------------------------------------------
+    // Test 10: mult requant params (M0/n) are decoded and asserted to VP_A
+    // during the writeback step, and are NOT asserted during the execute step.
+    //   The writeback decode is uniquely identified by vect_source_a ==
+    //   VSRC_SA_OUT (VP_A reading the systolic array outputs); the execute
+    //   decode routes VP_A to VDST_SA_A with requant params left at 0.
+    // -----------------------------------------------------------------------
+    do_reset;
+    vector_idle_a = 1'b1; vector_idle_b = 1'b1; systolic_array_idle = 1'b1;
+    instruction = make_mult_rq(16'h0010, 16'h0020, 16'h0030,
+                               4'd2, 4'd2, 4'd2, 4'd2, 8'd7, 8'd5);
+    wb_captured  = 1'b0;
+    exec_rq_zero = 1'b1;
+    cap_scale_wb = 8'd0;
+    cap_shift_wb = 8'd0;
+
+    @(posedge clk); #1; controller_start = 1'b1;
+    @(posedge clk); #1; controller_start = 1'b0;
+
+    // Sample requant outputs across the whole instruction: capture during
+    // writeback, confirm zero during the SA-load execute decode.
+    while (!controller_idle)
+    begin
+        @(posedge clk); #1;
+        if (vect_source_a === VSRC_MEM && vect_dest_a === VDST_SA_A)
+            if (scale_a !== 8'd0 || shift_a !== 8'd0) exec_rq_zero = 1'b0;
+        if (vect_source_a === VSRC_SA_OUT)
+        begin
+            cap_scale_wb = scale_a;
+            cap_shift_wb = shift_a;
+            wb_captured  = 1'b1;
+        end
+    end
+
+    check((wb_captured  === 1'b1) &&
+          (cap_scale_wb === 8'd7) &&
+          (cap_shift_wb === 8'd5) &&
+          (exec_rq_zero === 1'b1), 10);
 
     // -----------------------------------------------------------------------
     // Summary

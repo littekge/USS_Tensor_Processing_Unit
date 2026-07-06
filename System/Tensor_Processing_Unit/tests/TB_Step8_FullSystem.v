@@ -54,7 +54,7 @@
  * -------------------------------------------------------------------------
  * PASS / FAIL CRITERIA:
  *   Each test prints "PASS" or "FAIL". A final summary prints pass/fail counts.
- *   All 7 tests should show PASS for a correct implementation.
+ *   All 12 tests should show PASS for a correct implementation.
  *
  * TEST CASES:
  *   Test 1: Device-mode FLASH completes — program/tpu_rst return HIGH after STOP.
@@ -80,6 +80,9 @@
  *           ([[-1,2],[3,-4]]). Fails on the old unsigned MAC multiply, which
  *           reads a negative int8 (e.g. 0xF0 = -16) as +240 and produces a
  *           large positive product instead.
+ *   Test 12: Per-layer dyadic requant (v0.3) — a mult carrying M0=3, n=4
+ *           requantizes C = [[100,50],[25,10]] to [[19,9],[5,2]] via
+ *           clamp((3x + 8) >> 4), exercising the runtime M0/n datapath.
  * -------------------------------------------------------------------------
  */
 
@@ -149,12 +152,11 @@ module TB_Step8_FullSystem;
         .o_debug_val         (debug_val)
     );
 
-    // Pin the mult requantization scale for the compute tests (Tests 9-10) so
-    // they verify the datapath deterministically, independent of the file's
-    // REQUANT_SHIFT default (which is tuned per neural network). VP_A performs
-    // the systolic-array read-back/requant; VP_B is pinned too for safety.
-    defparam dut.vp_a.REQUANT_SHIFT = 8;
-    defparam dut.vp_b.REQUANT_SHIFT = 8;
+    // v0.3: requantization is per-layer and supplied at runtime via each MUL
+    // instruction's M0/n fields (no compile-time REQUANT_SHIFT parameter). The
+    // mk_mul builder embeds M0=1, n=8 by default so the compute tests (9-11)
+    // keep their pre-v0.3 hand-computed values; Test 12 exercises a non-trivial
+    // M0/n end to end.
 
     initial clk = 0;
     always #CLK_HALF clk = ~clk;
@@ -240,8 +242,24 @@ module TB_Step8_FullSystem;
         end
     endfunction
 
-    // mult instruction builder
-    // (opcode 1000 | rs1 | sz11 | sz12 | rs2 | sz21 | sz22 | rd | pad | funct3)
+    // mult instruction builder with explicit per-layer requant parameters
+    // (opcode 1000 | rs1 | sz11 | sz12 | rs2 | sz21 | sz22 | rd | M0 | n | pad
+    //  | funct3). M0 = scale (bits 59-52), n = shift (bits 51-44).
+    function [127:0] mk_mul_rq;
+        input [15:0] rs1;
+        input [3:0]  sz11, sz12;
+        input [15:0] rs2;
+        input [3:0]  sz21, sz22;
+        input [15:0] rd;
+        input [7:0]  scale, shift;
+        begin
+            mk_mul_rq = {4'b1000, rs1, sz11, sz12, rs2, sz21, sz22, rd,
+                         scale, shift, 41'd0, 3'd0};
+        end
+    endfunction
+
+    // Default mult builder: M0=1, n=8 reproduces the pre-v0.3 fixed >>8
+    // requantization so the existing compute tests keep their expected results.
     function [127:0] mk_mul;
         input [15:0] rs1;
         input [3:0]  sz11, sz12;
@@ -249,7 +267,7 @@ module TB_Step8_FullSystem;
         input [3:0]  sz21, sz22;
         input [15:0] rd;
         begin
-            mk_mul = {4'b1000, rs1, sz11, sz12, rs2, sz21, sz22, rd, 57'd0, 3'd0};
+            mk_mul = mk_mul_rq(rs1, sz11, sz12, rs2, sz21, sz22, rd, 8'd1, 8'd8);
         end
     endfunction
 
@@ -564,6 +582,41 @@ module TB_Step8_FullSystem;
         check(($signed(shadow_wm[8])  === -8'sd1) && (shadow_wm[9]  === 8'd2) &&
               (shadow_wm[10] === 8'd3) && ($signed(shadow_wm[11]) === -8'sd4),
               "signed mult with negative operands = [-1,2,3,-4]");
+
+        // ===================================================================
+        // Test 12: per-layer dyadic requantization (v0.3) — a mult carrying a
+        //   non-trivial M0/n, verifying the runtime requant datapath end to end.
+        //   rs1 @0x0002 = [[1,0],[0,1]]      -> WM phys 0..3  (identity)
+        //   rs2 @0x0006 = [[100,50],[25,10]] -> WM phys 4..7
+        //   rd  @0x000A                       -> WM phys 8..11
+        //   With rs1 = identity, C = rs2. Requant M0=3, n=4:
+        //     result = clamp((3*x + (1<<3)) >> 4) = (3x + 8) >> 4
+        //     x=100 -> (308)>>4 = 19    x=50 -> (158)>>4 = 9
+        //     x=25  -> ( 83)>>4 = 5     x=10 -> ( 38)>>4 = 2   -> [[19,9],[5,2]]
+        //   A truncating (no-bias) or fixed-shift requant would not match, so
+        //   this fails unless the M0/n datapath is wired and rounded correctly.
+        // ===================================================================
+        $display("Test 12: per-layer dyadic requant (M0=3, n=4)");
+        rst = 0; repeat (4) @(posedge clk); rst = 1; repeat (4) @(posedge clk);
+        mode_select = 1'b0;
+        for (si = 0; si < 256; si = si + 1) shadow_wm[si] = 8'hEE;
+        spi_ss = 0;
+        send_spi_byte(FLASH_CODE);
+        send_mem4(16'h0002, 8'd1,   8'd0,  8'd0,  8'd1);  // rs1 identity
+        send_mem4(16'h0006, 8'd100, 8'd50, 8'd25, 8'd10); // rs2
+        send_program(mk_mul_rq(16'h0002, 4'd2, 4'd2, 16'h0006, 4'd2, 4'd2,
+                               16'h000A, 8'd3, 8'd4));
+        send_program(128'd0); // end
+        send_spi_byte(STOP_CODE);
+        spi_ss = 1;
+        wait_feeder_done(200000);
+        repeat (60) @(posedge clk);
+        $display("  requant WM[8..11] = %0d %0d %0d %0d  (expect 19 9 5 2)",
+                 $signed(shadow_wm[8]),  $signed(shadow_wm[9]),
+                 $signed(shadow_wm[10]), $signed(shadow_wm[11]));
+        check((shadow_wm[8]  === 8'd19) && (shadow_wm[9]  === 8'd9) &&
+              (shadow_wm[10] === 8'd5)  && (shadow_wm[11] === 8'd2),
+              "per-layer requant (M0=3,n=4) = [19,9,5,2]");
 
         // ===================================================================
         // Summary

@@ -2,6 +2,58 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-06 — v0.3: Per-layer dyadic requantization (Vector_Processor + Controller)
+
+- **Context:** v0.3 replaces the uniform, compile-time `REQUANT_SHIFT`
+  requantization with per-layer dyadic requantization. Each MUL instruction now
+  carries an 8-bit multiplier `M0` (bits 59-52) and an 8-bit right-shift `n`
+  (bits 51-44); the Vector_Processor applies
+  `result = clamp((M0 * x + (1 << (n - 1))) >> n)` to systolic array outputs
+  before writeback. RTL-only change confined to the Vector_Processor (requant
+  datapath) and Controller (decode + routing) per the main.md scope note.
+- **`TPU/PROCESSING/Vector_Processor.v`** (Step 1):
+  - Added `i_scale` (M0, 8-bit unsigned) and `i_shift` (n, 8-bit unsigned)
+    inputs; latched into `scale_lat`/`shift_lat` in IDLE alongside the other
+    control signals (reset to 0).
+  - Removed the `REQUANT_SHIFT` parameter and its fixed `x >>> REQUANT_SHIFT`
+    requant. New datapath: `sa_scaled = $signed({1'b0,scale_lat}) *
+    $signed(i_sa_c)` (unsigned scale zero-extended to a 9-bit positive signed
+    value so the 41-bit product stays signed and cannot overflow the 32-bit
+    accumulator × 8-bit scale), `sa_round_bias = 1 << (shift-1)` added **before**
+    the arithmetic right shift `>>> shift` (round-to-nearest), then saturated to
+    signed 8-bit [-128,127]. `shift == 0` is guarded so `(shift-1)` never
+    underflows the 8-bit width.
+- **`TPU/CONTROL/Controller.v`** (Step 2):
+  - Decoded `mul_scale = instr_latch[59:52]` and `mul_shift = instr_latch[51:44]`.
+  - Added `o_scale_a`/`o_shift_a` outputs (VP_A only — only VP_A reads SA outputs
+    and requantizes). Driven with `mul_scale`/`mul_shift` in the MUL **writeback**
+    decode branch; default 0 otherwise (don't-care for non-MUL / execute phase).
+- **`TPU/TPU.v`:** added `ctrl_scale_a`/`ctrl_shift_a` wires; connected Controller
+  `o_scale_a`/`o_shift_a` → VP_A `i_scale`/`i_shift`. VP_B `i_scale`/`i_shift`
+  tied to 0 (VP_B never requantizes). Debug section untouched.
+- **Tests:**
+  - `tests/TB_Step4_VectorProcessor.v` (12 → 14): drives `i_scale`/`i_shift` at
+    runtime (removed the obsolete `defparam REQUANT_SHIFT`). Tests 6/12 pinned to
+    M0=1,n=8 (reproduce the prior >>8 expected values with rounding). Added
+    Test 13 (round-to-nearest: M0=1,n=2, 62→16 vs. truncation's 15) and Test 14
+    (M0 scale multiply: M0=25,n=3, 10→31). Generalized the SA stub with a
+    `force_mode`/`sa_c_force` to drive arbitrary MAC(0,0) values.
+  - `tests/TB_Step3_Controller.v` (9 → 10): added `make_mult_rq` (M0/n operands);
+    Test 10 verifies M0/n are decoded and asserted to VP_A during the writeback
+    decode (`vect_source_a == VSRC_SA_OUT`) and held at 0 during the SA-load
+    execute decode.
+  - `tests/TB_Step8_FullSystem.v` (11 → 12): parameterized `mk_mul` with M0/n
+    (default M0=1,n=8 keeps Tests 9-11 expectations; added `mk_mul_rq`); removed
+    the `defparam REQUANT_SHIFT` lines. Added Test 12: identity × [[100,50],
+    [25,10]] with M0=3,n=4 requantizes to [[19,9],[5,2]] via
+    `clamp((3x+8)>>4)`, exercising the runtime M0/n datapath end to end through
+    SPI → weight flash → systolic array → requant → memory.
+- **Verification:** **PENDING.** This session's environment has no Questa/vsim
+  (the systolic array needs Altera `altera_mf`/scfifo), so the regression could
+  not be run here. Must be run in Questa on the Windows dev machine: expect
+  Step3 10/10, Step4 14/14, Step8 12/12, plus the full suite for regressions.
+  `main.md` v0.3 steps left unmarked until that run confirms.
+
 ## 2026-07-02 — v0.2.1 verification: full Questa regression PASS
 
 - **Ran the pending v0.2.1 regression** in Questa Intel FPGA Edition 2023.3

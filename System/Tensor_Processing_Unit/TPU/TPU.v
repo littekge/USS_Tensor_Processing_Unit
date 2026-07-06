@@ -112,6 +112,10 @@ wire [15:0]  ctrl_length_a;
 wire [3:0]   ctrl_dim0_a;
 wire [3:0]   ctrl_dim1_a;
 
+// Controller outputs — VP_A per-layer requantization parameters (MUL writeback)
+wire [7:0]   ctrl_scale_a;
+wire [7:0]   ctrl_shift_a;
+
 // Controller outputs — Vector_Processor_B control
 // (connected to Vector_Processor_B in build step 4)
 wire         ctrl_vector_start_b;
@@ -300,6 +304,8 @@ Controller ctrl (
     .o_length_a             (ctrl_length_a),
     .o_dim0_a               (ctrl_dim0_a),
     .o_dim1_a               (ctrl_dim1_a),
+    .o_scale_a              (ctrl_scale_a),
+    .o_shift_a              (ctrl_shift_a),
     .o_vector_start_b       (ctrl_vector_start_b),
     .o_vect_source_b        (ctrl_vect_source_b),
     .o_vect_dest_b          (ctrl_vect_dest_b),
@@ -323,6 +329,8 @@ Vector_Processor vp_a (
     .i_length              (ctrl_length_a),
     .i_dim0                (ctrl_dim0_a),
     .i_dim1                (ctrl_dim1_a),
+    .i_scale               (ctrl_scale_a),
+    .i_shift               (ctrl_shift_a),
     .o_vector_idle         (vpa_vector_idle),
     .o_element_valid       (vpa_element_valid),
     .o_wm_address          (vpa_wm_address),
@@ -356,6 +364,8 @@ Vector_Processor vp_b (
     .i_length              (ctrl_length_b),
     .i_dim0                (ctrl_dim0_b),
     .i_dim1                (ctrl_dim1_b),
+    .i_scale               (8'd0),      // VP_B never requantizes SA outputs
+    .i_shift               (8'd0),
     .o_vector_idle         (vpb_vector_idle),
     .o_element_valid       (vpb_element_valid),
     .o_wm_address          (vpb_wm_address),

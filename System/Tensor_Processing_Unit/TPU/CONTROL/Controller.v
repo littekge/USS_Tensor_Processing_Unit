@@ -43,6 +43,11 @@ module Controller (
     output reg  [3:0]  o_dim0_a,
     output reg  [3:0]  o_dim1_a,
 
+    // Per-layer dyadic requantization parameters for VP_A (MUL writeback).
+    // Only VP_A reads systolic array outputs and requantizes; VP_B never does.
+    output reg  [7:0]  o_scale_a,   // M0: unsigned dyadic multiplier
+    output reg  [7:0]  o_shift_a,   // n:  unsigned right-shift amount
+
     // Vector_Processor_B control outputs
     output wire        o_vector_start_b,
     output reg  [2:0]  o_vect_source_b,
@@ -127,6 +132,8 @@ wire [15:0] mul_rs2  = instr_latch[99:84];   // source 2 address
 wire [3:0]  mul_sz21 = instr_latch[83:80];   // rows of matrix 2
 wire [3:0]  mul_sz22 = instr_latch[79:76];   // cols of matrix 2 (= cols of output)
 wire [15:0] mul_rd   = instr_latch[75:60];   // destination address
+wire [7:0]  mul_scale = instr_latch[59:52];  // M0: dyadic requant multiplier
+wire [7:0]  mul_shift = instr_latch[51:44];  // n:  dyadic requant right-shift
 
 // ACT-format field aliases (relu)
 wire [15:0] act_rd  = instr_latch[107:92];   // destination address
@@ -256,6 +263,8 @@ begin
     o_length_a             = 16'd0;
     o_dim0_a               = 4'd0;
     o_dim1_a               = 4'd0;
+    o_scale_a              = 8'd0;   // don't-care unless MUL writeback
+    o_shift_a              = 8'd0;
 
     o_vect_source_b        = VSRC_MEM;
     o_vect_dest_b          = VDST_MEM;
@@ -284,12 +293,15 @@ begin
             end
             else
             begin
-                // Writeback: VP_A reads SA output (sz11 x sz22) and writes to rd
+                // Writeback: VP_A reads SA output (sz11 x sz22) and writes to rd,
+                // requantizing each element with the instruction's M0/n.
                 o_vect_source_a      = VSRC_SA_OUT;
                 o_vect_dest_a        = VDST_MEM;
                 o_mem_dest_address_a = mul_rd;
                 o_dim0_a             = mul_sz11;
                 o_dim1_a             = mul_sz22;
+                o_scale_a            = mul_scale;
+                o_shift_a            = mul_shift;
             end
         end
 

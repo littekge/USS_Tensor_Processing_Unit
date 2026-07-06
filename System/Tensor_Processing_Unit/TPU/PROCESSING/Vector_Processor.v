@@ -21,8 +21,12 @@
  * SA readback (VSRC_SA_OUT): VP_A reads MAC(sa_row=col_cnt, sa_col=row_cnt)
  *   for output result[row_cnt][col_cnt], writing row-major to dest memory.
  *
- * Requantization: right-shifts 32-bit MAC accumulator by REQUANT_SHIFT bits
- * and saturates to the signed 8-bit range [-128, 127].
+ * Requantization: per-layer dyadic requantization of the 32-bit MAC
+ * accumulator using the runtime MUL parameters scale (M0) and shift (n):
+ * result = clamp((scale * x + (1 << (shift - 1))) >> shift), saturating to
+ * the signed 8-bit range [-128, 127]. scale is unsigned, x is the signed
+ * 32-bit accumulator; the rounding bias is added before the arithmetic
+ * right shift (round-to-nearest).
  */
 module Vector_Processor (
 
@@ -38,6 +42,11 @@ module Vector_Processor (
     input  [15:0]      i_length,
     input  [3:0]       i_dim0,
     input  [3:0]       i_dim1,
+
+    // Per-layer dyadic requantization parameters (MUL instruction M0/n).
+    // Only consumed during systolic array output writeback (VSRC_SA_OUT).
+    input  [7:0]       i_scale,   // M0: unsigned dyadic multiplier
+    input  [7:0]       i_shift,   // n:  unsigned right-shift amount
 
     // ---------- PARAMETERS ---------- //
     // ---------- END PARAMETERS ---------- //
@@ -83,8 +92,6 @@ module Vector_Processor (
 );
 
 // ---------- PARAMETERS ---------- //
-
-parameter integer REQUANT_SHIFT = 7; // Right-shift bits for requantization
 
 // State machine states
 parameter [3:0]
@@ -134,6 +141,8 @@ reg [15:0] mem_dest_lat;     // ISA dest base address
 reg [15:0] length_lat;       // element count for length-based operations
 reg [3:0]  dim0_lat;         // rows (SA ops) or outer dimension
 reg [3:0]  dim1_lat;         // cols (SA ops) or inner dimension
+reg [7:0]  scale_lat;        // M0: dyadic requantization multiplier
+reg [7:0]  shift_lat;        // n:  dyadic requantization right-shift
 
 // Element counters
 reg [15:0] elem_cnt;   // flat element index (linear and VB operations)
@@ -187,16 +196,29 @@ begin
         mem_rd_data = i_wm_q;
 end
 
-// Requantization of 32-bit MAC accumulator to signed 8-bit with saturation
-wire signed [31:0] sa_c_signed;
-wire signed [31:0] sa_c_shifted;
-assign sa_c_signed  = $signed(i_sa_c);
-assign sa_c_shifted = sa_c_signed >>> REQUANT_SHIFT;
+// Per-layer dyadic requantization of the 32-bit MAC accumulator to a signed
+// 8-bit value: result = clamp((scale * x + (1 << (shift - 1))) >> shift).
+//
+// scale is unsigned (zero-extended to a 9-bit positive signed value so the
+// product stays signed) and x is the signed 32-bit accumulator, giving a
+// 41-bit signed product that cannot overflow. The rounding bias 1<<(shift-1)
+// is added before the arithmetic right shift for round-to-nearest. shift == 0
+// is guarded (no rounding bias, identity shift) so the (shift-1) term never
+// underflows the 8-bit width.
+wire signed [40:0] sa_scaled;
+wire signed [40:0] sa_round_bias;
+wire signed [40:0] sa_biased;
+wire signed [40:0] sa_shifted;
+assign sa_scaled     = $signed({1'b0, scale_lat}) * $signed(i_sa_c);
+assign sa_round_bias = (shift_lat == 8'd0) ? 41'sd0
+                                           : (41'sd1 <<< (shift_lat - 8'd1));
+assign sa_biased     = sa_scaled + sa_round_bias;
+assign sa_shifted    = sa_biased >>> shift_lat;
 
 wire [7:0] sa_c_quantized;
-assign sa_c_quantized = (sa_c_shifted > $signed(32'd127))  ? 8'h7F :
-                        (sa_c_shifted < $signed(-32'd128)) ? 8'h80 :
-                        sa_c_shifted[7:0];
+assign sa_c_quantized = (sa_shifted > 41'sd127)  ? 8'h7F :
+                        (sa_shifted < -41'sd128) ? 8'h80 :
+                        sa_shifted[7:0];
 
 // Lookahead done flags: evaluate CURRENT counter values to decide whether
 // the element being processed in the current cycle is the last one, so the
@@ -297,6 +319,8 @@ begin
         length_lat       <= 16'd0;
         dim0_lat         <= 4'd0;
         dim1_lat         <= 4'd0;
+        scale_lat        <= 8'd0;
+        shift_lat        <= 8'd0;
         elem_cnt         <= 16'd0;
         row_cnt          <= 4'd0;
         col_cnt          <= 4'd0;
@@ -340,6 +364,8 @@ begin
                     length_lat      <= i_length;
                     dim0_lat        <= i_dim0;
                     dim1_lat        <= i_dim1;
+                    scale_lat       <= i_scale;
+                    shift_lat       <= i_shift;
                     elem_cnt        <= 16'd0;
                     row_cnt         <= 4'd0;
                     col_cnt         <= 4'd0;
