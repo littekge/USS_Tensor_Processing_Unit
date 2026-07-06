@@ -323,7 +323,7 @@ before writeback. See `Functional_TPU_ISA.md` and the Hardware Specification
 - The B=8 mantissa was validated in Python as lossless (LeNet-5 top-1 95.34%,
   matching float), so hardware output should match the software reference.
 
-#### Step 1 — Vector_Processor Requantization
+#### Step 1 — Vector_Processor Requantization — ✅ Complete (2026-07-06)
 
 Update `Vector_Processor.v` to implement the v0.3 requantization datapath.
 
@@ -341,7 +341,7 @@ Update `Vector_Processor.v` to implement the v0.3 requantization datapath.
 - Update `tests/TB_Step4_VectorProcessor.v` to drive representative `scale`/`shift`
   values and verify the rounded, saturated result against hand-computed vectors.
 
-#### Step 2 — Controller Decode and Routing
+#### Step 2 — Controller Decode and Routing — ✅ Complete (2026-07-06)
 
 Update `Controller.v` to decode and route the requantization parameters.
 
