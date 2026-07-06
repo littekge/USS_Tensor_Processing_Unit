@@ -7,7 +7,7 @@
 ## Project Identity
 
 - **Name:** Neural Network Assembler
-- **Version:** 0.1.1
+- **Version:** 0.3.0
 - **Development Platform:** Debian 13 Linux
 - **Languages:** Python 3.13, MLIR, C/C++
 - **License:** MIT License
@@ -34,7 +34,9 @@ computation graph.
 - Multi-stage lowering and assembly pipeline.
 - Obvious intermediate representations of the computation graph.
 - Custom *Functional TPU* MLIR dialect.
-- f32 to Q0.7 fixed point quantization of neural network weights.
+- Per-tensor symmetric int8 quantization of neural network weights, with each
+layer's requantization multiplier decomposed into the ISA dyadic (`M0 · 2^-n`)
+form.
 - Memory mapping algorithms.
 - MLIR pass to decompose large matrix multiplications into a series of smaller
 matrix multiplication and addition instructions based on an easily accessible
@@ -49,23 +51,35 @@ has 4 stages:
     1. import MLIR representation as `/tmp/initial.mlir`.
     2. import neural network weights as `/tmp/weights.npz`.
 2. Weight Processing
-    1. Read weights from `/tmp/weights.npz`.
-    2. Quantize neural network weights from f32 to Q0.7 fixed point (1 sign bit
-    \+ 0 integer bits + 7 fractional bits = 8 bits total).
-    3. Algorithmically map weights to ISA compliant memory locations.
-    4. Convert mapped weights to the `Functional_TPU_Message_Protocol.md`
+    1. Read weights and the per-layer requantization data (`__M__*` /
+    `__scales__*`) from `/tmp/weights.npz`.
+    2. Quantize neural network weights from f32 to per-tensor symmetric int8
+    (`w_q = round(w / S_w)`, `S_w = absmax(W)/127`, clamped to [-127, 127]),
+    using the per-tensor `S_w` exported in `__scales__` so the quantized weights
+    stay consistent with the exported requantization multiplier `M`.
+    3. Decompose each layer's `M` into the ISA dyadic form `M0 · 2^-n` (see the
+    v0.3 build plan).
+    4. Algorithmically map weights (and the now-unused bias tensors) to ISA
+    compliant memory locations.
+    5. Convert mapped weights to the `Functional_TPU_Message_Protocol.md`
     MEM format and save as `/tmp/MEM.bin`.
-    5. Save weight addresses as `/tmp/weight_map.json` — should correspond to
-    the input arguments in `/tmp/initial.mlir`. This should be easy since
-    `/tmp/weights.npz` is already ordered and labeled in accordance with `/tmp/initial.mlir`.
+    6. Save weight addresses and per-layer `M0`/`n` as `/tmp/weight_map.json` —
+    should correspond to the input arguments in `/tmp/initial.mlir`. This should
+    be easy since `/tmp/weights.npz` is already ordered and labeled in accordance
+    with `/tmp/initial.mlir`.
 3. MLIR Lowering
     1. Run StableHLO default optimization pass on `/tmp/initial.mlir`, saving
     the result as `/tmp/optimized.mlir`.
     2. Legalize `/tmp/optimized.mlir` to the *Functional_TPU* MLIR dialect,
-    saving the result as `/tmp/optimized.tpu.mlir`.
-    3. Assemble `/tmp/optimized.tpu.mlir` into `Functional_TPU_ISA.md`
-    machine code referencing `/tmp/weight_map.json` to determine weight addresses.
-    4. Convert machine code to the `Functional_TPU_Message_Protocol.md`
+    annotating each `mult` op with its layer's `M0`/`n` from
+    `/tmp/weight_map.json`, and saving the result as `/tmp/optimized.tpu.mlir`.
+    3. Run the bias-removal pass to drop bias-add operations and reroute their
+    consumers to the matmul result, saving the result as
+    `/tmp/optimized.nobias.tpu.mlir`. Bias tensors remain in weight memory but
+    are no longer referenced by any instruction.
+    4. Assemble the final dialect into `Functional_TPU_ISA.md` machine code,
+    referencing `/tmp/weight_map.json` for weight addresses and `M0`/`n`.
+    5. Convert machine code to the `Functional_TPU_Message_Protocol.md`
     PROGRAM format and save as `/tmp/PROGRAM.bin`.
 4. Final Conversion
     1. Concatenate `/tmp/MEM.bin` and `/tmp/PROGRAM.bin` into a single string of
@@ -284,3 +298,116 @@ did not invalidate any old functionality.
 Run all existing tests to verify functionality.
 
 - Fix any issues that arise.
+
+### v0.3 — Per-Layer Requantization & Bias Removal
+
+Implements the assembler side of the system-wide v0.3 quantization upgrade. The
+version jumps 0.1.1 → 0.3.0 to align with the project-wide v0.3 milestone (ISA,
+hardware spec, and neural-network export all move to 0.3.0 together). Matmul
+partitioning is still deferred (no `MAX_MATMUL_SIZE` splitting yet).
+
+**Background.** v0.3 replaces uniform Q0.7 requantization with a per-layer
+multiplier `M = (S_in · S_w) / S_out`, encoded in the MUL instruction as the
+dyadic pair `M0 · 2^-n` (`M0` = bits 59-52, `n` = bits 51-44; see
+`Functional_TPU_ISA.md`). The neural-network export (`Neural_Networks/Operations.py`)
+already writes per-layer `__M__*` and `__scales__*` arrays into `weights.npz`.
+Biases are dropped from the instruction stream — validated as accuracy-neutral for
+the target networks (LeNet-5 top-1 unchanged when biases are dropped vs. present)
+— but remain resident in weight memory.
+
+> **Design decision — weight quantization scale.** Weights move from Q0.7 (fixed
+> `1/128`) to **per-tensor symmetric int8** (`S_w = absmax(W)/127`). This is a
+> correctness requirement, not an optimization: the exported `M` was computed
+> with the per-tensor `S_w`, so the quantized weight values and `M` must share
+> that scale or every layer's output is wrong by a factor of ~`128·S_w`.
+
+#### Step 1: Per-Tensor Weight Quantization
+
+Update `Process_Weights.py`:
+
+- Replace Q0.7 weight quantization with per-tensor symmetric int8:
+`w_q = clamp(round(w / S_w), -127, 127)`, reading `S_w` from the npz
+`__scales__<name>` array (keeps weights consistent with the exported `M`).
+- Continue quantizing and mapping bias tensors (their scale is irrelevant since
+they are unused downstream) so that weight addresses remain stable.
+- Confirm the MEM format and address layout are unchanged — only byte values
+differ.
+
+#### Step 2: Requantization Multiplier Decomposition
+
+Add dyadic decomposition to `Process_Weights.py`:
+
+- Define `REQUANT_MANTISSA_BITS = 8` as a module constant (must match the ISA
+`M0` field width).
+- For each layer, read `__M__<name>` and decompose `M → (M0, n)`:
+  - `e = floor(log2(M)) + 1`; `m = M · 2^-e`; `M0 = round(m · 2^B)`; `n = B - e`.
+  - Renormalize the mantissa overflow: if `M0 == 2^B`, set `M0 = 2^(B-1)` and
+  `n -= 1` (lossless).
+  - Assert `128 <= M0 <= 255` and `0 <= n <= 255` (both are unsigned ISA fields).
+  A failing `n >= 0` assert implies `M >= 256`, i.e. a degenerate/mis-calibrated
+  layer.
+  - Handle `M == 0` (dead layer) with a descriptive assert.
+- Add `M0` and `n` to each weight tensor's entry in `weight_map.json` (bias
+entries get none).
+
+#### Step 3: Dialect — `M0`/`n` on `mult`
+
+Update `nn_assembler/MLIR/dialect.py`:
+
+- Add `M0` and `n` integer attributes to `MultOp`.
+- Update the textual serialize/parse so the attributes round-trip and appear in
+`/tmp/optimized.tpu.mlir`, keeping the dialect ~1:1 with the MUL instruction.
+
+#### Step 4: Legalization — Annotate `mult` with `M0`/`n`
+
+Update `nn_assembler/MLIR/legalize.py` (and `Process_MLIR.py` to supply the map):
+
+- When lowering `dot_general → MultOp`, resolve the weight operand to its
+`weight_map.json` entry and set the op's `M0`/`n` attributes.
+- Pass `weight_map.json` into the pass from `Process_MLIR.py`.
+
+#### Step 5: Bias-Removal Pass
+
+Add a new TPU-dialect pass in `nn_assembler/MLIR/`:
+
+- Identify `AddOp`s whose operand traces to a `*.bias` function argument.
+- Replace all uses of the add's result with the non-bias operand (the matmul
+result), then erase the `AddOp`.
+- Target **only** bias adds — leave any non-bias adds (e.g. future
+matmul-partition partial sums) untouched.
+- Wire into `Process_MLIR.py` after legalization; write the intermediate to
+`/tmp/optimized.nobias.tpu.mlir`.
+
+#### Step 6: Assembler — Encode `M0`/`n`
+
+Update `Assembler.py`:
+
+- In the MUL encoder, place `M0` in bits 59-52 and `n` in bits 51-44 (from the
+`MultOp` attributes); leave the remaining reserved bits 0.
+- No bias `ADD` instructions are emitted (removed in Step 5); non-bias `AddOp`
+encoding is unchanged.
+
+#### Step 7: End-to-End Verification
+
+- Run the full pipeline on `Tiny_NN` and confirm `/out/TRANSMISSION.bin` is
+produced.
+- Verify the emitted MUL instructions carry the expected `M0`/`n` and that no
+bias `ADD` instructions remain.
+- **Scope:** the dialect supports only linear layers (`mult`/`add`/`relu`); conv
+and pooling are unsupported, so `LeNet_5` is a numerical reference only (validated
+in Python at 95.34% top-1, lossless vs. float) and is not an assembler E2E target.
+
+#### Tests
+
+Add/extend pytest coverage per step:
+
+- `test_process_weights.py`: per-tensor weight values; `M → (M0, n)`
+decomposition incl. renormalization and the asserts; `weight_map.json` carries
+`M0`/`n` on weight entries only.
+- `test_dialect_and_legalize.py`: `MultOp` serialize/parse round-trip with
+`M0`/`n`; legalization annotates correct values; bias-removal drops and reroutes
+bias adds while preserving non-bias adds.
+- `test_assembler.py`: MUL bit-fields (`M0` at 59-52, `n` at 51-44) match
+hand-derived values; the Tiny_NN program contains no `ADD` opcodes.
+- `test_serializer_and_e2e.py`: the full Tiny_NN pipeline still yields a framed
+`TRANSMISSION.bin`.

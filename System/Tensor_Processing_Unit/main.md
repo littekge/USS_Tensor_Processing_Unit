@@ -7,7 +7,7 @@
 ## Project Identity
 
 - **Name:** Functional TPU
-- **Version:** 0.2.1
+- **Version:** 0.3.0
 - **Target Platform:** Terasic DE1-SoC FPGA
 - **Language:** Verilog HDL 2001
 - **Development Environment:** Quartus Prime Lite Edition
@@ -38,8 +38,8 @@ generate statements.
 - Separate memories for program instructions, weights/biases, and temporary data.
 - Proper requantization of data in between processing steps.
 - Dynamic programming of TPU through SPI link.
-- Easy modification of systolic array size and re-quantization scale using
-Verilog parameters.
+- Easy modification of systolic array size using Verilog parameters; per-layer
+requantization supplied at runtime via instruction-encoded `M0`/`n`.
 
 ## Build Parameters
 
@@ -47,7 +47,10 @@ Verilog parameters.
 - **Multiply Accumulate Unit Accumulator Size:** 32 bits
 - **Memory Datatype:** 8 bit signed integer
 - **Memory Latency:** 2 clock cycles
-- **Re-quantization Method:** Symmetric uniform quantization with saturation checks
+- **Re-quantization Method:** Per-layer dyadic requantization — each MUL
+instruction supplies an 8-bit multiplier `M0` and 8-bit right-shift `n`; the
+Vector_Processor computes `clamp((M0 * x + (1 << (n - 1))) >> n)` on systolic
+array outputs, saturating to the memory datatype (`M0`/`n` mantissa width B=8)
 - **Memory Specs by Module:**
   - **Weight_Memory:**
     - **Width:** 8 bits
@@ -298,3 +301,62 @@ Confirm the fix resolves negative-operand corruption without regressions.
   negative weights through the systolic array end to end.
 - Record the impact on the previously observed 0x7F saturation behavior in
   `log.md`.
+
+### v0.3 — Per-Layer Requantization
+
+Replaces uniform Q0.7 requantization with per-layer dyadic requantization. Each
+MUL instruction now carries an 8-bit multiplier `M0` (bits 59-52) and an 8-bit
+right-shift `n` (bits 51-44); the Vector_Processor applies
+`result = clamp((M0 * x + (1 << (n - 1))) >> n)` to each systolic array output
+before writeback. See `Functional_TPU_ISA.md` and the Hardware Specification
+(Vector_Processor and Controller descriptions) for the authoritative definitions.
+
+**Scope note.** This is an RTL change confined to the **Vector_Processor**
+(requantization datapath) and the **Controller** (instruction decode + routing):
+
+- The **ALU already clamps** rather than requantizes, so it matches the updated
+  spec with no change (the spec's "Requantization" bullet was reworded to
+  "Overflow handling" to reflect the existing RTL).
+- The MUL instruction stays 128 bits (`M0`/`n` consume previously reserved bits),
+  so **Program_Memory and the Message Protocol are unaffected**.
+- The **32-bit MAC accumulator** already feeds requantization at full width.
+- The B=8 mantissa was validated in Python as lossless (LeNet-5 top-1 95.34%,
+  matching float), so hardware output should match the software reference.
+
+#### Step 1 — Vector_Processor Requantization
+
+Update `Vector_Processor.v` to implement the v0.3 requantization datapath.
+
+- Add `scale` (`M0`, 8-bit unsigned) and `shift` (`n`, 8-bit unsigned) inputs.
+- Replace the existing requantization on systolic array output reads with
+  `result = clamp((scale * x + (1 << (shift - 1))) >> shift)`, where `x` is the
+  signed 32-bit accumulator:
+  - Multiply `scale * x` (scale unsigned, `x` signed); size the intermediate to
+    hold the product without overflow (accumulator width + 8 bits).
+  - Add the rounding bias `1 << (shift - 1)` **before** the arithmetic right shift
+    by `shift` (round-to-nearest, not truncation).
+  - Saturate the result to the 8-bit signed memory datatype.
+- Requantization applies only when reading from systolic array outputs; other
+  reads (e.g. vector buffer) are unaffected.
+- Update `tests/TB_Step4_VectorProcessor.v` to drive representative `scale`/`shift`
+  values and verify the rounded, saturated result against hand-computed vectors.
+
+#### Step 2 — Controller Decode and Routing
+
+Update `Controller.v` to decode and route the requantization parameters.
+
+- Decode `scale` (bits 59-52) and `shift` (bits 51-44) from MUL instructions.
+- Drive the vector processor's `scale`/`shift` inputs during the systolic array
+  writeback step. For non-MUL instructions these are don't-care.
+- Update `tests/TB_Step3_Controller.v` to verify `scale`/`shift` are decoded and
+  asserted to the correct vector processor at the correct time.
+
+#### Step 3 — Regression and Full-System Verification
+
+Confirm the requantization change end to end.
+
+- Run the full testbench regression suite and fix any issues that arise.
+- Extend `tests/TB_Step8_FullSystem.v` to program a matmul with representative
+  `M0`/`n` and verify the requantized output matches the expected values (derived
+  from the Python reference / hand computation).
+- Record the results in `log.md`.
