@@ -18,9 +18,9 @@ system; this is a high-level overview of the outermost systems.
 The *Specifications* folder contains shared specification sheets, spec sheet
 changelogs, and previous versions of spec sheets.
 
-- Functional TPU ISA (v0.2 complete)
+- Functional TPU ISA (v0.2 complete, v0.3 pending)
 - Functional TPU Message Protocol (v0.2 complete)
-- Functional TPU Hardware Spec (v0.2 complete)
+- Functional TPU Hardware Spec (v0.2 complete, v0.3 pending)
 
 #### Old
 
@@ -50,7 +50,7 @@ the TPU hardware starting from a StableHLO MLIR representation. All of the
 data conversion is done here, and additional steps in the synth flow simply
 forward data using various communication protocols.
 
-- StableHLO to machine code assembler (v0.1.1 complete)
+- StableHLO to machine code assembler (v0.1.1 complete, v0.2 pending)
 
 #### Communication
 
@@ -72,13 +72,14 @@ final binary produced by the assembler, opens a serial port, and forwards
 the binary stream to the Arduino.
 
 - Serial Transmitter on PC (complete)
+- Live Transmitter for dynamic interaction with FPGA (pending)
 
 #### Tensor_Processing_Unit
 
 The *Tensor_Processing_Unit* folder contains the TPU hardware written in Verilog
 HDL.
 
-- Verilog code for TPU (v0.2 complete)
+- Verilog code for TPU (v0.2 complete, v0.3 pending)
 
 ### Tests
 
