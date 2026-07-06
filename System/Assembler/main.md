@@ -124,22 +124,31 @@ not coupled to a fixed directory depth.
 - **First Optimization Pass:** `/nn_assembler/Process_MLIR.py` runs a base
 optimization pass provided by the StableHLO-opt binary, saving the result to `/tmp/optimized.mlir`.
 - **Weight Processing:** `/nn_assembler/Process_Weights.py` quantizes weights
-f32 → Q0.7, maps them to addresses (input → `0x1`, weights contiguous from
-`0x2`), and writes `/tmp/MEM.bin` and `/tmp/weight_map.json`.
+f32 → per-tensor symmetric int8 (v0.3; `S_w` from `__scales__`), decomposes each
+layer's `M` into the dyadic pair `M0 · 2^-n`, maps tensors to addresses (input →
+`0x1`, weights/biases contiguous from `0x2`), and writes `/tmp/MEM.bin` and
+`/tmp/weight_map.json` (weight entries carry `M0`/`n`).
 - **Custom Dialect + Legalization:** `/nn_assembler/MLIR/` defines the
 *Functional TPU* dialect (Python implementation — see
-`/nn_assembler/MLIR/README.md`) and the StableHLO → TPU legalization pass;
-`Process_MLIR` writes `/tmp/optimized.tpu.mlir`. Shape-only ops (reshape) are
-folded so each dialect op maps 1:1 to an instruction.
-- **Assembler:** `/nn_assembler/Assembler.py` translates the dialect to ISA
-machine code and exports `/tmp/PROGRAM.bin`. Intermediate results and the
-network input share scratch address `0x1`.
+`/nn_assembler/MLIR/README.md`) and the StableHLO → TPU legalization pass, which
+annotates each `tpu.mult` with its `M0`/`n`; `Process_MLIR` writes
+`/tmp/optimized.tpu.mlir`. Shape-only ops (reshape) are folded so each dialect op
+maps 1:1 to an instruction.
+- **Bias Removal (v0.3):** `/nn_assembler/MLIR/bias_removal.py` drops bias `add`
+ops and reroutes consumers to the matmul result; `Process_MLIR` writes
+`/tmp/optimized.nobias.tpu.mlir`, the final dialect the assembler consumes.
+- **Assembler:** `/nn_assembler/Assembler.py` translates the (bias-removed)
+dialect to ISA machine code — encoding `M0` (bits 59-52) and `n` (bits 51-44) in
+each MUL — and exports `/tmp/PROGRAM.bin`. Intermediate results and the network
+input share scratch address `0x1`.
 - **Serializer:** `/nn_assembler/Serializer.py` wraps `MEM.bin` then
-`PROGRAM.bin` with START/STOP into `/out/TRANSMISSION.bin`.
+`PROGRAM.bin` with FLASH/STOP into `/out/TRANSMISSION.bin`.
 - **Protocol encoders:** `/nn_assembler/Protocol.py` centralizes the Message
 Protocol byte format (function codes, MEM/PROGRAM block builders).
-- **Tests:** 15 pytest tests in `/test/` cover quantization, weight mapping, the
-dialect, legalization, instruction encoding, and the full pipeline.
+- **Tests:** 26 pytest tests in `/test/` cover per-tensor int8 quantization,
+dyadic `M → (M0, n)` decomposition, weight mapping, the dialect (incl. `M0`/`n`
+round-trip), legalization + annotation, bias removal, instruction encoding, and
+the full pipeline.
 
 ## Architecture
 
@@ -299,7 +308,7 @@ Run all existing tests to verify functionality.
 
 - Fix any issues that arise.
 
-### v0.3 — Per-Layer Requantization & Bias Removal
+### v0.3 — Per-Layer Requantization & Bias Removal ✅ COMPLETE
 
 Implements the assembler side of the system-wide v0.3 quantization upgrade. The
 version jumps 0.1.1 → 0.3.0 to align with the project-wide v0.3 milestone (ISA,
@@ -321,7 +330,7 @@ the target networks (LeNet-5 top-1 unchanged when biases are dropped vs. present
 > with the per-tensor `S_w`, so the quantized weight values and `M` must share
 > that scale or every layer's output is wrong by a factor of ~`128·S_w`.
 
-#### Step 1: Per-Tensor Weight Quantization
+#### Step 1: Per-Tensor Weight Quantization ✅
 
 Update `Process_Weights.py`:
 
@@ -333,7 +342,7 @@ they are unused downstream) so that weight addresses remain stable.
 - Confirm the MEM format and address layout are unchanged — only byte values
 differ.
 
-#### Step 2: Requantization Multiplier Decomposition
+#### Step 2: Requantization Multiplier Decomposition ✅
 
 Add dyadic decomposition to `Process_Weights.py`:
 
@@ -350,7 +359,7 @@ Add dyadic decomposition to `Process_Weights.py`:
 - Add `M0` and `n` to each weight tensor's entry in `weight_map.json` (bias
 entries get none).
 
-#### Step 3: Dialect — `M0`/`n` on `mult`
+#### Step 3: Dialect — `M0`/`n` on `mult` ✅
 
 Update `nn_assembler/MLIR/dialect.py`:
 
@@ -358,7 +367,7 @@ Update `nn_assembler/MLIR/dialect.py`:
 - Update the textual serialize/parse so the attributes round-trip and appear in
 `/tmp/optimized.tpu.mlir`, keeping the dialect ~1:1 with the MUL instruction.
 
-#### Step 4: Legalization — Annotate `mult` with `M0`/`n`
+#### Step 4: Legalization — Annotate `mult` with `M0`/`n` ✅
 
 Update `nn_assembler/MLIR/legalize.py` (and `Process_MLIR.py` to supply the map):
 
@@ -366,7 +375,7 @@ Update `nn_assembler/MLIR/legalize.py` (and `Process_MLIR.py` to supply the map)
 `weight_map.json` entry and set the op's `M0`/`n` attributes.
 - Pass `weight_map.json` into the pass from `Process_MLIR.py`.
 
-#### Step 5: Bias-Removal Pass
+#### Step 5: Bias-Removal Pass ✅
 
 Add a new TPU-dialect pass in `nn_assembler/MLIR/`:
 
@@ -378,7 +387,7 @@ matmul-partition partial sums) untouched.
 - Wire into `Process_MLIR.py` after legalization; write the intermediate to
 `/tmp/optimized.nobias.tpu.mlir`.
 
-#### Step 6: Assembler — Encode `M0`/`n`
+#### Step 6: Assembler — Encode `M0`/`n` ✅
 
 Update `Assembler.py`:
 
@@ -387,7 +396,7 @@ Update `Assembler.py`:
 - No bias `ADD` instructions are emitted (removed in Step 5); non-bias `AddOp`
 encoding is unchanged.
 
-#### Step 7: End-to-End Verification
+#### Step 7: End-to-End Verification ✅
 
 - Run the full pipeline on `Tiny_NN` and confirm `/out/TRANSMISSION.bin` is
 produced.

@@ -51,8 +51,26 @@ _RETURN_RE = re.compile(r"return\s+(%[\w]+)\s*:")
 _MODULE_RE = re.compile(r"module\s+@([\w\.]+)")
 
 
-def legalize_text(stablehlo_text: str) -> Program:
-    """Parse optimized StableHLO text and build a TPU dialect `Program`."""
+def _weight_requant(name: str, weight_map: dict | None) -> tuple[int | None, int | None]:
+    """Return the `(M0, n)` requant pair for a weight operand, else `(None, None)`.
+
+    `name` is the operand's resolved SSA name (reshapes already folded). Only
+    weight entries carry `M0`/`n`; inputs and biases do not.
+    """
+    if weight_map is None:
+        return None, None
+    entry = weight_map.get(name)
+    if entry is None or entry.get("kind") != "weight":
+        return None, None
+    return entry.get("M0"), entry.get("n")
+
+
+def legalize_text(stablehlo_text: str, weight_map: dict | None = None) -> Program:
+    """Parse optimized StableHLO text and build a TPU dialect `Program`.
+
+    When `weight_map` is supplied, each `dot_general -> tpu.mult` is annotated with
+    its weight operand's dyadic requantization pair `M0`/`n`.
+    """
     module_match = _MODULE_RE.search(stablehlo_text)
     name = module_match.group(1) if module_match else "module"
     program = Program(name=name)
@@ -83,12 +101,20 @@ def legalize_text(stablehlo_text: str) -> Program:
         m = _DOT_RE.match(line)
         if m:
             result, lhs, rhs, lhs_ty, rhs_ty, out_ty = m.groups()
+            lhs_name, rhs_name = resolve(lhs), resolve(rhs)
+            # The requant multiplier belongs to whichever operand is a weight
+            # (the other is the activation/intermediate); check both.
+            M0, n = _weight_requant(lhs_name, weight_map)
+            if M0 is None:
+                M0, n = _weight_requant(rhs_name, weight_map)
             program.ops.append(
                 MultOp(
                     result=result,
-                    lhs=Operand(resolve(lhs), _tensor_shape(lhs_ty)),
-                    rhs=Operand(resolve(rhs), _tensor_shape(rhs_ty)),
+                    lhs=Operand(lhs_name, _tensor_shape(lhs_ty)),
+                    rhs=Operand(rhs_name, _tensor_shape(rhs_ty)),
                     out_shape=_tensor_shape(out_ty),
+                    M0=M0,
+                    n=n,
                 )
             )
             continue
@@ -126,10 +152,14 @@ def _last_shape(program: Program, value: str) -> list[int]:
     return [1, 1]
 
 
-def legalize(input_mlir: Path, output_tpu: Path) -> Program:
-    """Read optimized StableHLO from `input_mlir`, write TPU dialect to `output_tpu`."""
+def legalize(input_mlir: Path, output_tpu: Path, weight_map: dict | None = None) -> Program:
+    """Read optimized StableHLO from `input_mlir`, write TPU dialect to `output_tpu`.
+
+    `weight_map` (from `weight_map.json`) supplies each weight's `M0`/`n` so the
+    emitted `tpu.mult` ops carry their requantization pair.
+    """
     assert input_mlir.is_file(), f"Legalization input does not exist: {input_mlir}"
 
-    program = legalize_text(input_mlir.read_text())
+    program = legalize_text(input_mlir.read_text(), weight_map)
     output_tpu.write_text(serialize(program))
     return program
