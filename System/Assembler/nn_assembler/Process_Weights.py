@@ -1,22 +1,33 @@
 """Step 2 of the lowering pipeline: weight processing.
 
 Reads the imported neural network (`/tmp/initial.mlir` and `/tmp/weights.npz`),
-quantizes the weights f32 -> Q0.7, maps them to ISA memory addresses, and writes:
+quantizes the weights f32 -> per-tensor symmetric int8, decomposes each layer's
+requantization multiplier `M` into the ISA dyadic pair `M0 * 2^-n`, maps every
+tensor to an ISA memory address, and writes:
 
-  * `/tmp/MEM.bin`        -- quantized weights in Message Protocol MEM format.
-  * `/tmp/weight_map.json` -- argument-name -> memory address mapping, used later
-                              by the assembler.
+  * `/tmp/MEM.bin`         -- quantized weights in Message Protocol MEM format.
+  * `/tmp/weight_map.json` -- argument-name -> memory address mapping (plus each
+                              weight layer's `M0`/`n`), used later by the
+                              assembler.
 
-Address layout (per `Functional_TPU_ISA_v0.2.md`):
+Quantization (v0.3): weights use per-tensor symmetric int8 with scale
+`S_w = absmax(W)/127`, read from the npz `__scales__<name>` array so the
+quantized weight values stay consistent with the exported requantization
+multiplier `M` (which was computed with that same `S_w`). Biases are still
+quantized and mapped so weight addresses stay stable, but their scale is
+irrelevant -- they are dropped from the instruction stream downstream.
+
+Address layout (per `Functional_TPU_ISA.md`):
   * 0x0 is hardwired zero, 0x1 is the scratch/temporary designation.
   * The network input is mapped to 0x1 (it is the first temporary value, and the
     assembler reuses 0x1 for every intermediate result).
-  * Weights are laid out contiguously starting at 0x2.
+  * Weights and biases are laid out contiguously starting at 0x2, in `__order__`.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import re
 from pathlib import Path
 
@@ -24,29 +35,79 @@ import numpy as np
 
 from .Protocol import build_mem_block
 
-# Q0.7 fixed point: 1 sign bit + 7 fractional bits. A value of 1.0 would be 128,
-# which overflows int8, so the representable range is [-1.0, 127/128].
-Q07_SCALE = 128
-Q07_MIN = -128
-Q07_MAX = 127
+# Per-tensor symmetric int8: values map through S so that round(v/S) lands in
+# [-127, 127]. -128 is intentionally excluded to keep the range symmetric about
+# zero (matching the exported scale S = absmax/127).
+INT8_SYMMETRIC_MIN = -127
+INT8_SYMMETRIC_MAX = 127
+
+# Width of the ISA MUL instruction's M0 (mantissa) field, in bits. The dyadic
+# decomposition of M targets this precision, so it must match the ISA MUL format
+# (bits 59-52). See Functional_TPU_ISA.md.
+REQUANT_MANTISSA_BITS = 8
 
 INPUT_LABEL = "__input__"
 INPUT_ADDRESS = 0x1
 FIRST_WEIGHT_ADDRESS = 0x2
 
+# npz metadata key prefixes written by the neural-network export
+# (Neural_Networks/Operations.py). `__M__<name>` is the scalar requantization
+# multiplier; `__scales__<name>` is [S_in, S_w, S_out]. Their presence is what
+# distinguishes a requantized weight tensor from a bias tensor.
+M_KEY_PREFIX = "__M__"
+SCALES_KEY_PREFIX = "__scales__"
+SCALES_S_W_INDEX = 1  # __scales__ layout is [S_in, S_w, S_out]
+
 _ARG_RE = re.compile(r"(%arg\d+)\s*:\s*tensor<([^>]*)>(?:\s*loc\(\"([^\"]*)\"\))?")
 _FUNC_RE = re.compile(r"func\.func.*?@main\s*\((.*?)\)\s*->", re.DOTALL)
 
 
-def quantize_q07(values: np.ndarray) -> np.ndarray:
-    """Quantize an f32 array to Q0.7, returning int8 values (two's complement).
+def quantize_per_tensor_int8(values: np.ndarray, scale: float) -> np.ndarray:
+    """Quantize an f32 array to symmetric int8: `clamp(round(v/scale), -127, 127)`.
 
-    Round-to-nearest preserves as much accuracy as possible; values outside the
-    representable range are clamped (the closest the format can express).
+    `scale` is the tensor's `S = absmax/127`. Round-to-nearest preserves accuracy;
+    values outside the representable range are clamped to the nearest int8.
     """
-    scaled = np.round(values.astype(np.float64) * Q07_SCALE)
-    clamped = np.clip(scaled, Q07_MIN, Q07_MAX)
+    assert scale > 0.0, f"Quantization scale must be positive, got {scale}."
+    scaled = np.round(values.astype(np.float64) / scale)
+    clamped = np.clip(scaled, INT8_SYMMETRIC_MIN, INT8_SYMMETRIC_MAX)
     return clamped.astype(np.int8)
+
+
+def decompose_multiplier(M: float, mantissa_bits: int = REQUANT_MANTISSA_BITS) -> tuple[int, int]:
+    """Decompose a requantization multiplier `M` into the ISA dyadic pair `(M0, n)`.
+
+    The ISA applies `result = round(M0 * x / 2^n)`, so `M ~= M0 * 2^-n`. The
+    mantissa `M0` is normalized to `[2^(B-1), 2^B - 1]` (i.e. `[128, 255]` for
+    B=8), matching the MUL instruction's unsigned 8-bit `M0`/`n` fields.
+    """
+    assert M > 0.0, (
+        f"Requantization multiplier must be positive, got M={M}. "
+        "M == 0 indicates a dead layer (zero output range over the calibration set)."
+    )
+    B = mantissa_bits
+
+    # Normalize M into m in [0.5, 1): M = m * 2^e, so M0 = round(m * 2^B) lands in
+    # [2^(B-1), 2^B] and n = B - e is the accompanying right-shift.
+    e = math.floor(math.log2(M)) + 1
+    m = M * (2.0**-e)
+    M0 = round(m * (2**B))
+    n = B - e
+
+    # Renormalize the boundary case m -> 1.0 (M0 rounds up to 2^B, one bit too
+    # wide) back into the mantissa range. Halving M0 and decrementing n is lossless.
+    if M0 == (1 << B):
+        M0 = 1 << (B - 1)
+        n -= 1
+
+    assert (1 << (B - 1)) <= M0 <= (1 << B) - 1, (
+        f"Decomposed mantissa M0={M0} outside [{1 << (B - 1)}, {(1 << B) - 1}] for M={M}."
+    )
+    assert 0 <= n <= 255, (
+        f"Decomposed shift n={n} outside the 8-bit ISA field for M={M}. "
+        "n < 0 implies M >= 256, i.e. a degenerate/mis-calibrated layer."
+    )
+    return M0, n
 
 
 def _tensor_shape(type_body: str) -> list[int]:
@@ -75,6 +136,28 @@ def _num_words(shape: list[int]) -> int:
     return count
 
 
+def _weight_scale(npz, weight_name: str) -> float:
+    """Per-tensor symmetric int8 scale `S_w` for a requantized weight tensor.
+
+    Read from the exported `__scales__<name>` (index 1) so the quantized weights
+    stay consistent with the exported multiplier `M`. An all-zero weight has
+    `S_w == 0`; fall back to 1.0 (every value quantizes to 0 regardless).
+    """
+    scales_key = f"{SCALES_KEY_PREFIX}{weight_name}"
+    assert scales_key in npz.files, (
+        f"Weight {weight_name} has a {M_KEY_PREFIX}{weight_name} entry but no "
+        f"{scales_key}; the export is inconsistent."
+    )
+    S_w = float(npz[scales_key][SCALES_S_W_INDEX])
+    return S_w if S_w != 0.0 else 1.0
+
+
+def _self_scale(values: np.ndarray) -> float:
+    """Symmetric int8 self-scale `absmax/127` for a tensor (used for biases)."""
+    absmax = float(np.abs(values).max()) if values.size else 0.0
+    return absmax / 127.0 if absmax != 0.0 else 1.0
+
+
 def Process_Weights(tmp_dir: Path | None = None) -> dict:
     """Quantize and map weights, writing MEM.bin and weight_map.json.
 
@@ -100,24 +183,7 @@ def Process_Weights(tmp_dir: Path | None = None) -> dict:
 
     for name, shape, label in args:
         state_match = re.match(r"states\[(\d+)\]", label or "")
-        if state_match:
-            weight_name = order[int(state_match.group(1))]
-            quantized = quantize_q07(npz[weight_name].reshape(-1))
-            words = _num_words(shape)
-            assert len(quantized) == words, (
-                f"{weight_name} has {len(quantized)} elements but arg shape {shape} expects {words}."
-            )
-            data = quantized.astype(np.uint8).tobytes()  # two's complement bytes
-            regions.append((next_address, data))
-            weight_map[name] = {
-                "kind": "weight",
-                "label": weight_name,
-                "address": next_address,
-                "shape": shape,
-                "num_words": words,
-            }
-            next_address += words
-        else:
+        if not state_match:
             # Network input: lives at the scratch address, supplied at runtime.
             weight_map[name] = {
                 "kind": "input",
@@ -126,6 +192,47 @@ def Process_Weights(tmp_dir: Path | None = None) -> dict:
                 "shape": shape,
                 "num_words": _num_words(shape),
             }
+            continue
+
+        weight_name = order[int(state_match.group(1))]
+        values = npz[weight_name].reshape(-1)
+        words = _num_words(shape)
+        assert len(values) == words, (
+            f"{weight_name} has {len(values)} elements but arg shape {shape} expects {words}."
+        )
+
+        # A tensor is a requantized weight iff the export wrote its multiplier M.
+        # Everything else in __order__ (the *.bias tensors) is quantized only to
+        # keep addresses stable and carries no M0/n.
+        is_weight = f"{M_KEY_PREFIX}{weight_name}" in npz.files
+        if is_weight:
+            scale = _weight_scale(npz, weight_name)
+            quantized = quantize_per_tensor_int8(values, scale)
+            M = float(npz[f"{M_KEY_PREFIX}{weight_name}"])
+            M0, n = decompose_multiplier(M)
+            entry = {
+                "kind": "weight",
+                "label": weight_name,
+                "address": next_address,
+                "shape": shape,
+                "num_words": words,
+                "M0": M0,
+                "n": n,
+            }
+        else:
+            quantized = quantize_per_tensor_int8(values, _self_scale(values))
+            entry = {
+                "kind": "bias",
+                "label": weight_name,
+                "address": next_address,
+                "shape": shape,
+                "num_words": words,
+            }
+
+        data = quantized.astype(np.uint8).tobytes()  # two's complement bytes
+        regions.append((next_address, data))
+        weight_map[name] = entry
+        next_address += words
 
     _write_mem(tmp_dir / "MEM.bin", regions)
     (tmp_dir / "weight_map.json").write_text(json.dumps(weight_map, indent=2))

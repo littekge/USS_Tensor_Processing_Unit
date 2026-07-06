@@ -2,7 +2,7 @@
 
 This directory contains the custom *Functional TPU* MLIR dialect and the
 StableHLO → TPU legalization pass. It is the bridge between StableHLO and
-`Functional_TPU_ISA_v0.2.md` machine code.
+`Functional_TPU_ISA.md` machine code.
 
 ## Implementation choice (v0.1): Python, not TableGen/C++
 
@@ -24,7 +24,11 @@ TableGen/C++ MLIR dialect. Rationale:
 - `dialect.py` — in-memory op classes (`MultOp`, `AddOp`, `ReluOp`, `EndOp`,
   `ReturnOp`) plus `serialize()`/`parse_program()` for the textual form.
 - `legalize.py` — the StableHLO → TPU dialect pass (`legalize()`), invoked by
-  `src/Process_MLIR.py`.
+  `Process_MLIR.py`. Annotates each `tpu.mult` with its weight's dyadic
+  requantization pair `M0`/`n` from `weight_map.json`.
+- `bias_removal.py` — TPU-dialect pass (`remove_bias_adds()`) that drops bias
+  `add`s (v0.3: bias is folded into the matmul's requant multiplier) and reroutes
+  their consumers to the matmul result. Non-bias adds are left untouched.
 
 ## Dialect grammar
 
@@ -35,7 +39,9 @@ nothing is synthesized away during assembly.
 ```
 module @<name> {
   tpu.func @main {
-    %res = tpu.mult %a : RxC, %b : RxC -> RxC   // -> ISA mult  (MUL format)
+    %res = tpu.mult %a : RxC, %b : RxC -> RxC {M0 = <int>, n = <int>}
+                                                // -> ISA mult  (MUL format); M0/n
+                                                //    are the dyadic requant pair
     %res = tpu.add  %a : RxC, %b : RxC -> RxC   // -> ISA add   (ELEM format)
     %res = tpu.relu %a : N -> N                 // -> ISA relu  (ACT format)
     tpu.return %res : RxC                        // marks the program output
