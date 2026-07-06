@@ -110,3 +110,19 @@ transfer and faster transfer speed. Probably will not be needed.
 - Attempt to package StableHLO binary and Python wheel in a single release to
 allow for full integration with Google Colab (makes long term access to script
 more reliable).
+
+## AI Usage
+
+This research is made possible by heavy usage of AI to write code for areas
+unrelated to the research goal and to expedite the process of writing verilog
+code; the goal of the research is to understand how to design an AI accelerator,
+not to practice coding skills.
+
+### AI Usage Breakdown
+
+- **Specifications:** Written and managed by me.
+- **Assembler:** Full dark factory approach (claude writes code AND manages
+main.md, CLAUDE.md, and log.md).
+- **Communication:** Mostly dark factory, no spec documents since design is simple.
+- **Neural_Networks:** Mostly handwritten.
+- **Tensor_Processing_Unit:** Dark factory, code tested and validated manually.
