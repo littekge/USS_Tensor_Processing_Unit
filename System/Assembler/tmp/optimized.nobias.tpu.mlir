@@ -3,10 +3,8 @@
 module @jit_func {
   tpu.func @main {
     %1 = tpu.mult %arg4 : 1x1, %arg0 : 1x4 -> 1x4 {M0 = 223, n = 15}
-    %3 = tpu.add %arg1 : 1x4, %1 : 1x4 -> 1x4
-    %5 = tpu.mult %3 : 1x4, %arg2 : 4x1 -> 1x1 {M0 = 145, n = 15}
-    %7 = tpu.add %arg3 : 1x1, %5 : 1x1 -> 1x1
-    tpu.return %7 : 1x1
+    %5 = tpu.mult %1 : 1x4, %arg2 : 4x1 -> 1x1 {M0 = 145, n = 15}
+    tpu.return %5 : 1x1
     tpu.end
   }
 }
