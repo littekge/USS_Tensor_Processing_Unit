@@ -5,6 +5,13 @@
 > you are working in. Section-level rules win on conflicts within their own
 > section.
 
+Also read `AI_NOTES.md` (repo root) at the start of every session: it carries
+portable decision history, in-flight state, and machine notes across the
+user's computers. Binding rules live here and in section `CLAUDE.md` files;
+the journal only adds context. The main session keeps it updated and pruned
+(~3k-token cap); entries that harden into rules graduate into a `CLAUDE.md`
+via the user's approval gate.
+
 ## Section Map
 
 | Path | Domain / Toolchain | Section CLAUDE.md | Owning Agent | Agent Edit Policy |
