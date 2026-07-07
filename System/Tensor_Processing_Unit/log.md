@@ -24,6 +24,13 @@
   location + `altera_mf_ver` invocation, how to run the regression, how to update
   the runner for new/changed testbenches, and the run-here-defer-elsewhere rule
   (off the Questa PC, still write testbenches but mark `Verification: PENDING`).
+- **`.claude/settings.json`** (tracked, travels across machines) — added
+  `permissions.allow` prefix rules so testbench runs are auto-approved:
+  `./tests/run_regression.sh` and the Questa binaries (`vlib`/`vlog`/`vsim`/
+  `vmap`). Safe to check in because the runner self-gates off the Questa PC.
+  Reading results uses the Read/Grep tools (no Bash permission needed). The
+  brittle per-command rules in the gitignored `settings.local.json` are now
+  redundant but left untouched.
 - **Verification:** ran `./tests/run_regression.sh` on the Questa PC — full suite
   ALL PASS (Step1 19/19, Step2 9/9, Step3 10/10, Step4 14/14, Step5 7/7,
   Step6 7/7, Step7 9/9, Step8 12/12), plus a subset smoke test (`5 6`). No RTL or
