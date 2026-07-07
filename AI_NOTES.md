@@ -15,6 +15,10 @@
 - `/fan-out` plan step smoke-tested PASS. **Execute step untested** — agent
   types register at session start; first end-to-end run pending a restart.
 - Spec-proofreader pilot ran over the v0.3 specs; fixes deferred (below).
+- This journal added (af2b5b6) as the cross-machine context source; root
+  CLAUDE.md points to it. Consistency pass done 2026-07-07: stale
+  `Specifications/CLAUDE.md` reference removed from the section map and the
+  user's deletion of that file committed.
 
 ## Standing Decisions (dated, with reasons)
 

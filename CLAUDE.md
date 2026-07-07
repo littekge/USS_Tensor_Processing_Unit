@@ -16,7 +16,7 @@ via the user's approval gate.
 
 | Path | Domain / Toolchain | Section CLAUDE.md | Owning Agent | Agent Edit Policy |
 |---|---|---|---|---|
-| `Specifications/` | Markdown spec sheets (ISA, Message Protocol, Hardware Spec) | `Specifications/CLAUDE.md` | `spec-proofreader` | **READ-ONLY — never edit (see below)** |
+| `Specifications/` | Markdown spec sheets (ISA, Message Protocol, Hardware Spec) | none | `spec-proofreader` | **READ-ONLY — never edit (see below)** |
 | `System/Tensor_Processing_Unit/` | Verilog HDL 2001, Quartus Prime Lite, Questa sim | `System/Tensor_Processing_Unit/CLAUDE.md` | `tpu-rtl` | Full edit (dark factory) |
 | `System/Assembler/` | Python, pytest, StableHLO MLIR → TPU binary | `System/Assembler/CLAUDE.md` | `assembler` | Full edit (dark factory) |
 | `System/Communication/` | Arduino C++ (PlatformIO), Python serial/SPI | none | `comms` | Full edit (dark factory) |
