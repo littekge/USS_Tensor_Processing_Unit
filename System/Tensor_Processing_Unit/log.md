@@ -2,6 +2,33 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-07 — Regression runner + machine-gated test workflow
+
+- **Added `tests/run_regression.sh`** — one-command Questa regression driver.
+  Compiles each testbench into its own fresh work library (behavioral stubs
+  collide with real RTL otherwise), simulates batch-mode
+  (`vsim -c -L altera_mf_ver -voptargs=+acc ... -do "run -all; quit -f"`), and
+  prints a per-testbench pass/fail summary. Runs all benches by default or a
+  subset by step number (`./tests/run_regression.sh 3 4 8`). Sim scratch is
+  written off the OneDrive-synced Desktop (`$LOCALAPPDATA/tpu_sim`, override via
+  `SIM_WORK`) to avoid the transient vopt file-lock seen there.
+  - Failure detection keys off the per-test `Test N: FAIL` line (printed by every
+    testbench) rather than the summary wording, since Step2/Step4 report
+    `X / Y tests passed` while the others report `X PASS, Y FAIL`.
+  - Each testbench is a single `run_tb <step> <top> <sources...>` block; the
+    script header documents how to add/edit a block when testbenches change.
+- **Machine gate:** the script exits with a deferral notice (no simulator run) if
+  `vsim.exe` is absent at `C:\intelFPGA_lite\23.1std\questa_fse\win64\`. This is
+  the only project machine with Questa (`COMPUTERNAME = CEC-EGB267-05`).
+- **`CLAUDE.md`** — added a "Test Execution Environment" section: Questa install
+  location + `altera_mf_ver` invocation, how to run the regression, how to update
+  the runner for new/changed testbenches, and the run-here-defer-elsewhere rule
+  (off the Questa PC, still write testbenches but mark `Verification: PENDING`).
+- **Verification:** ran `./tests/run_regression.sh` on the Questa PC — full suite
+  ALL PASS (Step1 19/19, Step2 9/9, Step3 10/10, Step4 14/14, Step5 7/7,
+  Step6 7/7, Step7 9/9, Step8 12/12), plus a subset smoke test (`5 6`). No RTL or
+  testbench source changed; tooling/workflow only.
+
 ## 2026-07-07 — v0.3 Step 3 verification: full Questa regression PASS
 
 - **Ran the pending v0.3 regression** in Questa Intel FPGA Edition 2023.3
