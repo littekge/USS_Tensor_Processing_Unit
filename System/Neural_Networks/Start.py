@@ -30,12 +30,12 @@ def Get_Tiny_NN_Data():
     DATASET_SIZE = 1000 # define dataset size
     # create basic training data
     train_x = torch.randn(DATASET_SIZE, 1)
-    train_y = train_x.clone()
+    train_y = train_x.clone() - 2
     trainSet = TensorDataset(train_x, train_y)
 
     # create basic test data
     test_x = torch.randn(DATASET_SIZE, 1)
-    test_y = test_x.clone()
+    test_y = test_x.clone() - 2
     testSet = TensorDataset(test_x, test_y)
 
     # create sample input
@@ -46,12 +46,12 @@ def Get_Bigger_NN_Data():
     DATASET_SIZE = 1000 # define dataset size
     # create basic training data
     train_x = torch.randn(DATASET_SIZE, 1)
-    train_y = train_x.clone()
+    train_y = train_x.clone() - 2
     trainSet = TensorDataset(train_x, train_y)
 
     # create basic test data
     test_x = torch.randn(DATASET_SIZE, 1)
-    test_y = test_x.clone()
+    test_y = test_x.clone() - 2
     testSet = TensorDataset(test_x, test_y)
 
     # create sample input

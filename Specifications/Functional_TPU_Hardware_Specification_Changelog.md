@@ -2,6 +2,17 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-01 — Functional TPU Hardware Specification v0.3 — Quantization
+
+- **Improved requantization method for mult instructions** in tandem with ISA
+v0.3.
+- **Vector_Processor:**
+- Added explicit quantization instructions in the *requantization* section.
+- Added *scale* and *shift* combinational inputs — requantization constants from
+  MUL-type instructions.
+- **ALU** — Renamed the *requantization* section to *overflow handling* ->
+requantization no longer occurs in the ALU, only the vector processors.
+
 ## 2026-07-01 — Specification Structure Update
 
 - **Changed specification naming scheme:**

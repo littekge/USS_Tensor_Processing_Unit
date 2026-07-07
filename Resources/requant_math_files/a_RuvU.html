@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8"><!-- frame-runtime --><!-- base href="https://a0c82f90-6e28-4dec-9d30-3ae20e5f360c.frame.claudeusercontent.com/_f/1783019412-0555/" --><script>window.__FRAME_PREAMBLE={"capabilities":{"mcp":"mcp.BQqQVVN_.js"},"transforms":"_transforms.DYk1Ltlh.js"}</script><script>(function(){"use strict";const X="modulepreload",Y=function(e){return"/"+e},Z={},U=function(t,n,u){let o=Promise.resolve();function i(f){const a=new Event("vite:preloadError",{cancelable:!0});if(a.payload=f,window.dispatchEvent(a),!a.defaultPrevented)throw f}return o.then(f=>{for(const a of f||[])a.status==="rejected"&&i(a.reason);return t().catch(i)})},D=["light","dark","system"];function $(e){if(e==null||typeof e!="object")return!1;const t=e.__frame_init;return t!=null&&typeof t=="object"}function q(e){if(e==null||typeof e!="object")return!1;const t=e.__frame_theme;if(t==null||typeof t!="object")return!1;const n=t.theme;return typeof n=="string"&&D.includes(n)}function M(e){if(window===top||e.type==="auxclick"&&e.button!==1)return;const t=e.composedPath?e.composedPath():[e.target];let n=null;for(let f=0;f<t.length;f++){const a=t[f];if(a&&a.matches&&a.matches("a[href],area[href]")){n=a;break}}if(!n&&e.target&&e.target.closest&&(n=e.target.closest("a[href],area[href]")),!n)return;const u=n.getAttribute("href");if(!u)return;let o,i;try{o=new URL(u,document.baseURI),i=new URL(document.baseURI).origin}catch{return}(o.protocol==="http:"||o.protocol==="https:")&&o.origin!==i&&(e.preventDefault(),parent.postMessage({__frame_nav:!0,url:o.href},"*"))}const L={};function y(e){if(window===top)return;const t=Date.now();t-(L[e]||0)<500||(L[e]=t,parent.postMessage({__frame_engaged:!0,kind:e},"*"))}const F=2e3,T=["wheel","touchstart","touchmove","keydown","pointerdown"];let k=0;function B(e){e.isTrusted&&(k=Date.now())}function z(){addEventListener("click",M,!0),addEventListener("auxclick",M,!0)}function W(){for(let e=0;e<T.length;e++)addEventListener(T[e],B,{capture:!0,passive:!0});addEventListener("scroll",e=>{e.isTrusted&&Date.now()-k<F&&y("scroll")},{capture:!0,passive:!0}),addEventListener("pointermove",e=>{e.isTrusted&&y("pointer")},{capture:!0,passive:!0}),addEventListener("click",e=>{e.isTrusted&&y("click")},{capture:!0,passive:!0})}function x(e,t,n){const u=[...t.values()].filter(o=>o.targets.some(i=>i.startsWith(e+".")));return{wrap(o,i){const f=`${e}.${o}`,a=u.filter(s=>s.targets.includes(f));return a.length===0?(...s)=>{try{return i(...s)}catch(d){return Promise.reject(d)}}:(...s)=>{let d=s;for(const c of a){const l=c.module.parameters;if(l)try{d=l(d)}catch{return Promise.reject({code:"transform_error",id:c.id,scope:e,message:"parameters transform failed"})}}let m;try{m=i(...d)}catch(c){m=Promise.reject(c)}return m.then(c=>{for(let l=a.length-1;l>=0;l--){const h=a[l],p=h.module.returns;if(p)try{c=p(c)}catch{return n({id:h.id,scope:e,leg:"returns"}),c}}return c},c=>{for(let l=a.length-1;l>=0;l--){const h=a[l],p=h.module.throws;if(p)try{c=p(c)}catch{return n({id:h.id,scope:e,leg:"throws"}),Promise.reject(c)}}return Promise.reject(c)})}}}}function H(e,t,n,u=()=>{}){const o=new Set(e.changes??[]),i=new Map;for(const f of o){const a=t[f];a&&i.set(f,a)}return{contract:e.contract,changes:o,flags:new Set(e.flags??[]),capabilities:e.capabilities??{},transforms:i,shellOrigin:n.shellOrigin,mount:n.mount,pipe:f=>x(f,i,u)}}(function(){const e=Object.defineProperty,t=globalThis,n=["RTCPeerConnection","webkitRTCPeerConnection","RTCDataChannel","RTCIceCandidate","RTCSessionDescription","RTCRtpSender","RTCRtpReceiver"];let u=0;for(let o=0;o<n.length;o++){const i=n[o];try{e(t,i,{value:void 0,writable:!1,configurable:!1})}catch{try{delete t[i]}catch{}try{e(t,i,{value:void 0,writable:!1,configurable:!0})}catch{}}typeof t[i]=="function"&&u++}if(u&&window!==top)try{parent.postMessage({__frame_rtc_lockdown_failed:u},"*")}catch{}})();const K=1e4,G=Object.freeze([...window.__FRAME_PREAMBLE?.origins??["https://claude.ai","https://preview.claude.ai"]]);function J(e){for(const t of G)if(t.endsWith(":*"))try{const n=new URL(e);if(`${n.protocol}//${n.hostname}:*`===t)return!0}catch{}else if(e===t)return!0;return!1}const w=Object.freeze({...window.__FRAME_PREAMBLE?.capabilities??{}}),E=window.__FRAME_PREAMBLE?.transforms,C=/^[\w.-]+\.js$/,V=/^[a-z][a-z0-9_-]{0,63}$/;let A=null,g=null;function P(e,t,n){try{Object.defineProperty(e,t,{value:n,writable:!1,configurable:!1,enumerable:!0})}catch{try{Object.defineProperty(e,t,{value:n,writable:!1,configurable:!0,enumerable:!0})}catch{}}}let R=!1;function N(e){const t=document.documentElement;e==="light"||e==="dark"?(t.dataset.theme=e,t.style.colorScheme=e,R=!0):R&&(delete t.dataset.theme,t.style.colorScheme="",R=!1)}const _=new Map;function Q(e,t){const n=_.get(e);if(!n)return;Object.assign(n.impl,t),n.impl.__settled=()=>Promise.reject({code:"capability_removed",message:`${e}: method not in this runtime`});const u=n.queue;n.queue=[];for(const o of u){const i=t[o.method];i?i(...o.args).then(o.resolve,o.reject):o.reject({code:"capability_removed",message:`${e}.${o.method} is not in this runtime`})}}function O(e,t){const n=_.get(e);if(!n)return;n.impl.__settled=()=>Promise.reject(t);const u=n.queue;n.queue=[];for(const o of u)o.reject(t)}const j=Object.getOwnPropertyDescriptor(window,"claude");if(window!==top&&!(j&&j.writable===!1)){z(),W();const e=j?.value??{};P(window,"claude",e);const t=s=>{const d={impl:Object.create(null),queue:[]};_.set(s,d);const m=new Proxy(d.impl,{get:(c,l)=>{if(typeof l=="string"&&!(l==="then"||l==="toJSON"||l==="valueOf"))return l==="toString"?Object.prototype.toString:(...h)=>{const p=c[l]??c.__settled;return p?p(...h):new Promise((b,S)=>{d.queue.push({method:l,args:h,resolve:b,reject:S})})}},set:()=>!1});P(e,s,m)};for(const s of Object.keys(w)){if(e[s]!==void 0){P(e,s,e[s]);continue}t(s)}let n=null,u=null,o=0;const i=s=>{s.source!==parent||!J(s.origin)||$(s.data)&&(n=s.data.__frame_init,g=s.origin,removeEventListener("message",i),clearTimeout(o),u?.())};addEventListener("message",i),parent.postMessage({__frame_connect:!0},"*");const f=new Promise(s=>{u=s,o=setTimeout(()=>{removeEventListener("message",i),s()},K)}),a=document.readyState==="loading"?new Promise(s=>document.addEventListener("DOMContentLoaded",()=>s(),{once:!0})):Promise.resolve();f.then(async()=>{if(!n||!g){for(const r of _.keys())O(r,{code:"not_granted",message:"frame initialization did not arrive - capability unavailable"});return}N(n.theme);const s=g;addEventListener("message",r=>{r.source!==parent||r.origin!==s||q(r.data)&&N(r.data.__frame_theme.theme)});const d=r=>U(()=>import("/_runtime/"+r),void 0),m=Object.keys(n.capabilities??{});for(const r of m)Object.hasOwn(w,r)||V.test(r)&&e[r]===void 0&&(t(r),O(r,{code:"capability_disabled",message:"capability not in this runtime generation"}));const c=m.filter(r=>Object.hasOwn(w,r)).map(r=>[r,w[r]]).filter(r=>typeof r[1]=="string"&&C.test(r[1])),[l,...h]=await Promise.allSettled([E&&C.test(E)?d(E):Promise.resolve({}),...c.map(([,r])=>d(r))]),p=g;A=H(n,l.status==="fulfilled"&&l.value?.TRANSFORMS||{},{shellOrigin:p,mount:Q},r=>parent.postMessage({__frame_cap_telemetry:r},p));const b=r=>parent.postMessage({__frame_cap_telemetry:{kind:"cap-load-error",cap:r}},p),S=A;h.forEach((r,v)=>{const I=c[v][0];if(r.status!=="fulfilled"){b(I);return}try{r.value?.install?.(S)}catch{b(I)}});for(const[r,v]of _)v.queue.length===0&&Object.keys(v.impl).length>0||O(r,{code:m.includes(r)?"capability_disabled":"not_granted",message:"capability not available in this session"});await a,parent.postMessage({__frame_ready:!0},g)})}})();</script><!-- /frame-runtime --><meta charset="utf8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}</style></head><body>
+<style>
+  :root{
+    --ground:#e9edf1;
+    --paper:#ffffff;
+    --ink:#171c24;
+    --muted:#5a6472;
+    --rule:#d9dee5;
+    --accent:#0e7c66;        /* deep teal — signal/precision */
+    --accent-tint:#e7f2ef;
+    --accent-rule:#bfe0d7;
+    --code-bg:#f2f5f8;
+    --code-ink:#1d3a34;
+    --measure:44rem;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Times New Roman",serif;
+    --sans:ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;
+    --math:"Latin Modern Math","STIX Two Math","Cambria Math",var(--serif);
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;background:var(--ground);color:var(--ink);
+    font-family:var(--serif);font-size:1.075rem;line-height:1.7;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:var(--measure);margin:0 auto;padding:0 1.5rem 6rem;}
+
+  /* ---- masthead ---- */
+  header.top{
+    max-width:var(--measure);margin:0 auto;padding:3.5rem 1.5rem 2rem;
+  }
+  .eyebrow{
+    font-family:var(--sans);font-size:.72rem;font-weight:650;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--accent);
+    margin:0 0 .9rem;
+  }
+  h1{
+    font-family:var(--sans);font-weight:800;letter-spacing:-.02em;
+    font-size:clamp(1.9rem,4.5vw,2.7rem);line-height:1.08;margin:0;
+    text-wrap:balance;
+  }
+  .lede{
+    color:var(--muted);font-size:1.1rem;margin:1.1rem 0 0;max-width:38rem;
+  }
+  .rule{height:1px;background:var(--rule);border:0;margin:2.25rem auto 0;
+    max-width:var(--measure);}
+
+  /* ---- sections ---- */
+  section{margin-top:3.25rem;}
+  .qnum{
+    font-family:var(--sans);font-size:.72rem;font-weight:650;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--muted);
+    margin:0 0 .55rem;
+  }
+  h2{
+    font-family:var(--sans);font-weight:750;letter-spacing:-.015em;
+    font-size:1.62rem;line-height:1.15;margin:0 0 1.1rem;text-wrap:balance;
+  }
+  h3{
+    font-family:var(--sans);font-weight:700;font-size:1.06rem;
+    letter-spacing:-.005em;margin:2rem 0 .6rem;color:var(--ink);
+  }
+  p{margin:0 0 1rem;}
+  strong{font-weight:700;}
+
+  code{
+    font-family:var(--mono);font-size:.86em;background:var(--code-bg);
+    color:var(--code-ink);padding:.08em .34em;border-radius:4px;
+  }
+
+  /* ---- math ---- */
+  math{font-family:var(--math);}
+  .eq{
+    background:var(--paper);border-left:3px solid var(--accent);
+    border-radius:0 6px 6px 0;padding:1.05rem 1.25rem;margin:1.3rem 0;
+    overflow-x:auto;
+  }
+  .eq math{font-size:1.28rem;display:block;}
+  math[display="block"]{margin:0;}
+
+  /* ---- variable definitions ---- */
+  dl.vars{margin:1rem 0 1.2rem;display:grid;grid-template-columns:auto 1fr;
+    gap:.55rem 1.1rem;align-items:baseline;}
+  dl.vars dt{font-family:var(--mono);font-size:.9rem;color:var(--accent);
+    font-weight:600;white-space:nowrap;}
+  dl.vars dd{margin:0;color:var(--ink);}
+
+  /* ---- worked-example callout ---- */
+  .note{
+    background:var(--accent-tint);border:1px solid var(--accent-rule);
+    border-radius:8px;padding:1rem 1.2rem;margin:1.3rem 0;
+    font-size:.98rem;
+  }
+  .note .tag{
+    font-family:var(--sans);font-size:.68rem;font-weight:700;
+    letter-spacing:.14em;text-transform:uppercase;color:var(--accent);
+    display:block;margin-bottom:.4rem;
+  }
+  .note code{background:rgba(14,124,102,.10);color:var(--code-ink);}
+
+  /* ---- hardware pseudo-op block ---- */
+  pre.op{
+    background:#12332d;color:#dff2ec;font-family:var(--mono);
+    font-size:.9rem;line-height:1.55;border-radius:8px;
+    padding:1.1rem 1.25rem;margin:1.3rem 0;overflow-x:auto;
+  }
+  pre.op .k{color:#7fd7c2;}
+  pre.op .c{color:#8ba39c;}
+
+  .fnote{font-size:.95rem;color:var(--muted);border-top:1px solid var(--rule);
+    margin-top:3rem;padding-top:1.1rem;}
+
+  @media (max-width:480px){
+    dl.vars{grid-template-columns:1fr;gap:.15rem .5rem;}
+    dl.vars dd{margin-bottom:.5rem;}
+  }
+</style>
+
+<header class="top">
+  <p class="eyebrow">Functional TPU · v0.3 quantization</p>
+  <h1>Deriving the requant scales, and decomposing&nbsp;M</h1>
+  <p class="lede">Two derivations behind per-tensor requantization: how the
+  scales <code>S_w</code>, <code>S_in</code>, <code>S_out</code> are measured for
+  each layer, and how the combined scale <code>M</code> becomes the integer pair
+  <code>(M0, n)</code> the hardware evaluates.</p>
+</header>
+<hr class="rule">
+
+<div class="wrap">
+
+<section>
+  <p class="qnum">Question 01</p>
+  <h2>Computing S_w, S_in, and S_out per layer</h2>
+
+  <h3>The common definition</h3>
+  <p>All three are the same kind of object: a <strong>scale</strong>
+  <math><mi>S</mi></math> mapping a real tensor onto signed int8 in the
+  symmetric range <math><mrow><mo>[</mo><mo>−</mo><mn>127</mn><mo>,</mo><mn>127</mn><mo>]</mo></mrow></math>.</p>
+
+  <div class="eq">
+    <math display="block">
+      <mi>S</mi><mo>=</mo>
+      <mfrac><msub><mi>r</mi><mtext>max</mtext></msub><msub><mi>q</mi><mtext>max</mtext></msub></mfrac>
+      <mo>,</mo><mspace width="1.4em"></mspace>
+      <msub><mi>q</mi><mtext>max</mtext></msub><mo>=</mo><mn>127</mn>
+    </math>
+  </div>
+
+  <dl class="vars">
+    <dt>r_max</dt><dd>the <em>calibration magnitude</em> — the largest absolute real value the tensor needs to represent.</dd>
+    <dt>q_max</dt><dd><math><mn>127</mn></math>, the largest int8 magnitude. Using 127 (not 128) keeps the grid symmetric: <math><mrow><mo>−</mo><mn>127</mn><mo>…</mo><mo>+</mo><mn>127</mn></mrow></math>.</dd>
+  </dl>
+
+  <p>The quantize / dequantize pair this induces, for a real value
+  <math><mi>r</mi></math>:</p>
+
+  <div class="eq">
+    <math display="block">
+      <mi>q</mi><mo>=</mo><mi>round</mi>
+      <mrow><mo>(</mo>
+        <mi>clip</mi><mrow><mo>(</mo>
+          <mfrac><mi>r</mi><mi>S</mi></mfrac>
+          <mo>,</mo><mo>−</mo><mn>127</mn><mo>,</mo><mn>127</mn>
+        <mo>)</mo></mrow>
+      <mo>)</mo></mrow>
+      <mo>,</mo><mspace width="1.4em"></mspace>
+      <mover><mi>r</mi><mo>^</mo></mover><mo>=</mo><mi>S</mi><mo>⋅</mo><mi>q</mi><mo>≈</mo><mi>r</mi>
+    </math>
+  </div>
+
+  <dl class="vars">
+    <dt>q</dt><dd>the stored int8 value.</dd>
+    <dt>r̂</dt><dd>the reconstructed real value (<math><mover><mi>r</mi><mo>^</mo></mover></math>).</dd>
+  </dl>
+
+  <p>The <em>only</em> thing distinguishing the three scales is
+  <strong>which tensor's <code>r_max</code> you measure</strong>.</p>
+
+  <h3>The calibration magnitude</h3>
+  <p>Let <math><mi>D</mi></math> be a <strong>calibration set</strong>: a
+  representative batch of network inputs (the 1000–2000 samples used in the
+  forward-pass analysis). For any tensor <math><mi>A</mi></math>:</p>
+
+  <div class="eq">
+    <math display="block">
+      <msub><mi>r</mi><mtext>max</mtext></msub><mo>(</mo><mi>A</mi><mo>)</mo><mo>=</mo>
+      <munder><mi>max</mi><mrow><mi>d</mi><mo>∈</mo><mi>D</mi></mrow></munder>
+      <munder><mi>max</mi><mtext>elem</mtext></munder>
+      <mrow><mo>|</mo><mi>A</mi><mo>(</mo><mi>d</mi><mo>)</mo><mo>|</mo></mrow>
+    </math>
+  </div>
+
+  <h3>The three cases</h3>
+
+  <p><strong>S_w — weight scale (static).</strong> Weights are fixed at compile
+  time, so no data is needed — measured straight from the trained tensor
+  <math><msub><mi>W</mi><mi>ℓ</mi></msub></math> of layer
+  <math><mi>ℓ</mi></math>:</p>
+
+  <div class="eq">
+    <math display="block">
+      <msub><mi>S</mi><mi>w</mi></msub><mo>=</mo>
+      <mfrac>
+        <mrow><mi>max</mi><mo>|</mo><msub><mi>W</mi><mi>ℓ</mi></msub><mo>|</mo></mrow>
+        <mn>127</mn>
+      </mfrac>
+    </math>
+  </div>
+
+  <p>This is what <code>Process_Weights.py</code> should compute per layer —
+  instead it hardcodes <math><mrow><msub><mi>S</mi><mi>w</mi></msub><mo>=</mo><mn>1</mn><mo>/</mo><mn>128</mn></mrow></math>,
+  which is why small-weight layers waste the grid and large-weight layers
+  (Tiny_NN's <code>1.185</code>) clamp.</p>
+
+  <p><strong>S_in — input-activation scale (dynamic).</strong> The activations
+  feeding layer <math><mi>ℓ</mi></math> depend on the data, so they must be
+  observed:</p>
+
+  <div class="eq">
+    <math display="block">
+      <msubsup><mi>S</mi><mi>ℓ</mi><mtext>in</mtext></msubsup><mo>=</mo>
+      <mfrac>
+        <mrow><msub><mi>r</mi><mtext>max</mtext></msub><mo>(</mo><msubsup><mi>X</mi><mi>ℓ</mi><mtext>in</mtext></msubsup><mo>)</mo></mrow>
+        <mn>127</mn>
+      </mfrac>
+    </math>
+  </div>
+
+  <p>This is the <code>in.absmax</code> the forward-pass hooks measured; it
+  <em>requires</em> running the model.</p>
+
+  <p><strong>S_out — output-activation scale (dynamic).</strong> Same, for the
+  layer's <em>pre-activation</em> output
+  <math><msubsup><mi>X</mi><mi>ℓ</mi><mtext>out</mtext></msubsup></math> —
+  the accumulator result, before ReLU/pool, because that is what the systolic
+  array produces and what gets requantized:</p>
+
+  <div class="eq">
+    <math display="block">
+      <msubsup><mi>S</mi><mi>ℓ</mi><mtext>out</mtext></msubsup><mo>=</mo>
+      <mfrac>
+        <mrow><msub><mi>r</mi><mtext>max</mtext></msub><mo>(</mo><msubsup><mi>X</mi><mi>ℓ</mi><mtext>out</mtext></msubsup><mo>)</mo></mrow>
+        <mn>127</mn>
+      </mfrac>
+    </math>
+  </div>
+
+  <h3>Two structural facts</h3>
+  <p><strong>Chaining.</strong> An activation tensor is one layer's output and
+  the next layer's input, so
+  <math><mrow><msubsup><mi>S</mi><mi>ℓ</mi><mtext>out</mtext></msubsup><mo>=</mo><msubsup><mi>S</mi><mrow><mi>ℓ</mi><mo>+</mo><mn>1</mn></mrow><mtext>in</mtext></msubsup></mrow></math>.
+  You compute one scale per activation tensor, not two.</p>
+
+  <p><strong>Percentile variant (a tuning knob).</strong> Instead of a hard
+  maximum, use a high quantile to reject outliers:</p>
+
+  <div class="eq">
+    <math display="block">
+      <msub><mi>r</mi><mtext>max</mtext></msub><mo>(</mo><mi>A</mi><mo>)</mo><mo>=</mo>
+      <mi>quantile</mi><mrow><mo>(</mo><mo>|</mo><mi>A</mi><mo>|</mo><mo>,</mo><mn>0.999</mn><mo>)</mo></mrow>
+    </math>
+  </div>
+  <p>Strict <code>absmax</code> never clips but is coarser; the percentile clips
+  the top 0.1% of values in exchange for finer resolution.</p>
+</section>
+
+<section>
+  <p class="qnum">Question 02</p>
+  <h2>Decomposing M into M0 and n</h2>
+
+  <p>The combined scale
+  <math><mrow><mi>M</mi><mo>=</mo><mo>(</mo><msub><mi>S</mi><mtext>in</mtext></msub><mo>⋅</mo><msub><mi>S</mi><mi>w</mi></msub><mo>)</mo><mo>/</mo><msub><mi>S</mi><mtext>out</mtext></msub></mrow></math>
+  is a positive real, almost always <math><mrow><mo>≪</mo><mn>1</mn></mrow></math>
+  (LeNet conv1: <code>M = 0.0013730</code>). We want an integer-only form:</p>
+
+  <div class="eq">
+    <math display="block">
+      <mi>M</mi><mo>≈</mo>
+      <msub><mi>M</mi><mn>0</mn></msub><mo>⋅</mo>
+      <msup><mn>2</mn><mrow><mo>−</mo><mi>n</mi></mrow></msup>
+    </math>
+  </div>
+
+  <dl class="vars">
+    <dt>M0</dt><dd>a positive integer, the <em>quantized multiplier</em> (the mantissa), held to a fixed bit width <math><mi>B</mi></math> (we use <math><mrow><mi>B</mi><mo>=</mo><mn>31</mn></mrow></math>).</dd>
+    <dt>n</dt><dd>a non-negative integer, the <em>shift</em> (the exponent).</dd>
+    <dt>B</dt><dd>the multiplier bit width. Choosing <math><mi>n</mi></math> so that <math><mrow><msub><mi>M</mi><mn>0</mn></msub><mo>∈</mo><mo>[</mo><msup><mn>2</mn><mrow><mi>B</mi><mo>−</mo><mn>1</mn></mrow></msup><mo>,</mo><msup><mn>2</mn><mi>B</mi></msup><mo>)</mo></mrow></math> uses every significant bit.</dd>
+  </dl>
+
+  <h3>The algorithm (binary floating-point, done offline)</h3>
+
+  <p><strong>Step 1 — normalize the mantissa</strong> into
+  <math><mrow><mo>[</mo><mn>0.5</mn><mo>,</mo><mn>1</mn><mo>)</mo></mrow></math>:</p>
+
+  <div class="eq">
+    <math display="block">
+      <mi>e</mi><mo>=</mo>
+      <mrow><mo>⌊</mo><msub><mi>log</mi><mn>2</mn></msub><mi>M</mi><mo>⌋</mo></mrow>
+      <mo>+</mo><mn>1</mn>
+      <mo>,</mo><mspace width="1.4em"></mspace>
+      <mi>m</mi><mo>=</mo><mi>M</mi><mo>⋅</mo>
+      <msup><mn>2</mn><mrow><mo>−</mo><mi>e</mi></mrow></msup>
+    </math>
+  </div>
+
+  <dl class="vars">
+    <dt>e</dt><dd>the binary exponent, chosen so the real mantissa <math><mi>m</mi></math> lands in <math><mrow><mo>[</mo><mn>0.5</mn><mo>,</mo><mn>1</mn><mo>)</mo></mrow></math>.</dd>
+    <dt>m</dt><dd>the normalized real mantissa.</dd>
+  </dl>
+
+  <div class="note">
+    <span class="tag">Worked example · LeNet conv1</span>
+    <math><mrow><msub><mi>log</mi><mn>2</mn></msub><mo>(</mo><mn>0.0013730</mn><mo>)</mo><mo>=</mo><mo>−</mo><mn>9.51</mn></mrow></math>,
+    so <code>e = −10 + 1 = −9</code> and
+    <code>m = 0.0013730 · 2⁹ = 0.7030</code> ∈ [0.5, 1). ✓
+  </div>
+
+  <p><strong>Step 2 — quantize the mantissa</strong> to
+  <math><mi>B</mi></math> bits:</p>
+
+  <div class="eq">
+    <math display="block">
+      <msub><mi>M</mi><mn>0</mn></msub><mo>=</mo>
+      <mi>round</mi><mrow><mo>(</mo><mi>m</mi><mo>⋅</mo><msup><mn>2</mn><mi>B</mi></msup><mo>)</mo></mrow>
+    </math>
+  </div>
+  <p>Since <math><mrow><mi>m</mi><mo>∈</mo><mo>[</mo><mn>0.5</mn><mo>,</mo><mn>1</mn><mo>)</mo></mrow></math>,
+  this lands <math><mrow><msub><mi>M</mi><mn>0</mn></msub><mo>∈</mo><mo>[</mo><msup><mn>2</mn><mrow><mi>B</mi><mo>−</mo><mn>1</mn></mrow></msup><mo>,</mo><msup><mn>2</mn><mi>B</mi></msup><mo>)</mo></mrow></math>
+  as required.</p>
+
+  <div class="note">
+    <span class="tag">Worked example · LeNet conv1</span>
+    <code>M0 = round(0.7030 · 2³¹) = 1 509 670 765</code> ✓
+  </div>
+
+  <p><strong>Step 3 — fold the exponent into the shift.</strong> From
+  <math><mrow><mi>M</mi><mo>=</mo><mi>m</mi><mo>⋅</mo><msup><mn>2</mn><mi>e</mi></msup></mrow></math>
+  and <math><mrow><mi>m</mi><mo>=</mo><msub><mi>M</mi><mn>0</mn></msub><mo>⋅</mo><msup><mn>2</mn><mrow><mo>−</mo><mi>B</mi></mrow></msup></mrow></math>:</p>
+
+  <div class="eq">
+    <math display="block">
+      <mi>M</mi><mo>=</mo>
+      <msub><mi>M</mi><mn>0</mn></msub><mo>⋅</mo>
+      <msup><mn>2</mn><mrow><mo>−</mo><mi>B</mi></mrow></msup><mo>⋅</mo>
+      <msup><mn>2</mn><mi>e</mi></msup>
+      <mo>=</mo>
+      <msub><mi>M</mi><mn>0</mn></msub><mo>⋅</mo>
+      <msup><mn>2</mn><mrow><mo>−</mo><mo>(</mo><mi>B</mi><mo>−</mo><mi>e</mi><mo>)</mo></mrow></msup>
+      <mspace width="1.2em"></mspace><mo>⟹</mo><mspace width="1.2em"></mspace>
+      <mi>n</mi><mo>=</mo><mi>B</mi><mo>−</mo><mi>e</mi>
+    </math>
+  </div>
+
+  <div class="note">
+    <span class="tag">Worked example · LeNet conv1</span>
+    <code>n = 31 − (−9) = 40</code> — matching the script's
+    <code>M0 = 1509670765, n = 40</code>. ✓
+  </div>
+
+  <h3>What the hardware evaluates</h3>
+  <p>With <code>acc</code> the 32-bit signed accumulator, requantization is one
+  multiply, one rounding add, one shift, one clamp:</p>
+
+  <pre class="op"><span class="c">// acc·M0 is a 32×31 → ~63-bit product (needs a 64-bit intermediate)</span>
+q_out = <span class="k">clip</span>( ( acc * M0 + 2^(n-1) ) <span class="k">&gt;&gt;</span> n , -128, 127 )
+        <span class="c">└ round-half-up ┘   └ shift ┘   └ int8 saturate ┘</span></pre>
+
+  <h3>Precision — why it read "0.0 ppm"</h3>
+  <p><math><mrow><msub><mi>M</mi><mn>0</mn></msub><mo>=</mo><mi>round</mi><mo>(</mo><mi>m</mi><mo>⋅</mo><msup><mn>2</mn><mi>B</mi></msup><mo>)</mo></mrow></math>
+  has a mantissa rounding error of at most half an LSB, so the relative error of
+  <math><mrow><mover><mi>M</mi><mo>^</mo></mover><mo>=</mo><msub><mi>M</mi><mn>0</mn></msub><mo>⋅</mo><msup><mn>2</mn><mrow><mo>−</mo><mi>n</mi></mrow></msup></mrow></math>
+  versus <math><mi>M</mi></math> is:</p>
+
+  <div class="eq">
+    <math display="block">
+      <mfrac>
+        <mrow><mo>|</mo><mover><mi>M</mi><mo>^</mo></mover><mo>−</mo><mi>M</mi><mo>|</mo></mrow>
+        <mi>M</mi>
+      </mfrac>
+      <mo>≤</mo>
+      <mfrac>
+        <mrow><msup><mn>2</mn><mrow><mo>−</mo><mi>B</mi></mrow></msup><mo>⋅</mo><mfrac><mn>1</mn><mn>2</mn></mfrac></mrow>
+        <mi>m</mi>
+      </mfrac>
+      <mo>≤</mo>
+      <msup><mn>2</mn><mrow><mo>−</mo><mo>(</mo><mi>B</mi><mo>−</mo><mn>1</mn><mo>)</mo></mrow></msup>
+      <mo>≈</mo>
+      <msup><mn>2</mn><mrow><mo>−</mo><mn>30</mn></mrow></msup>
+      <mo>≈</mo>
+      <msup><mn>10</mn><mrow><mo>−</mo><mn>9</mn></mrow></msup>
+    </math>
+  </div>
+
+  <p>Sub-ppb — effectively exact, which is why every layer reproduced to
+  <code>0.0 ppm</code>.</p>
+
+  <div class="note">
+    <span class="tag">Edge case</span>
+    If a layer had <math><mrow><mi>M</mi><mo>≥</mo><mn>1</mn></mrow></math>
+    (amplifying), then <math><mrow><mi>e</mi><mo>≥</mo><mn>1</mn></mrow></math>
+    and <math><mrow><mi>n</mi><mo>=</mo><mi>B</mi><mo>−</mo><mi>e</mi><mo>&lt;</mo><mi>B</mi></mrow></math>;
+    the same formulas hold, the shift is just smaller. Our networks all have
+    <math><mrow><mi>M</mi><mo>≪</mo><mn>1</mn></mrow></math>, so
+    <math><mi>n</mi></math> is large (38–42).
+  </div>
+</section>
+
+<p class="fnote">Functional TPU · requantization reference · scales measured over a
+1000–2000-sample calibration set; <code>M0/n</code> figures from the LeNet-5,
+Bigger_NN, and Tiny_NN checkpoints.</p>
+
+</div>
+
+</body></html>

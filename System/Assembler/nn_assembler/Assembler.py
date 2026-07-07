@@ -1,8 +1,9 @@
 """Second half of lowering step 3 (Steps 6-7): the assembler.
 
-Translates the *Functional TPU* dialect (`/tmp/optimized.tpu.mlir`) into
-`Functional_TPU_ISA_v0.2.md` machine code, then exports it in the Message
-Protocol PROGRAM format (`/tmp/PROGRAM.bin`).
+Translates the final *Functional TPU* dialect (`/tmp/optimized.nobias.tpu.mlir`,
+the bias-removed IR) into `Functional_TPU_ISA.md` machine code, then exports it
+in the Message Protocol PROGRAM format (`/tmp/PROGRAM.bin`). Each `tpu.mult`
+carries the dyadic requantization pair `M0`/`n` set during legalization.
 
 Address resolution uses `/tmp/weight_map.json`: mapped weights resolve to their
 assigned addresses, while the network input and every intermediate result share
@@ -29,6 +30,7 @@ SCRATCH_ADDRESS = 0x1  # network input + all intermediate results
 
 MUL_MAX_DIM = 15  # MUL format dimension fields are 4 bits.
 ELEM_MAX_DIM = 255  # ELEM format dimension fields are 8 bits.
+REQUANT_FIELD_MAX = 255  # MUL M0/n fields are each 8 bits (bits 59-52 / 51-44).
 
 
 def _as_2d(shape: list[int]) -> tuple[int, int]:
@@ -43,20 +45,30 @@ def _as_2d(shape: list[int]) -> tuple[int, int]:
 
 
 def _resolve_address(name: str, weight_map: dict) -> int:
-    """Map an SSA name to an ISA address: weights from the map, else scratch 0x1."""
+    """Map an SSA name to an ISA address: mapped tensors from the map, else scratch.
+
+    Weights and biases resolve to their assigned memory addresses; the network
+    input (kind == "input") and every intermediate op result share scratch 0x1.
+    """
     entry = weight_map.get(name)
-    if entry is not None and entry["kind"] == "weight":
+    if entry is not None and entry["kind"] in ("weight", "bias"):
         return entry["address"]
-    # Network input (kind == "input") and all op results live at scratch.
     return SCRATCH_ADDRESS
 
 
-def encode_mult(rs1: int, lhs: tuple[int, int], rs2: int, rhs: tuple[int, int], rd: int) -> int:
-    """Encode a MUL-format `mult` instruction into its 128-bit value."""
+def encode_mult(
+    rs1: int, lhs: tuple[int, int], rs2: int, rhs: tuple[int, int], rd: int, M0: int, n: int
+) -> int:
+    """Encode a MUL-format `mult` instruction into its 128-bit value.
+
+    `M0` (bits 59-52) and `n` (bits 51-44) are the dyadic requantization pair.
+    """
     sz11, sz12 = lhs
     sz21, sz22 = rhs
     for dim in (sz11, sz12, sz21, sz22):
         assert 0 <= dim <= MUL_MAX_DIM, f"mult dimension {dim} exceeds 4-bit field (max {MUL_MAX_DIM})."
+    assert 0 <= M0 <= REQUANT_FIELD_MAX, f"mult M0 {M0} exceeds 8-bit field (max {REQUANT_FIELD_MAX})."
+    assert 0 <= n <= REQUANT_FIELD_MAX, f"mult n {n} exceeds 8-bit field (max {REQUANT_FIELD_MAX})."
     return (
         (OPCODE_MULT << 124)
         | (rs1 << 108)
@@ -66,6 +78,8 @@ def encode_mult(rs1: int, lhs: tuple[int, int], rs2: int, rhs: tuple[int, int], 
         | (sz21 << 80)
         | (sz22 << 76)
         | (rd << 60)
+        | (M0 << 52)
+        | (n << 44)
         | FUNCT3_DEFAULT
     )
 
@@ -104,6 +118,10 @@ def assemble_program(tpu_text: str, weight_map: dict) -> list[int]:
 
     for op in program.ops:
         if isinstance(op, MultOp):
+            assert op.M0 is not None and op.n is not None, (
+                f"mult {op.result} is missing its M0/n requantization pair; "
+                "legalization should have annotated it from weight_map.json."
+            )
             instructions.append(
                 encode_mult(
                     _resolve_address(op.lhs.name, weight_map),
@@ -111,6 +129,8 @@ def assemble_program(tpu_text: str, weight_map: dict) -> list[int]:
                     _resolve_address(op.rhs.name, weight_map),
                     _as_2d(op.rhs.shape),
                     _resolve_address(op.result, weight_map),
+                    op.M0,
+                    op.n,
                 )
             )
         elif isinstance(op, AddOp):
@@ -147,7 +167,8 @@ def Assemble(tmp_dir: Path | None = None) -> list[int]:
     if tmp_dir is None:
         tmp_dir = Path(__file__).parent.parent / "tmp"
 
-    tpu_path = tmp_dir / "optimized.tpu.mlir"
+    # Assemble the bias-removed dialect: it is the final IR (bias adds dropped).
+    tpu_path = tmp_dir / "optimized.nobias.tpu.mlir"
     weight_map_path = tmp_dir / "weight_map.json"
     assert tpu_path.is_file(), f"Missing {tpu_path}"
     assert weight_map_path.is_file(), f"Missing {weight_map_path}"

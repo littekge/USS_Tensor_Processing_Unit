@@ -3,7 +3,7 @@
 > **Purpose:** This document outlines the Functional TPU hardware specification,
 >including module instantiation hierarchy and functional descriptions of modules.
 >
-> **Version: 0.3.0**
+> **Version: 0.2.0**
 
 ## Module Instantiation Hierarchy
 
@@ -165,7 +165,7 @@ and TPU_0x1_Buffer, effectively "programming" the TPU. After program execution,
 it reads the output data and exposes it to the top-level *TPU* module. To
 interpret external commands, the module instantiates the SPI_Interface module,
 reading from the SPI input buffer while idle to search for messages in the
-*Functional TPU Message Protocol* format (defined in `Functional_TPU_Message_Protocol.md`).
+*Functional TPU Message Protocol* format (defined in `Functional_TPU_Message_Protocol_v0.2.md`).
 The module defines a complex finite state machine to implement these functions.
 
 - **Synchronous Control Signals:**
@@ -283,7 +283,7 @@ programmer uses port *a*.
 ### Program_Memory
 
 **Description:** The Program_Memory is a single-port RAM module. It stores
-program instructions defined by `Functional_TPU_ISA.md`.
+program instructions defined by `Functional_TPU_ISA_v0.2.md`.
 
 - **Synchronous Control Signals:**
   - **Inputs:**
@@ -328,7 +328,7 @@ respectively.
 ### TPU_0x1_Buffer
 
 **Description:** The TPU_0x1_Buffer is a dual-port RAM module. It functions as
-the unique isolated memory required for address 0x1 in `Functional_TPU_ISA.md`.
+the unique isolated memory required for address 0x1 in `Functional_TPU_ISA_v0.2.md`.
 
 - **Synchronous Control Signals:**
   - **Inputs:**
@@ -388,7 +388,7 @@ the Feeder module, the two implement the traditional CPU instruction cycle
 (Fetch-Decode-Execute-Writeback). The Controller module defines a finite state
 machine that converts instructions from the Feeder into control signals and
 manages timing and dataflow between other modules. Valid instructions and their
-formats are defined in `Functional_TPU_ISA.md`.
+formats are defined in `Functional_TPU_ISA_v0.2.md`.
 
 - **Synchronous Control Signals:**
   - **Inputs:**
@@ -453,7 +453,7 @@ Array, and proper formatting of data.
     transfer will be successful.
 - **ISA compliance:** The Vector_Processor module formats data written to the
 weight memory and 0x1 buffer in accordance with the
-`Functional_TPU_ISA.md`. Likewise, it expects all data read from memory to
+`Functional_TPU_ISA_v0.2.md`. Likewise, it expects all data read from memory to
 be formatted in accordance with the ISA. As a result, the Vector_Processor
 handles translation of data from flattened arrays in memory to matrices when
 loading data to the systolic array input buffers and from matrices to
@@ -492,9 +492,6 @@ output that it uses to interpret data.
       - Activator input
       - ALU input a
       - ALU input b
-  - **Scale and Shift:** The Vector_Processor module defines *scale* and *shift*
-  inputs that determine the requantization parameters during writeback from the
-  systolic array outputs.
 - **State Machine Flow:**
   - Wait for the Controller to assert *vector_start* HIGH.
   - When the Controller asserts *vector_start* HIGH, assert *vector_idle* LOW.
@@ -508,14 +505,12 @@ output that it uses to interpret data.
 event of undefined state machine behavior and a MEM_ERROR state if it attempts
 to access an invalid memory address.
 - **Requantization:** When reading from the systolic array outputs, the
-Vector_Processor module requantizes the output value before writing to its
-destination using the equation result = clamp((*scale* * x + (1 << (*shift* -
-1))) >> *shift*). See `Functional_TPU_ISA.md` for more details.
+Vector_Processor module requantizes the output value before writing to its destination.
 
 ### Activator
 
 **Description:** The Activator module implements the ACT instruction functions
-from the `Functional_TPU_ISA.md`.
+from the `Functional_TPU_ISA_v0.2.md`.
 
 - **Synchronous Control Signals:**
   - **Inputs:**
@@ -537,7 +532,7 @@ the Activator's function is set to NO OP buffer writing is suppressed.
 
 ### ALU
 
-**Description:** The ALU module implements ELEM instructions from the `Functional_TPU_ISA.md`.
+**Description:** The ALU module implements ELEM instructions from the `Functional_TPU_ISA_v0.2.md`.
 
 - **Synchronous Control Signals:**
   - **Inputs:**
@@ -556,8 +551,8 @@ ALU takes two input values, performs an arithmetic or logical operation on them,
 and writes the result to the vector buffer. As a result, the ALU can process a
 single value by asserting *enable* HIGH for one clock cycle. If
 the ALU's operation is set to NO OP buffer writing is suppressed.
-- **Overflow handling:** If an overflow occurs during arithmetic operations, the
-ALU module clamps the output before writing to the vector buffer.
+- **Requantization:** For arithmetic operations, the ALU module requantizes the
+output before writing to the vector buffer.
 
 ### Vector_Buffer
 

@@ -49,6 +49,55 @@ shown below.
 duration of the build.
 7. **Mark completed build steps** in `main.md`.
 
+## Test Execution Environment
+
+Testbenches are simulated with **Questa** (Intel FPGA Edition). Only **one**
+project machine has Questa installed, so test execution is gated on that machine;
+work happens on other computers too.
+
+### Questa toolchain (Questa PC only)
+
+- **Install location:** `C:\intelFPGA_lite\23.1std\questa_fse\win64\`
+(`vsim`, `vlog`, `vlib`, `vmap`).
+- **Simulation library:** the systolic array / RAM / FIFO IP needs Altera's
+`altera_mf_ver`, which is already mapped in the global `modelsim.ini` (no
+per-project mapping needed). Invoke with `-L altera_mf_ver -voptargs=+acc`.
+- **Questa host:** `COMPUTERNAME = CEC-EGB267-05` (secondary identifier only —
+the authoritative gate is whether `vsim.exe` exists at the path above).
+
+### Running the regression
+
+- Run all testbenches: `./tests/run_regression.sh`
+- Run a subset by step number: `./tests/run_regression.sh 3 4 8`
+- The script compiles each testbench into its own fresh work library (behavioral
+stubs collide with the real RTL otherwise), simulates batch-mode, and prints a
+per-testbench pass/fail summary. Simulation scratch is written off the
+OneDrive-synced Desktop to avoid transient file locks.
+- **Updating the runner:** when a build step adds a new testbench or changes a
+testbench's RTL dependencies, update `tests/run_regression.sh` in the same
+change. Each testbench is a single `run_tb <step> <top> <sources...>` block in
+its "TESTBENCH DEFINITIONS" section; the script header documents exactly how to
+add or edit a block. Keep each block's source list in sync with the "How to run"
+header inside the corresponding `tests/TB_*.v` file (the testbench header is the
+source of truth for its dependency list).
+
+### Machine gate — run here, defer elsewhere
+
+At the start of any task that changes RTL or testbenches, determine whether this
+is the Questa PC (check for `vsim.exe` at the install path above, or run
+`tests/run_regression.sh`, which self-gates and exits with a deferral notice if
+Questa is absent):
+
+- **On the Questa PC:** run the relevant testbenches (or the full regression for
+cross-cutting changes), record the real results in `log.md`, and mark the
+`main.md` build step complete only after tests pass.
+- **On any other machine:** still write and update the relevant testbenches for
+the change, but do **not** attempt to run a simulator. Record
+`Verification: PENDING` in the `log.md` entry (naming the expected testbenches
+and results), and leave the corresponding `main.md` step unmarked until the
+regression is run on the Questa PC. This follows the existing PENDING convention
+already used in `log.md`.
+
 ## Coding Practices for Verilog Files
 
 ### Module Definitions and Headers

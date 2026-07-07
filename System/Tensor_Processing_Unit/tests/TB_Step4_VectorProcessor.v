@@ -25,7 +25,7 @@
  * PASS / FAIL CRITERIA:
  *   Each test prints "PASS" or "FAIL" to the transcript.
  *   A final summary prints total pass/fail counts.
- *   All 10 tests should show PASS for a correct implementation.
+ *   All 14 tests should show PASS for a correct implementation.
  *
  * TEST CASES:
  *   Test 1:  After reset — o_vector_idle is HIGH immediately
@@ -40,6 +40,8 @@
  *   Test 10: VSRC_MEM (src=0x0000) → VDST_ACT — zero source always returns 0x00
  *   Test 11: VSRC_MEM → VDST_ALU_A — element_valid streaming to the ALU input
  *   Test 12: VSRC_SA_OUT → VDST_MEM — negative requantization saturates to 0x80
+ *   Test 13: VSRC_SA_OUT → VDST_MEM — round-to-nearest bias (M0=1,n=2: 62→16)
+ *   Test 14: VSRC_SA_OUT → VDST_MEM — M0 scale multiply (M0=25,n=3: 10→31)
  * -------------------------------------------------------------------------
  */
 
@@ -91,6 +93,8 @@ reg [15:0] vp_mem_dest_address;
 reg [15:0] vp_length;
 reg  [3:0] vp_dim0;
 reg  [3:0] vp_dim1;
+reg  [7:0] vp_scale;   // M0: dyadic requant multiplier (VSRC_SA_OUT tests)
+reg  [7:0] vp_shift;   // n:  dyadic requant right-shift
 
 wire        vp_vector_idle;
 wire        vp_element_valid;
@@ -175,12 +179,19 @@ reg [31:0] sa_c_stub;
 // requantizer must saturate to -128 (0x80).
 reg neg_mode;
 
+// force_mode (Tests 13/14): drives MAC(0,0) to an arbitrary value so the
+// dyadic requant datapath (scale multiply + rounding bias) can be checked
+// against hand-computed results.
+reg               force_mode;
+reg signed [31:0] sa_c_force;
+
 // Selects specific values used in Test 6:
 //   MAC(row=0,col=0) → 256  → requantized to 0x01
 //   MAC(row=1,col=0) → 40000 → saturates to  0x7F
 // and in Test 12 (neg_mode): MAC(0,0) → -40000 → saturates to 0x80.
 always @(*) begin
-    if      (neg_mode && vp_sa_row == 4'd0 && vp_sa_col == 4'd0) sa_c_stub = -32'sd40000;
+    if      (force_mode && vp_sa_row == 4'd0 && vp_sa_col == 4'd0) sa_c_stub = sa_c_force;
+    else if (neg_mode && vp_sa_row == 4'd0 && vp_sa_col == 4'd0) sa_c_stub = -32'sd40000;
     else if (vp_sa_row == 4'd0 && vp_sa_col == 4'd0) sa_c_stub = 32'd256;
     else if (vp_sa_row == 4'd1 && vp_sa_col == 4'd0) sa_c_stub = 32'd40000;
     else                                               sa_c_stub = 32'd0;
@@ -200,6 +211,8 @@ Vector_Processor dut (
     .i_length             (vp_length),
     .i_dim0               (vp_dim0),
     .i_dim1               (vp_dim1),
+    .i_scale              (vp_scale),
+    .i_shift              (vp_shift),
     .o_vector_idle        (vp_vector_idle),
     .o_element_valid      (vp_element_valid),
     .o_wm_address         (vp_wm_address),
@@ -222,10 +235,9 @@ Vector_Processor dut (
     .i_sa_c               (sa_c_stub)
 );
 
-// Pin the requantization scale so Tests 6/12 (SA-output requant + saturation)
-// verify the datapath deterministically, independent of the file's
-// REQUANT_SHIFT default (which is tuned per neural network).
-defparam dut.REQUANT_SHIFT = 8;
+// v0.3: requantization parameters M0/n are driven at runtime via vp_scale /
+// vp_shift (per the MUL instruction) rather than a compile-time parameter.
+// The SA-output tests set them explicitly before each run.
 
 // ---------------------------------------------------------------------------
 // Signal capture registers (updated every clock by always block)
@@ -308,6 +320,8 @@ initial begin
     vp_length        = 16'd0;
     vp_dim0          = 4'd0;
     vp_dim1          = 4'd0;
+    vp_scale         = 8'd1;   // identity requant multiplier by default
+    vp_shift         = 8'd0;   // no shift by default (non-SA-out tests ignore)
     ev_count         = 0;
     ev_ok            = 1;
     sa_cnt           = 0;
@@ -315,6 +329,8 @@ initial begin
     capture_sa_top   = 0;
     capture_active   = 0;
     neg_mode         = 0;
+    force_mode       = 0;
+    sa_c_force       = 32'd0;
     vb_head          = 4'd0;
     vb_tail          = 4'd0;
     vb_cnt           = 5'd0;
@@ -409,11 +425,14 @@ initial begin
     // -----------------------------------------------------------------------
     // TEST 6: VSRC_SA_OUT → VDST_MEM  (requantize SA outputs, write to WM)
     //   dim0=1, dim1=2 — two outputs:
-    //     Element 0: o_sa_row=0, o_sa_col=0 → sa_c=256  → 256>>8=1   → WM[0]=0x01
-    //     Element 1: o_sa_row=1, o_sa_col=0 → sa_c=40000 → >127 → sat → WM[1]=0x7F
+    //     Element 0: o_sa_row=0, o_sa_col=0 → sa_c=256, M0=1, n=8
+    //                (256 + (1<<7))>>8 = 384>>8 = 1        → WM[0]=0x01
+    //     Element 1: o_sa_row=1, o_sa_col=0 → sa_c=40000
+    //                (40000 + 128)>>8 = 156 → >127 → sat   → WM[1]=0x7F
     //   sa_c_stub driven by the always @(*) block at module level.
     // -----------------------------------------------------------------------
     wm_mem[0] = 8'hFF; wm_mem[1] = 8'hFF;
+    vp_scale = 8'd1; vp_shift = 8'd8;
 
     vp_start_and_wait(VSRC_SA_OUT, VDST_MEM, 16'd0, 16'h0002, 16'd0, 4'd1, 4'd2);
     @(posedge clk); #1;
@@ -513,11 +532,13 @@ initial begin
 
     // -----------------------------------------------------------------------
     // TEST 12: VSRC_SA_OUT → VDST_MEM  (negative requantization saturation)
-    //   neg_mode drives MAC(0,0) = -40000; -40000 >>> 8 = -157 < -128, so the
-    //   requantizer saturates to -128 = 0x80. dim0=1, dim1=1 (single element).
+    //   neg_mode drives MAC(0,0) = -40000; with M0=1, n=8 the requant is
+    //   (-40000 + 128) >>> 8 = -156 < -128, so it saturates to -128 = 0x80.
+    //   dim0=1, dim1=1 (single element).
     // -----------------------------------------------------------------------
     do_reset;
     neg_mode = 1'b1;
+    vp_scale = 8'd1; vp_shift = 8'd8;
     wm_mem[0] = 8'hFF;  // sentinel
 
     vp_start_and_wait(VSRC_SA_OUT, VDST_MEM, 16'd0, 16'h0002, 16'd0, 4'd1, 4'd1);
@@ -525,6 +546,43 @@ initial begin
 
     check(wm_mem[0] === 8'h80, 12);
     neg_mode = 1'b0;
+
+    // -----------------------------------------------------------------------
+    // TEST 13: VSRC_SA_OUT → VDST_MEM  (round-to-nearest via the rounding bias)
+    //   force_mode drives MAC(0,0) = 62; M0=1, n=2.
+    //     result = (1*62 + (1<<1)) >> 2 = (62 + 2) >> 2 = 64 >> 2 = 16 = 0x10.
+    //   A truncating shift (no bias) would give 62>>2 = 15 = 0x0F, so this test
+    //   distinguishes round-to-nearest from truncation.
+    // -----------------------------------------------------------------------
+    do_reset;
+    force_mode = 1'b1;
+    sa_c_force = 32'sd62;
+    vp_scale = 8'd1; vp_shift = 8'd2;
+    wm_mem[0] = 8'hFF;  // sentinel
+
+    vp_start_and_wait(VSRC_SA_OUT, VDST_MEM, 16'd0, 16'h0002, 16'd0, 4'd1, 4'd1);
+    @(posedge clk); #1;
+
+    check(wm_mem[0] === 8'h10, 13);
+
+    // -----------------------------------------------------------------------
+    // TEST 14: VSRC_SA_OUT → VDST_MEM  (M0 scale multiply)
+    //   force_mode drives MAC(0,0) = 10; M0=25, n=3.
+    //     result = (25*10 + (1<<2)) >> 3 = (250 + 4) >> 3 = 254 >> 3 = 31 = 0x1F.
+    //   Verifies the unsigned scale multiply feeds requantization (a bare shift
+    //   of 10 could never reach 31).
+    // -----------------------------------------------------------------------
+    do_reset;
+    force_mode = 1'b1;
+    sa_c_force = 32'sd10;
+    vp_scale = 8'd25; vp_shift = 8'd3;
+    wm_mem[0] = 8'hFF;  // sentinel
+
+    vp_start_and_wait(VSRC_SA_OUT, VDST_MEM, 16'd0, 16'h0002, 16'd0, 4'd1, 4'd1);
+    @(posedge clk); #1;
+
+    check(wm_mem[0] === 8'h1F, 14);
+    force_mode = 1'b0;
 
     // -----------------------------------------------------------------------
     // Summary

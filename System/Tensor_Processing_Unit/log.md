@@ -2,6 +2,115 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-07 — Regression runner + machine-gated test workflow
+
+- **Added `tests/run_regression.sh`** — one-command Questa regression driver.
+  Compiles each testbench into its own fresh work library (behavioral stubs
+  collide with real RTL otherwise), simulates batch-mode
+  (`vsim -c -L altera_mf_ver -voptargs=+acc ... -do "run -all; quit -f"`), and
+  prints a per-testbench pass/fail summary. Runs all benches by default or a
+  subset by step number (`./tests/run_regression.sh 3 4 8`). Sim scratch is
+  written off the OneDrive-synced Desktop (`$LOCALAPPDATA/tpu_sim`, override via
+  `SIM_WORK`) to avoid the transient vopt file-lock seen there.
+  - Failure detection keys off the per-test `Test N: FAIL` line (printed by every
+    testbench) rather than the summary wording, since Step2/Step4 report
+    `X / Y tests passed` while the others report `X PASS, Y FAIL`.
+  - Each testbench is a single `run_tb <step> <top> <sources...>` block; the
+    script header documents how to add/edit a block when testbenches change.
+- **Machine gate:** the script exits with a deferral notice (no simulator run) if
+  `vsim.exe` is absent at `C:\intelFPGA_lite\23.1std\questa_fse\win64\`. This is
+  the only project machine with Questa (`COMPUTERNAME = CEC-EGB267-05`).
+- **`CLAUDE.md`** — added a "Test Execution Environment" section: Questa install
+  location + `altera_mf_ver` invocation, how to run the regression, how to update
+  the runner for new/changed testbenches, and the run-here-defer-elsewhere rule
+  (off the Questa PC, still write testbenches but mark `Verification: PENDING`).
+- **`.claude/settings.json`** (tracked, travels across machines) — added
+  `permissions.allow` prefix rules so testbench runs are auto-approved:
+  `./tests/run_regression.sh` and the Questa binaries (`vlib`/`vlog`/`vsim`/
+  `vmap`). Safe to check in because the runner self-gates off the Questa PC.
+  Reading results uses the Read/Grep tools (no Bash permission needed). The
+  brittle per-command rules in the gitignored `settings.local.json` are now
+  redundant but left untouched.
+- **Verification:** ran `./tests/run_regression.sh` on the Questa PC — full suite
+  ALL PASS (Step1 19/19, Step2 9/9, Step3 10/10, Step4 14/14, Step5 7/7,
+  Step6 7/7, Step7 9/9, Step8 12/12), plus a subset smoke test (`5 6`). No RTL or
+  testbench source changed; tooling/workflow only.
+
+## 2026-07-07 — v0.3 Step 3 verification: full Questa regression PASS
+
+- **Ran the pending v0.3 regression** in Questa Intel FPGA Edition 2023.3
+  (`intelFPGA_lite/23.1std/questa_fse`) on the Windows dev machine — the step the
+  prior (2026-07-06) session could not run. Each testbench compiled into its own
+  fresh work library (behavioral stubs collide with real RTL otherwise) and
+  simulated batch-mode with `-c -L altera_mf_ver -voptargs=+acc ... -do "run -all;
+  quit -f"`. `altera_mf_ver` resolved from the global `modelsim.ini` mapping.
+- **Results — all PASS, no regressions:** Step1 19/19, Step2 9/9, **Step3 10/10**,
+  **Step4 14/14**, Step5 7/7, Step6 7/7, Step7 9/9, **Step8 12/12**. Matches the
+  expected counts recorded in the 2026-07-06 entry. No compile errors, elaboration
+  errors, or fatals across the suite.
+  - `TB_Step3_Controller` **Test 10**: M0/n decoded from the MUL instruction and
+    asserted to VP_A during the SA-output writeback decode, held 0 during the
+    SA-load execute decode.
+  - `TB_Step4_VectorProcessor` **Test 13** (round-to-nearest M0=1,n=2: 62→16 vs.
+    truncation's 15) and **Test 14** (M0 scale multiply M0=25,n=3: 10→31) confirm
+    the runtime dyadic requant datapath `clamp((M0*x + (1<<(n-1))) >> n)`.
+  - `TB_Step8_FullSystem` **Test 12**: identity × [[100,50],[25,10]] with M0=3,n=4
+    requantizes to [[19,9],[5,2]] end to end through SPI → weight flash → systolic
+    array → runtime M0/n requant → memory.
+- **`main.md`:** v0.3 Step 3 marked ✅ Complete. v0.3 build done.
+
+## 2026-07-06 — v0.3: Per-layer dyadic requantization (Vector_Processor + Controller)
+
+- **Context:** v0.3 replaces the uniform, compile-time `REQUANT_SHIFT`
+  requantization with per-layer dyadic requantization. Each MUL instruction now
+  carries an 8-bit multiplier `M0` (bits 59-52) and an 8-bit right-shift `n`
+  (bits 51-44); the Vector_Processor applies
+  `result = clamp((M0 * x + (1 << (n - 1))) >> n)` to systolic array outputs
+  before writeback. RTL-only change confined to the Vector_Processor (requant
+  datapath) and Controller (decode + routing) per the main.md scope note.
+- **`TPU/PROCESSING/Vector_Processor.v`** (Step 1):
+  - Added `i_scale` (M0, 8-bit unsigned) and `i_shift` (n, 8-bit unsigned)
+    inputs; latched into `scale_lat`/`shift_lat` in IDLE alongside the other
+    control signals (reset to 0).
+  - Removed the `REQUANT_SHIFT` parameter and its fixed `x >>> REQUANT_SHIFT`
+    requant. New datapath: `sa_scaled = $signed({1'b0,scale_lat}) *
+    $signed(i_sa_c)` (unsigned scale zero-extended to a 9-bit positive signed
+    value so the 41-bit product stays signed and cannot overflow the 32-bit
+    accumulator × 8-bit scale), `sa_round_bias = 1 << (shift-1)` added **before**
+    the arithmetic right shift `>>> shift` (round-to-nearest), then saturated to
+    signed 8-bit [-128,127]. `shift == 0` is guarded so `(shift-1)` never
+    underflows the 8-bit width.
+- **`TPU/CONTROL/Controller.v`** (Step 2):
+  - Decoded `mul_scale = instr_latch[59:52]` and `mul_shift = instr_latch[51:44]`.
+  - Added `o_scale_a`/`o_shift_a` outputs (VP_A only — only VP_A reads SA outputs
+    and requantizes). Driven with `mul_scale`/`mul_shift` in the MUL **writeback**
+    decode branch; default 0 otherwise (don't-care for non-MUL / execute phase).
+- **`TPU/TPU.v`:** added `ctrl_scale_a`/`ctrl_shift_a` wires; connected Controller
+  `o_scale_a`/`o_shift_a` → VP_A `i_scale`/`i_shift`. VP_B `i_scale`/`i_shift`
+  tied to 0 (VP_B never requantizes). Debug section untouched.
+- **Tests:**
+  - `tests/TB_Step4_VectorProcessor.v` (12 → 14): drives `i_scale`/`i_shift` at
+    runtime (removed the obsolete `defparam REQUANT_SHIFT`). Tests 6/12 pinned to
+    M0=1,n=8 (reproduce the prior >>8 expected values with rounding). Added
+    Test 13 (round-to-nearest: M0=1,n=2, 62→16 vs. truncation's 15) and Test 14
+    (M0 scale multiply: M0=25,n=3, 10→31). Generalized the SA stub with a
+    `force_mode`/`sa_c_force` to drive arbitrary MAC(0,0) values.
+  - `tests/TB_Step3_Controller.v` (9 → 10): added `make_mult_rq` (M0/n operands);
+    Test 10 verifies M0/n are decoded and asserted to VP_A during the writeback
+    decode (`vect_source_a == VSRC_SA_OUT`) and held at 0 during the SA-load
+    execute decode.
+  - `tests/TB_Step8_FullSystem.v` (11 → 12): parameterized `mk_mul` with M0/n
+    (default M0=1,n=8 keeps Tests 9-11 expectations; added `mk_mul_rq`); removed
+    the `defparam REQUANT_SHIFT` lines. Added Test 12: identity × [[100,50],
+    [25,10]] with M0=3,n=4 requantizes to [[19,9],[5,2]] via
+    `clamp((3x+8)>>4)`, exercising the runtime M0/n datapath end to end through
+    SPI → weight flash → systolic array → requant → memory.
+- **Verification:** **PENDING.** This session's environment has no Questa/vsim
+  (the systolic array needs Altera `altera_mf`/scfifo), so the regression could
+  not be run here. Must be run in Questa on the Windows dev machine: expect
+  Step3 10/10, Step4 14/14, Step8 12/12, plus the full suite for regressions.
+  `main.md` v0.3 steps left unmarked until that run confirms.
+
 ## 2026-07-02 — v0.2.1 verification: full Questa regression PASS
 
 - **Ran the pending v0.2.1 regression** in Questa Intel FPGA Edition 2023.3

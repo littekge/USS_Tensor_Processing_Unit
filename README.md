@@ -18,9 +18,9 @@ system; this is a high-level overview of the outermost systems.
 The *Specifications* folder contains shared specification sheets, spec sheet
 changelogs, and previous versions of spec sheets.
 
-- Functional TPU ISA (v0.2 complete)
+- Functional TPU ISA (v0.2 complete, v0.3 pending)
 - Functional TPU Message Protocol (v0.2 complete)
-- Functional TPU Hardware Spec (v0.2 complete)
+- Functional TPU Hardware Spec (v0.2 complete, v0.3 pending)
 
 #### Old
 
@@ -50,7 +50,7 @@ the TPU hardware starting from a StableHLO MLIR representation. All of the
 data conversion is done here, and additional steps in the synth flow simply
 forward data using various communication protocols.
 
-- StableHLO to machine code assembler (v0.1.1 complete)
+- StableHLO to machine code assembler (v0.1.1 complete, v0.2 pending)
 
 #### Communication
 
@@ -72,13 +72,14 @@ final binary produced by the assembler, opens a serial port, and forwards
 the binary stream to the Arduino.
 
 - Serial Transmitter on PC (complete)
+- Live Transmitter for dynamic interaction with FPGA (pending)
 
 #### Tensor_Processing_Unit
 
 The *Tensor_Processing_Unit* folder contains the TPU hardware written in Verilog
 HDL.
 
-- Verilog code for TPU (v0.2 complete)
+- Verilog code for TPU (v0.2 complete, v0.3 pending)
 
 ### Tests
 
@@ -109,3 +110,19 @@ transfer and faster transfer speed. Probably will not be needed.
 - Attempt to package StableHLO binary and Python wheel in a single release to
 allow for full integration with Google Colab (makes long term access to script
 more reliable).
+
+## AI Usage
+
+This research is made possible by heavy usage of AI to write code for areas
+unrelated to the research goal and to expedite the process of writing verilog
+code; the goal of the research is to understand how to design an AI accelerator,
+not to practice coding skills.
+
+### AI Usage Breakdown
+
+- **Specifications:** Written and managed by me.
+- **Assembler:** Full dark factory approach (claude writes code AND manages
+main.md, CLAUDE.md, and log.md).
+- **Communication:** Mostly dark factory, no spec documents since design is simple.
+- **Neural_Networks:** Mostly handwritten.
+- **Tensor_Processing_Unit:** Dark factory, code tested and validated manually.

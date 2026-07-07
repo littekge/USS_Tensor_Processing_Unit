@@ -2,6 +2,14 @@
   "permissions": {
     "additionalDirectories": [
       "../../Specifications"
+    ],
+    "allow": [
+      "Bash(./tests/run_regression.sh:*)",
+      "Bash(bash tests/run_regression.sh:*)",
+      "Bash(vlib:*)",
+      "Bash(vlog:*)",
+      "Bash(vsim:*)",
+      "Bash(vmap:*)"
     ]
   }
 }

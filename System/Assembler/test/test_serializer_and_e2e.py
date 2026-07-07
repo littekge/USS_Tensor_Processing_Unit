@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from nn_assembler.Assembler import Assemble
+from nn_assembler.Assembler import OPCODE_ADD, Assemble
 from nn_assembler.Process_MLIR import Process_MLIR
 from nn_assembler.Process_Weights import Process_Weights
 from nn_assembler.Protocol import FLASH, MEM, PROGRAM, STOP
@@ -57,6 +57,7 @@ def test_full_pipeline(tmp_path):
         "}\n"
     )
     (tmp_path / "initial.mlir").write_text(example)
+    S_w = 1.0 / 127
     np.savez(
         tmp_path / "weights.npz",
         **{
@@ -65,6 +66,11 @@ def test_full_pipeline(tmp_path):
             "output.weight": np.zeros((1, 4), dtype=np.float32),
             "output.bias": np.zeros((1,), dtype=np.float32),
             "__order__": np.array(["hidden.weight", "hidden.bias", "output.weight", "output.bias"]),
+            # v0.3 requant metadata: weights carry M (biases do not).
+            "__M__hidden.weight": np.float64(0.75),
+            "__scales__hidden.weight": np.array([1.0, S_w, 1.0], dtype=np.float64),
+            "__M__output.weight": np.float64(0.5),
+            "__scales__output.weight": np.array([1.0, S_w, 1.0], dtype=np.float64),
         },
     )
 
@@ -73,7 +79,16 @@ def test_full_pipeline(tmp_path):
     instructions = Assemble(tmp_path)
     out_path = Serialize(tmp_path, tmp_path / "out")
 
-    # 4 compute ops + end.
-    assert len(instructions) == 5
+    # Bias adds are dropped: two mults + end remain.
+    assert len(instructions) == 3
+
+    def _bits(value, hi, lo):
+        return (value >> lo) & ((1 << (hi - lo + 1)) - 1)
+
+    # No ADD opcodes survive, and each mult carries its layer's M0/n.
+    assert all(_bits(instr, 127, 124) != OPCODE_ADD for instr in instructions)
+    assert (_bits(instructions[0], 59, 52), _bits(instructions[0], 51, 44)) == (192, 8)  # M=0.75
+    assert (_bits(instructions[1], 59, 52), _bits(instructions[1], 51, 44)) == (128, 8)  # M=0.5
+
     data = out_path.read_bytes()
     assert data[0] == FLASH and data[-1] == STOP

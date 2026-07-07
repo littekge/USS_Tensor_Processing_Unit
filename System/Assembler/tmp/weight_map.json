@@ -7,10 +7,12 @@
       4,
       1
     ],
-    "num_words": 4
+    "num_words": 4,
+    "M0": 223,
+    "n": 15
   },
   "%arg1": {
-    "kind": "weight",
+    "kind": "bias",
     "label": "hidden.bias",
     "address": 6,
     "shape": [
@@ -26,10 +28,12 @@
       1,
       4
     ],
-    "num_words": 4
+    "num_words": 4,
+    "M0": 145,
+    "n": 15
   },
   "%arg3": {
-    "kind": "weight",
+    "kind": "bias",
     "label": "output.bias",
     "address": 14,
     "shape": [
