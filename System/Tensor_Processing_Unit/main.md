@@ -351,7 +351,7 @@ Update `Controller.v` to decode and route the requantization parameters.
 - Update `tests/TB_Step3_Controller.v` to verify `scale`/`shift` are decoded and
   asserted to the correct vector processor at the correct time.
 
-#### Step 3 — Regression and Full-System Verification
+#### Step 3 — Regression and Full-System Verification — ✅ Complete (2026-07-07)
 
 Confirm the requantization change end to end.
 

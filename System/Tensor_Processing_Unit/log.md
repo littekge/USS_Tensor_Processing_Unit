@@ -2,6 +2,29 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-07 — v0.3 Step 3 verification: full Questa regression PASS
+
+- **Ran the pending v0.3 regression** in Questa Intel FPGA Edition 2023.3
+  (`intelFPGA_lite/23.1std/questa_fse`) on the Windows dev machine — the step the
+  prior (2026-07-06) session could not run. Each testbench compiled into its own
+  fresh work library (behavioral stubs collide with real RTL otherwise) and
+  simulated batch-mode with `-c -L altera_mf_ver -voptargs=+acc ... -do "run -all;
+  quit -f"`. `altera_mf_ver` resolved from the global `modelsim.ini` mapping.
+- **Results — all PASS, no regressions:** Step1 19/19, Step2 9/9, **Step3 10/10**,
+  **Step4 14/14**, Step5 7/7, Step6 7/7, Step7 9/9, **Step8 12/12**. Matches the
+  expected counts recorded in the 2026-07-06 entry. No compile errors, elaboration
+  errors, or fatals across the suite.
+  - `TB_Step3_Controller` **Test 10**: M0/n decoded from the MUL instruction and
+    asserted to VP_A during the SA-output writeback decode, held 0 during the
+    SA-load execute decode.
+  - `TB_Step4_VectorProcessor` **Test 13** (round-to-nearest M0=1,n=2: 62→16 vs.
+    truncation's 15) and **Test 14** (M0 scale multiply M0=25,n=3: 10→31) confirm
+    the runtime dyadic requant datapath `clamp((M0*x + (1<<(n-1))) >> n)`.
+  - `TB_Step8_FullSystem` **Test 12**: identity × [[100,50],[25,10]] with M0=3,n=4
+    requantizes to [[19,9],[5,2]] end to end through SPI → weight flash → systolic
+    array → runtime M0/n requant → memory.
+- **`main.md`:** v0.3 Step 3 marked ✅ Complete. v0.3 build done.
+
 ## 2026-07-06 — v0.3: Per-layer dyadic requantization (Vector_Processor + Controller)
 
 - **Context:** v0.3 replaces the uniform, compile-time `REQUANT_SHIFT`
