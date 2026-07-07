@@ -57,8 +57,9 @@ if (input && input.task) {
   }
 
   const plan = await agent(
-    `Read the root CLAUDE.md of C:\\Users\\littekge\\Git\\USS_Tensor_Processing_Unit ` +
-    `(section map, routing rules, decision-authority rules). Then decompose the ` +
+    `Read the CLAUDE.md at the repository root (your working directory; run ` +
+    `"git rev-parse --show-toplevel" if unsure) — it holds the section map, routing ` +
+    `rules, and decision-authority rules. Then decompose the ` +
     `following task into per-section subtasks, one route per affected section.\n\n` +
     `TASK: ${input.task}\n\n` +
     `Rules:\n` +
