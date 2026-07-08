@@ -1,16 +1,15 @@
 # Functional TPU Instruction Set Architecture (ISA)
 
 > **Purpose:** This document contains the *Functional TPU* instruction set
-> architecture specification.
+>architecture specification.
 >
-> **Version: 0.4.0**
+> **Version: 0.3.0**
 
 ## Memory
 
 This section describes memory expectations of the *Functional TPU instruction
-set architecture*. The ISA has an address space of XWIDTH words of length
-XLEN. The memory address space is non-cyclic. While XWIDTH and XLEN are both
-variable, the ISA does not support XWIDTH > 2^24 = 16777216.
+set architecture*. The ISA has an address space of 2^16=65536 words of length
+XLEN. The memory address space is non-cyclic.
 
 ### Tensors in Memory
 
@@ -39,8 +38,7 @@ designation used to store temporary data. Any tensor in a format expected by the
 ISA may be stored at address 0x1. The symbol 0x1 may be targeted as a
 destination or source address by any instruction. Any write or store operation
 targeting 0x1 inherently invalidates and completely overwrites all elements
-previously residing within it. The ISA does not currently support partial
-overwrites.
+previously residing within it. The ISA does not currently support partial overwrites.
 
 --------------------------------------------------
 
@@ -61,9 +59,9 @@ Each instruction format is described below:
 
 **Description by Bit:**
 
-| 127-124 | 123-100 | 99-96 | 95-92 | 91-68 | 67-64 | 63-60 | 59-36 | 35-28 | 27-20 | 19-3 | 2-0 |
+| 127-124 | 123-108 | 107-104 | 103-100 | 99-84 | 83-80 | 79-76 | 75-60 | 59-52 | 51-44 | 43-3 | 2-0 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 4 | 24 | 4 | 4 | 24 | 4 | 4 | 24 | 8 | 8 | 17 | 3 |
+| 4 | 16 | 4 | 4 | 16 | 4 | 4 | 16 | 8 | 8 | 41 | 3 |
 | opcode | rs1 | sz11 | sz12 | rs2 | sz21 | sz22 | rd | M0 | n | reserved | funct3 |
 
 ### SHAPE Format
@@ -74,18 +72,18 @@ Each instruction format is described below:
 
 **Description by Bit:**
 
-| 127-124 | 123-100 | 99-76 | 75-60 | 59-3 | 2-0 |
+| 127-124 | 123-108 | 107-92 | 91-76 | 75-3 | 2-0 |
 | --- | --- | --- | --- | --- | --- |
-| 4 | 24 | 24 | 16 | 57 | 3 |
+| 4 | 16 | 16 | 16 | 73 | 3 |
 | opcode | rs1 | rd | len | reserved | funct3 |
 
 ### ELEM Format
 
 **Description by Bit:**
 
-| 127-124 | 123-100 | 99-76 | 75-68 | 67-60 | 59-36 | 35-3 | 2-0 |
+| 127-124 | 123-108 | 107-92 | 91-84 | 83-76 | 75-60 | 59-3 | 2-0 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 4 | 24 | 24 | 8 | 8 | 24 | 33 | 3 |
+| 4 | 16 | 16 | 8 | 8 | 16 | 57 | 3 |
 | opcode | rs1 | rs2 | sz1 | sz2 | rd | reserved | funct3 |
 
 ### SYSTEM Format
@@ -108,9 +106,9 @@ ISA.
 
 **Description by Bit:**
 
-| 127-124 | 123-100 | 99-96 | 95-92 | 91-68 | 67-64 | 63-60 | 59-36 | 35-28 | 27-20 | 19-3 | 2-0 |
+| 127-124 | 123-108 | 107-104 | 103-100 | 99-84 | 83-80 | 79-76 | 75-60 | 59-52 | 51-44 | 43-3 | 2-0 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 4 | 24 | 4 | 4 | 24 | 4 | 4 | 24 | 8 | 8 | 17 | 3 |
+| 4 | 16 | 4 | 4 | 16 | 4 | 4 | 16 | 8 | 8 | 41 | 3 |
 | opcode | rs1 | sz11 | sz12 | rs2 | sz21 | sz22 | rd | M0 | n | reserved | funct3 |
 | MUL | src1 | dim11 | dim12 | src2 | dim21 | dim22 | dest | scale | shift | 0 | MULT |
 
@@ -119,18 +117,18 @@ ISA.
 *mult* takes a matrix of dimensions *dim11* x *dim12* located at address *src1*
 and multiplies it by a matrix of dimensions *dim21* x *dim22* located at address
 *src2*, storing the result contiguously starting from address *dest* in
-Row-Major order. Before storage, each resultant value is requantized according
-to the following equation: result = clamp((*scale* * x + (1 << (*shift* - 1)))
->> *shift*). *reserved* bits are set to 0. Note that the current revision of the
+Row-Major order. Before storage, each resultant value is requantized according to
+the following equation: result = clamp((*scale* * x + (1 << (*shift* - 1))) >>
+*shift*). *reserved* bits are set to 0. Note that the current revision of the
 ISA does not support matrix dimensions greater than 15x15 for this instruction.
 
 ### Activation Instructions
 
 **Description by Bit:**
 
-| 127-124 | 123-100 | 99-76 | 75-60 | 59-3 | 2-0 |
+| 127-124 | 123-108 | 107-92 | 91-76 | 75-3 | 2-0 |
 | --- | --- | --- | --- | --- | --- |
-| 4 | 24 | 24 | 16 | 57 | 3 |
+| 4 | 16 | 16 | 16 | 73 | 3 |
 | opcode | rs1 | rd | len | reserved | funct3 |
 | ACT | src1 | dest | size | 0 | RELU |
 
@@ -144,9 +142,9 @@ storing them contiguously at address *dest*.
 
 **Description by Bit:**
 
-| 127-124 | 123-100 | 99-76 | 75-68 | 67-60 | 59-36 | 35-3 | 2-0 |
+| 127-124 | 123-108 | 107-92 | 91-84 | 83-76 | 75-60 | 59-3 | 2-0 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 4 | 24 | 24 | 8 | 8 | 24 | 33 | 3 |
+| 4 | 16 | 16 | 8 | 8 | 16 | 57 | 3 |
 | opcode | rs1 | rs2 | sz1 | sz2 | rd | reserved | funct3 |
 | ELEM | src1 | src2 | dim1 | dim2 | dest | 0 | ADD |
 

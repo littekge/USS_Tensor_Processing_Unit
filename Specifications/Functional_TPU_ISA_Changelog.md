@@ -2,6 +2,12 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-08 — Functional TPU ISA v0.4
+
+- **Changed address length in instructions**
+- Addresses encoded in instructions are now 3 bytes (upped from 2)
+- Made memory word count variable with parameter XWIDTH (max is 2^24).
+
 ## 2026-07-06 — Functional TPU ISA v0.3
 
 - **Added precise requantization functionality** for MUL instructions.

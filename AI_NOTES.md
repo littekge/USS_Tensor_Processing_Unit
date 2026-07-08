@@ -38,11 +38,12 @@
 
 ## Deferred Work
 
-- **Spec fixes from proofreader pilot (user applies by hand):** 6 logic
+- **Spec fixes from proofreader pilot (user applies by hand):** 5 logic
   errors (self-negating rst/tpu_rst changelog entry; ISA-changelog
-  copy-paste in HW changelog; XLEN never defined; clamp bounds/x unbound in
-  requant equation; relu rs1-vs-src1 naming; undefined M in buffer drain
-  loop), 3 cross-doc (v0.3 date conflict 07-01 vs 07-06; reserved address
+  copy-paste in HW changelog; clamp bounds/x unbound in requant equation;
+  relu rs1-vs-src1 naming; undefined M in buffer drain loop), 3 cross-doc
+  (note: "XLEN never defined" dropped — word-length agnosticism is intentional,
+  see v0.4 design) (v0.3 date conflict 07-01 vs 07-06; reserved address
   0x0 unimplemented in HW spec; "instructions" vs equation in changelog),
   ~15 spelling/grammar + MD013 line-length list. Full report in the
   2026-07-07 session on the main Windows PC.
