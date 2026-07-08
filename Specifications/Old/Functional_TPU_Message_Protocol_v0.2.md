@@ -2,7 +2,7 @@
 
 > **Purpose:** This document outlines the *Functional TPU* messaging protocol.
 >
-> **Version: 0.3.0**
+> **Version: 0.2.0**
 
 ## General Protocol Description
 
@@ -63,22 +63,22 @@ within the transmission.
 
 #### MEM
 
-| Function Code | Lower Address | Middle Address | Upper Address | Lower Length | Upper Length | Data | ... |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| MEM | LADD | MADD | UADD | LLEN | ULEN | DATA | ... |
+| Function Code | Lower Address | Upper Address | Lower Length | Upper Length | Data | ... |
+| --- | --- | --- | --- | --- | --- | --- |
+| MEM | LADD | UADD | LLEN | ULEN | DATA | ... |
 
 The MEM function code indicates that the following data should be written to
 device memory. Upon receiving the MEM function code during a transmission, the
-peripheral should concatenate the second, third, and fourth received bytes into
-a 24-bit address where LADD is the bottom 8 bits, MADD is the middle 8 bits, and
-UADD is the upper 8 bits. Similarly, the peripheral should concatenate the
-fifth and sixth received bytes into a 16-bit length value where LLEN is the
-bottom 8 bits and ULEN is the upper 8 bits. The length value indicates how many
-subsequently received DATA bytes should be written to memory starting from the
-initial 24-bit address. For example, if 16 bytes need to be written to memory
-address 0x1F, the first DATA byte should be written to 0x1F, the second to 0x20,
-the third to 0x21, and so on until the sixteenth byte is written to 0x2E. Note
-that memory addresses greater than 2^24-1=16777215 are not currently supported.
+peripheral should concatenate the second and third received bytes into a
+16-bit address where LADD is the bottom 8 bits and UADD is the upper 8 bits.
+Similarly, the peripheral should concatenate the fourth and fifth received
+bytes into a 16-bit length value where LLEN is the bottom 8 bits and ULEN is
+the upper 8 bits. The length value indicates how many subsequently received
+DATA bytes should be written to memory starting from the initial 16-bit
+address. For example, if 16 bytes need to be written to memory address 0x1F,
+the first DATA byte should be written to 0x1F, the second to 0x20, the third
+to 0x21, and so on until the sixteenth byte is written to 0x2E. Note that
+memory addresses greater than 2^16-1=65535 are not currently supported.
 
 #### PROGRAM
 
@@ -90,8 +90,7 @@ The PROGRAM function code indicates that the following data should be written to
 program memory as an *instruction*. Upon receiving the PROGRAM function code
 during a transmission, the peripheral should concatenate the next 16 received
 bytes into a 128-bit instruction (LSB received first (see *Byte Order*)) and
-subsequently write the instruction to the next available location in program
-memory.
+subsequently write the instruction to the next available location in program memory.
 
 ### Trailer Codes
 
