@@ -7,7 +7,7 @@
 ## Project Identity
 
 - **Name:** Functional TPU
-- **Version:** 0.3.0
+- **Version:** 0.4.0
 - **Target Platform:** Terasic DE1-SoC FPGA
 - **Language:** Verilog HDL 2001
 - **Development Environment:** Quartus Prime Lite Edition
@@ -35,7 +35,8 @@ small neural networks using an FPGA.
 generate statements.
 - Storage of tensors as flattened arrays.
 - Vector processors to handle loading and storing of tensors.
-- Separate memories for program instructions, weights/biases, and temporary data.
+- Unified data memory (weights + intermediates) behind a `Data_Memory` wrapper,
+with a separate `0x1` I/O-staging buffer and a separate program memory.
 - Proper requantization of data in between processing steps.
 - Dynamic programming of TPU through SPI link.
 - Easy modification of systolic array size using Verilog parameters; per-layer
@@ -51,16 +52,25 @@ requantization supplied at runtime via instruction-encoded `M0`/`n`.
 instruction supplies an 8-bit multiplier `M0` and 8-bit right-shift `n`; the
 Vector_Processor computes `clamp((M0 * x + (1 << (n - 1))) >> n)` on systolic
 array outputs, saturating to the memory datatype (`M0`/`n` mantissa width B=8)
+- **Data Address Width:** 24-bit ISA address fields; physical data memory is
+2^17 = 131072 words (addresses above the implemented range raise an error)
 - **Memory Specs by Module:**
-  - **Weight_Memory:**
+  - **Data_Memory:** wrapper presenting one flat 24-bit dual-port (a/b) address
+  space; instantiates the 0x1 buffer and both Mem_Unit blocks and performs
+  reserved-address / block-select decode:
+    - `0x0` → hardwired-zero register (write raises `WRITE_ERROR`)
+    - `0x1` → `TPU_0x1_Buffer` (I/O staging)
+    - `addr[16]` → selects `Mem_Unit` block A (0) or B (1) for the 2–131071 range
+    - any address bit above [16] set → out-of-range error
+  - **Mem_Unit (×2):**
     - **Width:** 8 bits
-    - **Depth:** 65536 words
+    - **Depth:** 65536 words (Quartus IP max per instance; two blocks = 131072)
   - **TPU_0x1_Buffer:**
     - **Width:** 8 bits
-    - **Depth:** 65536 words
+    - **Depth:** 1024 words
   - **Program_Memory:**
     - **Width:** 128 bits
-    - **Depth:** 1024 words
+    - **Depth:** 8192 words
   - **Vector_Buffer:**
     - **Width:** 8 bits
     - **Depth:** 65536 words
@@ -119,12 +129,13 @@ TPU/
 ├── CONTROL/
 │   └── Controller.v
 ├── MEMORY/
+│   ├── Data_Memory.v (top-level: 0x1 buffer + 2× Mem_Unit + address decode)
 │   ├── 0X1_BUFFER/
 │   │   └── TPU_0x1_Buffer.v
-│   ├── VECTOR_BUFFER/
-│   │   └── Vector_Buffer.v
-│   └── WEIGHT_MEMORY/
-│       └── Weight_Memory.v
+│   ├── MEM_UNIT/
+│   │   └── Mem_Unit.v (instantiated twice by Data_Memory as blocks A and B)
+│   └── VECTOR_BUFFER/
+│       └── Vector_Buffer.v
 ├── PROCESSING/
 │   ├── Activator.v
 │   ├── ALU.v
@@ -360,3 +371,88 @@ Confirm the requantization change end to end.
   `M0`/`n` and verify the requantized output matches the expected values (derived
   from the Python reference / hand computation).
 - Record the results in `log.md`.
+
+### v0.4 — Memory Expansion
+
+Expands device memory and unifies the data address space. Data memory grows to
+2^17 = 131072 words behind a new `Data_Memory` wrapper that abstracts the `0x1`
+I/O-staging buffer and two 65536-word `Mem_Unit` blocks (Quartus caps on-chip RAM
+IP at 2^16 words per instance) into one flat, 24-bit, dual-port address space.
+Program memory grows to 8192 instructions. Instruction address fields widen
+16 → 24 bits per `Functional_TPU_ISA.md` v0.4, and the MEM command carries a
+3-byte address per `Functional_TPU_Message_Protocol.md` v0.3. The `0x1` buffer is
+retained but repurposed as I/O staging only; all intermediates now live in main
+data memory.
+
+**Prerequisite (user-provided).** The RAM IP and module skeletons are created by
+the user before agents begin, so the architecture appears exactly as described
+above: two `Mem_Unit` blocks, the 8192-deep `Program_Memory`, the 1024-deep
+`TPU_0x1_Buffer`, and the `Data_Memory.v` wrapper skeleton. Agents implement
+logic and wiring only — no new `.v` files are created (per the architecture rule).
+
+**Scope note.** This is an RTL change to the memory subsystem and the modules
+that address it. The compute datapath (Systolic_Array, Activator, ALU,
+Vector_Buffer) is unaffected apart from address-width changes threaded through.
+
+#### Step 1 — Data_Memory Wrapper
+
+Implement `Data_Memory.v` (user-provided skeleton):
+
+- Instantiate the `TPU_0x1_Buffer` and both `Mem_Unit` blocks (A, B); expose one
+  flat dual-port (a/b) interface with 24-bit address inputs.
+- Address decode per port: `0x0` → hardwired zero on read, write raises
+  `WRITE_ERROR`; `0x1` → `TPU_0x1_Buffer`; `addr[16]` selects block A (0) / B (1)
+  for the 2–131071 range; any address bit above [16] set → out-of-range error.
+- Preserve the 2-cycle memory latency; thread the program/compute MUX inputs
+  (data/address/wren for ports a and b) through the wrapper.
+- Add `tests/TB_Step1_DataMemory.v` covering each decode case (zero-register read,
+  `0x1` routing, block A/B select, `0x0` write error, out-of-range error).
+
+#### Step 2 — TPU Top-Level Rewire
+
+Update `TPU.v`:
+
+- Replace the direct `Weight_Memory` + `TPU_0x1_Buffer` instantiations with a
+  single `Data_Memory` instance.
+- Route the existing memory MUX (programmer while programming; feeder →
+  program memory; vector processor *a*/*b* → data memory) into the wrapper ports.
+- Widen all data-memory address nets to 24 bits.
+- Revise `tests/TB_Step8_FullSystem.v` dependencies for the rewire.
+
+#### Step 3 — Vector_Processor Address Widening
+
+Update `Vector_Processor.v`:
+
+- Widen `mem_source_address` / `mem_dest_address` and internal address registers
+  to 24 bits.
+- Remove the memory-abstraction logic (weight-vs-0x1 routing) now owned by
+  `Data_Memory`; issue flat addresses only. Keep logical access (flatten↔matrix
+  ordering, length/dim walking, requantization).
+- Update `tests/TB_Step4_VectorProcessor.v` for 24-bit addressing.
+
+#### Step 4 — Programmer Address & 3-Byte MEM
+
+Update `Programmer.v`:
+
+- Widen `mem_addr` to 24 bits.
+- Decode the 3-byte MEM address (LADD/MADD/UADD, LSB first) per Message Protocol
+  v0.3.
+- Continue staging device/external I/O at address `0x1`; write data through the
+  `Data_Memory` wrapper (port *a*).
+- Update `tests/TB_Step1_Programmer.v` for the 3-byte address.
+
+#### Step 5 — Feeder & Program Memory Depth
+
+Update `Feeder.v`:
+
+- Widen `pc` to 13 bits; set `PM_MAX_ADDRESS = 8191`; update `FEED_ERROR` /
+  overflow detection for the deeper program memory.
+- Confirm the `Program_Memory` IP is 8192 words deep.
+- Update `tests/TB_Step2_Feeder.v`.
+
+#### Step 6 — Regression
+
+- Update `tests/run_regression.sh` for the new/renamed testbenches.
+- Run the full regression on the Questa PC and record results in `log.md`.
+- On non-Questa machines record `Verification: PENDING` and leave the v0.4 steps
+  unmarked until the regression passes on the Questa PC.

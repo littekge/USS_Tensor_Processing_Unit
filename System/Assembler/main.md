@@ -41,6 +41,8 @@ form.
 - MLIR pass to decompose large matrix multiplications into a series of smaller
 matrix multiplication and addition instructions based on an easily accessible
 parameter `MAX_MATMUL_SIZE`.
+- Data-memory allocation: reserve `0x1` for network I/O staging and place all
+intermediate results in main data memory (`0x2+`) with address reuse.
 
 ## Lowering Pipeline
 
@@ -420,3 +422,60 @@ bias adds while preserving non-bias adds.
 hand-derived values; the Tiny_NN program contains no `ADD` opcodes.
 - `test_serializer_and_e2e.py`: the full Tiny_NN pipeline still yields a framed
 `TRANSMISSION.bin`.
+
+### v0.4 — Expanded Memory & Address Widening
+
+Aligns the assembler with the v0.4 memory overhaul: 24-bit instruction address
+fields (`Functional_TPU_ISA.md` v0.4), a 3-byte MEM address
+(`Functional_TPU_Message_Protocol.md` v0.3), and a unified data memory in which
+`0x1` is reserved for network I/O staging while all intermediates live in main
+data memory. Matmul partitioning (`MAX_MATMUL_SIZE`) remains deferred to a later
+version; this scope keeps the simple allocator sufficient for the current linear
+models.
+
+#### Step 1 — 24-bit Instruction Encoding
+
+Update `Assembler.py`:
+
+- Rewrite `encode_mult`, `encode_add`, and `encode_relu` bit placements for the
+  v0.4 layout — `rs1`/`rs2`/`rd` are now 24-bit fields (the current encoders are
+  hardcoded to the old 16-bit positions). Match the field ranges in
+  `Functional_TPU_ISA.md` exactly.
+- Verify emitted instructions remain 128 bits with reserved bits zeroed.
+
+#### Step 2 — 3-Byte MEM Address & Chunking
+
+Update `Protocol.py`:
+
+- Emit a 3-byte MEM address (LADD/MADD/UADD, LSB first).
+- Chunk any tensor longer than the 16-bit MEM length field (65535 words) across
+  multiple MEM commands with incrementing addresses (e.g. `Bigger_NN`'s
+  100000-word layer). The length field is **not** widened.
+
+#### Step 3 — Data-Memory Allocation
+
+Update weight/address mapping (`Process_Weights.py`) and the assembler
+(`Assembler.py`):
+
+- Reserve `0x1` for the network input; the final network output must be written
+  to `0x1` for the programmer to read back.
+- Place each intermediate result in main data memory (`0x2+`) instead of sharing
+  `0x1`; reuse freed regions across the (linear) op sequence (simple scope — no
+  full liveness analysis yet).
+- Keep weights/biases mapped contiguously as before.
+
+#### Step 4 — End-to-End Verification
+
+- Run the full pipeline on `Tiny_NN`; confirm a framed `/out/TRANSMISSION.bin`.
+- Verify MUL/ADD/RELU carry 24-bit addresses, MEM blocks use 3-byte addresses,
+  intermediates occupy main memory, and the final result targets `0x1`.
+
+#### Tests
+
+- `test_assembler.py`: 24-bit field placement for mult/add/relu; instructions
+  remain 128-bit with reserved bits zeroed.
+- `test_protocol.py`: 3-byte MEM address; multi-command chunking of a tensor
+  longer than 65535 words.
+- `test_process_weights.py`: intermediates allocated in main memory with reuse,
+  `0x1` reserved for I/O, and the final output mapped to `0x1`.
+- `test_serializer_and_e2e.py`: the full Tiny_NN pipeline still frames correctly.
