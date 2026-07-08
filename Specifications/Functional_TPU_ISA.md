@@ -121,7 +121,8 @@ and multiplies it by a matrix of dimensions *dim21* x *dim22* located at address
 *src2*, storing the result contiguously starting from address *dest* in
 Row-Major order. Before storage, each resultant value is requantized according
 to the following equation: result = clamp((*scale* * x + (1 << (*shift* - 1)))
->> *shift*). *reserved* bits are set to 0. Note that the current revision of the
+>> *shift*) (**Note:** clamp() denotes saturation to XLEN min/max). *reserved*
+bits are set to 0. Note that the current revision of the
 ISA does not support matrix dimensions greater than 15x15 for this instruction.
 
 ### Activation Instructions
@@ -137,7 +138,7 @@ ISA does not support matrix dimensions greater than 15x15 for this instruction.
 #### relu
 
 *relu* applies the rectified linear unit activation function (*mathematically
-f(x) = max(0, x)*) to *size* contiguous elements beginning at address *rs1* and
+f(x) = max(0, x)*) to *size* contiguous elements beginning at address *src1* and
 storing them contiguously at address *dest*.
 
 ### Elementwise Instructions

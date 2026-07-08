@@ -2,7 +2,22 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
-## 2026-07-01 — Functional TPU Hardware Specification v0.3 — Quantization
+## 2026-07-08 — Functional TPU Hardware Specification v0.4 — Memory Update
+
+- **Abstracted memory into a unified Data_Memory module**
+- Weight_Memory renamed to Mem_Unit -> stores general program data instead of
+only weights.
+- Data_Memory now instantiates the TPU_0x1_Buffer module and multiple Mem_Unit
+modules, abstracting them into a unified memory space.
+- The 0x1 buffer is now accessed using an *offset* signal.
+- **Syntax change:** The ISA and Message protocol are now referenced by filename
+at the top of the spec and previous filename references have been replaced by
+italicized text.
+- Clarified WRITE_ERROR vs MEM_ERROR -> WRITE_ERROR is raised when writing to a
+read-only address (0x0) and MEM_ERROR is raised when accessing an invalid memory
+location (e.g. an out of range address).
+
+## 2026-07-06 — Functional TPU Hardware Specification v0.3 — Quantization
 
 - **Improved requantization method for mult instructions** in tandem with ISA
 v0.3.
@@ -65,7 +80,7 @@ addition to *clear*.
 
 - **Small updates to TPU module**
 - Updated the *Separate TPU Reset* section to AND *rst* and *tpu_rst* instead of
-  *rst* and *tpu_rst* (allows programmer to access memory and reset the
+  *rst* and *program* (allows programmer to access memory and reset the
 internals separately).
 - Added the *Programmer IO Passthrough* section to expose Programmer IO to
 external sources.
@@ -107,5 +122,5 @@ instead of *syscall* to terminate the program.
 
 ## 2026-06-22 — Log File
 
-- Created `Functional_TPU_ISA_Changelog.md` to record changes made to the
-*Functional TPU ISA*.
+- Created `Functional_TPU_Hardware_Specification_Changelog.md` to record changes
+made to the *Functional TPU Hardware Specification*.

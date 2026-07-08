@@ -1,12 +1,9 @@
 # Functional TPU - Hardware Specification
 
 > **Purpose:** This document outlines the Functional TPU hardware specification,
-> including module instantiation hierarchy and functional descriptions of modules.
+>including module instantiation hierarchy and functional descriptions of modules.
 >
-> **Version: 0.4.0**
->
-> **ISA:** `Functional_TPU_ISA.md`
-> **Message Protocol:** `Functional_TPU_Message_Protocol.md`
+> **Version: 0.3.0**
 
 ## Module Instantiation Hierarchy
 
@@ -21,9 +18,8 @@ Each module is instantiated following the hierarchy below.
     - Program_Memory -> stores program instructions
     - Feeder -> loads instructions from Program_Memory for the Controller to interpret
     - Controller -> decodes instructions and controls hardware
-    - Data_Memory -> abstracts data memory modules into a single unified memory
-      - TPU_0x1_Buffer -> implements 0x1 address in ISA
-      - Mem_Unit -> general device data memory unit
+    - TPU_0x1_Buffer -> implements 0x1 address in ISA
+    - Weight_Memory -> general device data memory
     - Vector_Processor -> moves vectors to and from memory
     - Activator -> implements activation functions
     - ALU -> implements element-wise operations
@@ -78,7 +74,7 @@ signal from the Feeder module as a module output.
 modules, a primary processor *a* and a secondary processor *b*. Relevant
 connections are described below.
   - **Memory Connections:** During normal operation vector processor *a* is
-  connected to the *a* ports of the Data_Memory. Likewise,
+  connected to the *a* ports of the Weight_Memory and TPU_0x1_Buffer. Likewise,
   vector processor *b* is connected to the *b* ports.
   - **ALU:** Each vector processor handles one input to the ALU.
   - **ALU Synchronization:** The *element_valid* signals from the vector
@@ -103,11 +99,11 @@ TPU internals cannot modify device memory while programming occurs.
 - **Memory MUX:** The Programmer module has full control over all device memory
 while the *program* signal is low. To implement this, the *data*, *address*,
 and *wren* inputs to the program memory as well as the *data_a*, *address_a*,
-*wren_a*, and *offset_a* inputs to the data memory are connected to the
+and *wren_a* inputs to the weight memory and 0x1 buffer are connected to the
 programmer, feeder, and vector processor *a* using a MUX. The programmer
 controls every input when *program* is LOW. When *program* is HIGH, vector
-processor *a* controls the *wren_a*, *data_a*, *address_a*, and *offset_a*
-inputs of the data memory and the feeder controls the *wren*, *data*, and
+processor *a* controls the *wren_a*, *data_a*, and *address_a* inputs of the
+0x1 buffer and weight memory and the feeder controls the *wren*, *data*, and
 *address* inputs to the program memory.
 - **Vector Buffer Clear:** The module defines a *clear* signal (active HIGH)
 used to flush the vector buffer. *clear* is combined with inverted *trst* via a
@@ -164,12 +160,12 @@ buffer's *sclr* such that the buffer is cleared when *rst* is pulled LOW.
 ### Programmer
 
 **Description:** The *Programmer* module is the central controller for all
-device IO. It writes data to the Program_Memory and Data_Memory, effectively
-"programming" the TPU. After program execution,
+device IO. It writes data to the Program_Memory, Weight_Memory,
+and TPU_0x1_Buffer, effectively "programming" the TPU. After program execution,
 it reads the output data and exposes it to the top-level *TPU* module. To
 interpret external commands, the module instantiates the SPI_Interface module,
 reading from the SPI input buffer while idle to search for messages in the
-*Functional TPU Message Protocol* format (defined in *Functional TPU Message Protocol*).
+*Functional TPU Message Protocol* format (defined in `Functional_TPU_Message_Protocol.md`).
 The module defines a complex finite state machine to implement these functions.
 
 - **Synchronous Control Signals:**
@@ -206,8 +202,8 @@ sending output data in both modes.
 purpose of describing the state machine flow.
   - **IDLE:** default meta-state. Module awaits a condition that triggers a
   transition to another meta-state.
-  - **PROGRAM:** programs the entire TPU by writing to the program memory and
-  data memory.
+  - **PROGRAM:** programs the entire TPU by writing to the program memory,
+  weight memory, and TPU_0x1_Buffer.
   - **DEVICE_INPUT:** Maintains the current program, but programs a new input by
   reading an *input_data* signal and writing the value to the first address in
   the 0x1 buffer.
@@ -266,12 +262,12 @@ purpose of describing the state machine flow.
     - Repeat the forward, wait, assert cycle for the next 9 values in the 0x1 buffer.
     - Assert *program* HIGH.
     - Return to IDLE.
+
 - **Error States:** The state machine defaults to a STATE_ERROR state in the
 event of undefined state machine behavior, a COM_ERROR state if it attempts to
-decode an invalid code, a WRITE_ERROR state if it attempts to write to a
-read-only memory address, a PROG_OVERFLOW_ERROR state if the program memory
-runs out of space during programming, and a MEM_ERROR state if it attempts to
-access an invalid memory address. All error states are considered to be
+decode an invalid code, a WRITE_ERROR state if it attempts to write to an
+invalid memory address, and a PROG_OVERFLOW_ERROR state if the program memory
+runs out of space during programming. All error states are considered to be
 unrecoverable and are only exited with a full system reset (*rst* LOW).
 - **IDLE Priority:** The IDLE meta-state can transition into any of the other
 meta-states. The meta-state change priority is PROGRAM > DEVICE_INPUT =
@@ -281,13 +277,13 @@ from address 0x0. Subsequent writes to program memory (in a single transmission)
 should increment the address by 1 such that instructions are stored contiguously.
 When a new program is written to the device, the program memory is reset such that
 the new program completely overwrites it.
-- **Device Memory:** When writing to the data memory, the programmer uses port
-*a*.
+- **Device Memory:** When writing to the weight memory or 0x1 buffer, the
+programmer uses port *a*.
 
 ### Program_Memory
 
 **Description:** The Program_Memory is a single-port RAM module. It stores
-program instructions defined by *Functional TPU ISA*.
+program instructions defined by `Functional_TPU_ISA.md`.
 
 - **Synchronous Control Signals:**
   - **Inputs:**
@@ -302,55 +298,10 @@ program instructions defined by *Functional TPU ISA*.
 data present at the module's *address* input. When *wren* is asserted high, *q*
 is undefined and the value stored at *address* is overwritten by the *data* input.
 
-### Data_Memory
+### Weight_Memory
 
-**Description:** The Data_Memory module abstracts multiple memory units and the
-0x1 buffer into a single unified memory space.
-
-- **Synchronous Control Signals:**
-  - **Inputs:**
-    - ***clock***: Module input clock.
-    - ***data_a***: Data input a.
-    - ***data_b***: Data input b.
-    - ***address_a***: Address input a.
-    - ***address_b***: Address input b.
-    - ***wren_a***: Writes data from the *data_a* input to a location in memory
-    defined by the *address_a* input when asserted HIGH.
-    - ***wren_b***: Writes data from the *data_b* input to a location in memory
-    defined by the *address_b* input when asserted HIGH.
-    - ***offset_a:*** 0x1 buffer memory offset *a*.
-    - ***offset_b:*** 0x1 buffer memory offset *b*.
-  - **Outputs:**
-    - ***q_a***: Data output a.
-    - ***q_b***: Data output b.
-- **Dual Port:** The Data_Memory is dual port, meaning it has two separate
-sets of identical control signals, *a* and *b*.
-- **Write and Read Behavior:** The module's output ports *q_a* and *q_b* always
-output the data present at *address_a* and *address_b* inputs. When *wren_a* or
-*wren_b* is asserted high, *q_a* or *q_b* is undefined and the value stored at
-*address_a* or *address_b* is overwritten by the *data_a* or *data_b* input
-respectively.
-- **Memory Abstraction:** The Data_Memory module instantiates the TPU_0x1_Buffer
-module as well as multiple Mem_Unit modules, abstracting their memory into a
-single address space compliant with the *Functional TPU ISA*.
-- **0x1 Buffer Offset:** The *offset* input signal allows for internal access of
-the 0x1 Buffer. Since the 0x1 Buffer is its own memory module, it has its own
-internal address signal, which is derived from the *offset* signal. For example,
-to store a 4-element vector in the 0x1 Buffer using the *a* port, first set
-*address_a* = 0x1. To store the first element, set *offset_a* = 0x0 and assert
-*wren_a* HIGH. To store the second element, set *offset_a* = 0x1 and assert
-*wren_a* HIGH, and so on and so forth. *offset* signals affect read behavior
-identically to write behavior. Note that overall behavior of address 0x1 still
-adheres to the **Write and Read Behavior** section described above.
-- **Address 0x0:** In compliance with the *Functional TPU ISA*, the Data_Memory
-module hardwires address 0x0 = 0. Attempting to write to address 0x0 will
-raise a WRITE_ERROR.
-
-### Mem_Unit
-
-**Description:** The Mem_Unit is a dual-port RAM module. It serves as the basic
-memory building block of the TPU, and stores both static weights and runtime
-data.
+**Description:** The Weight_Memory is a dual-port RAM module. It serves as the
+main memory of the TPU and stores neural network weights.
 
 - **Synchronous Control Signals:**
   - **Inputs:**
@@ -366,7 +317,7 @@ data.
   - **Outputs:**
     - ***q_a***: Data output a.
     - ***q_b***: Data output b.
-- **Dual Port:** The Mem_Unit module is dual port, meaning it has two separate
+- **Dual Port:** The Weight_Memory is dual port, meaning it has two separate
 sets of identical control signals, *a* and *b*.
 - **Write and Read Behavior:** The module's output ports *q_a* and *q_b* always
 output the data present at *address_a* and *address_b* inputs. When *wren_a* or
@@ -377,7 +328,7 @@ respectively.
 ### TPU_0x1_Buffer
 
 **Description:** The TPU_0x1_Buffer is a dual-port RAM module. It functions as
-the unique isolated memory required for address 0x1 in *Functional TPU ISA*.
+the unique isolated memory required for address 0x1 in `Functional_TPU_ISA.md`.
 
 - **Synchronous Control Signals:**
   - **Inputs:**
@@ -437,7 +388,7 @@ the Feeder module, the two implement the traditional CPU instruction cycle
 (Fetch-Decode-Execute-Writeback). The Controller module defines a finite state
 machine that converts instructions from the Feeder into control signals and
 manages timing and dataflow between other modules. Valid instructions and their
-formats are defined in *Functional TPU ISA*.
+formats are defined in `Functional_TPU_ISA.md`.
 
 - **Synchronous Control Signals:**
   - **Inputs:**
@@ -501,12 +452,15 @@ Array, and proper formatting of data.
     data route from source to destination is valid and the resultant data
     transfer will be successful.
 - **ISA compliance:** The Vector_Processor module formats data written to the
-data memory in accordance with the *Functional TPU ISA*. Likewise, it expects
-all data read from memory to be formatted in accordance with the ISA. As a
-result, the Vector_Processor handles translation of data from flattened
-arrays in memory to matrices when loading data to the systolic array input
-buffers and from matrices to flattened arrays when reading from the systolic
-array outputs and writing back to memory.
+weight memory and 0x1 buffer in accordance with the
+`Functional_TPU_ISA.md`. Likewise, it expects all data read from memory to
+be formatted in accordance with the ISA. As a result, the Vector_Processor
+handles translation of data from flattened arrays in memory to matrices when
+loading data to the systolic array input buffers and from matrices to
+flattened arrays when reading from the systolic array outputs and writing back
+to memory.
+- **Memory Abstraction:** The Vector_Processor module abstracts the weight
+memory and 0x1 buffer into a single address space as specified in the ISA.
 - **Combinational Control Signal Notes:** To remain ISA compliant, the
 Vector_Processor module has various combinational control signal inputs and
 output that it uses to interpret data.
@@ -551,19 +505,17 @@ output that it uses to interpret data.
     valid (accounting for RAM latency in the process if necessary).
   - When the loop finishes, assert *vector_idle* HIGH and repeat.
 - **Error States:** The state machine defaults to a STATE_ERROR state in the
-event of undefined state machine behavior, a MEM_ERROR state if it attempts
-to access an invalid memory address, and a WRITE_ERROR state if it attempts to
-write to a read-only memory address.
+event of undefined state machine behavior and a MEM_ERROR state if it attempts
+to access an invalid memory address.
 - **Requantization:** When reading from the systolic array outputs, the
 Vector_Processor module requantizes the output value before writing to its
 destination using the equation result = clamp((*scale* * x + (1 << (*shift* -
-1))) >> *shift*) (**Note:** clamp() denotes saturation to XLEN min/max). See
-*Functional TPU ISA* for more details.
+1))) >> *shift*). See `Functional_TPU_ISA.md` for more details.
 
 ### Activator
 
 **Description:** The Activator module implements the ACT instruction functions
-from the *Functional TPU ISA*.
+from the `Functional_TPU_ISA.md`.
 
 - **Synchronous Control Signals:**
   - **Inputs:**
@@ -585,8 +537,7 @@ the Activator's function is set to NO OP buffer writing is suppressed.
 
 ### ALU
 
-**Description:** The ALU module implements ELEM instructions from the
-*Functional TPU ISA*.
+**Description:** The ALU module implements ELEM instructions from the `Functional_TPU_ISA.md`.
 
 - **Synchronous Control Signals:**
   - **Inputs:**
@@ -712,10 +663,10 @@ HIGH will flush the buffers of their contents.
 - **State Machine Flow:**
   - Wait for *systolic_array_start* to be asserted HIGH.
   - Assert *systolic_array_idle* LOW.
-  - Loop through each input buffer on the top and left side from 0 to N-1 (index
-  denoted by M), asserting the *rdreq* signal of the Mth buffers HIGH every
-  clock cycle until all buffers are inserting values into the systolic array
-  (implements the required offset for an output-stationary systolic array).
+  - Loop through each input buffer on the top and left side from 0 to N-1,
+  asserting the *rdreq* signal of the Mth buffers HIGH every clock cycle until
+  all buffers are inserting values into the systolic array (implements the
+  required offset for an output-stationary systolic array).
   - Once every input buffer is empty, assert all *rdreq* signals LOW and assert
   *systolic_array_idle* HIGH.
   - Repeat.
