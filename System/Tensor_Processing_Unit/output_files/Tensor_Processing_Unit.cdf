@@ -6,7 +6,7 @@ JedecChain;
 	P ActionCode(Ign)
 		Device PartName(SOCVHPS) MfrSpec(OpMask(0));
 	P ActionCode(Cfg)
-		Device PartName(5CSEMA5F31) Path("C:/Users/littekge/Desktop/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/output_files/") File("Tensor_Processing_Unit.sof") MfrSpec(OpMask(1));
+		Device PartName(5CSEMA5F31) Path("C:/Users/littekge/Git/USS_Tensor_Processing_Unit/System/Tensor_Processing_Unit/output_files/") File("Tensor_Processing_Unit.sof") MfrSpec(OpMask(1));
 
 ChainEnd;
 
