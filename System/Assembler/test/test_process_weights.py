@@ -10,8 +10,12 @@ import numpy as np
 import pytest
 
 from nn_assembler.Process_Weights import (
+    FINAL_OUTPUT_ADDRESS,
+    INPUT_ADDRESS,
+    IntermediateAllocator,
     Process_Weights,
     decompose_multiplier,
+    first_free_address,
     quantize_per_tensor_int8,
 )
 from nn_assembler.Protocol import MEM
@@ -102,9 +106,60 @@ def test_mem_bin_uses_per_tensor_int8_values(tmp_path):
     Process_Weights(tmp_path)
     mem = (tmp_path / "MEM.bin").read_bytes()
 
-    # One contiguous block: MEM, addr=0x0002, len=0x0003, then 3 int8 bytes.
+    # One contiguous command: MEM, 3-byte addr=0x000002, 2-byte len=0x0003, data.
     assert mem[0] == MEM
-    assert mem[1:3] == (2).to_bytes(2, "little")
-    assert mem[3:5] == (3).to_bytes(2, "little")
+    assert mem[1:4] == (2).to_bytes(3, "little")  # LADD, MADD, UADD
+    assert mem[4:6] == (3).to_bytes(2, "little")  # LLEN, ULEN
     # weight +0.5 -> 127, -0.5 -> -127 (0x81); bias 0.25 -> self-scale -> 127.
-    assert list(mem[5:8]) == [127, 0x81, 127]
+    assert list(mem[6:9]) == [127, 0x81, 127]
+
+
+def test_input_reserved_at_scratch_and_output_shares_it():
+    # 0x1 is the single reserved I/O designation for both input and final output.
+    assert INPUT_ADDRESS == 0x1
+    assert FINAL_OUTPUT_ADDRESS == 0x1
+
+
+def test_weights_are_not_placed_at_reserved_io_address(tmp_path):
+    _write_fixture(tmp_path)
+    weight_map = Process_Weights(tmp_path)
+    mapped = [e["address"] for e in weight_map.values() if e["kind"] in ("weight", "bias")]
+    assert all(address >= 2 for address in mapped)  # never on 0x0/0x1
+
+
+def test_first_free_address_is_past_weight_region():
+    weight_map = {
+        "%arg0": {"kind": "weight", "address": 2, "num_words": 4},
+        "%arg1": {"kind": "bias", "address": 6, "num_words": 4},
+        "%argIn": {"kind": "input", "address": 1, "num_words": 1},
+    }
+    assert first_free_address(weight_map) == 10  # max(2+4, 6+4); input ignored
+
+
+def test_first_free_address_defaults_when_no_weights():
+    assert first_free_address({"%in": {"kind": "input", "address": 1}}) == 2
+
+
+def test_intermediate_allocator_bumps_high_water():
+    allocator = IntermediateAllocator(base_address=10)
+    assert allocator.allocate(4) == 10
+    assert allocator.allocate(2) == 14
+    assert allocator.allocate(1) == 16
+
+
+def test_intermediate_allocator_reuses_freed_regions():
+    allocator = IntermediateAllocator(base_address=10)
+    first = allocator.allocate(4)  # 10
+    second = allocator.allocate(4)  # 14
+    allocator.free(first, 4)  # region 10..13 returns to the free list
+    third = allocator.allocate(4)  # reuses the freed region
+    assert (first, second, third) == (10, 14, 10)
+
+
+def test_intermediate_allocator_merges_adjacent_free_regions():
+    allocator = IntermediateAllocator(base_address=10)
+    a = allocator.allocate(4)  # 10
+    b = allocator.allocate(4)  # 14
+    allocator.free(a, 4)
+    allocator.free(b, 4)  # adjacent -> merges into a single 8-word region
+    assert allocator.allocate(8) == 10
