@@ -192,9 +192,7 @@ TPU tpu (
    .i_input_data(input_data),         // device-mode input value
    .o_output_data(output_val),        // output value (both modes)
    .o_output_data_valid(output_valid), // one-cycle pulse: o_output_data valid
-	.o_end_reached(end_reached),
-	
-	.o_debug_val()
+	.o_end_reached(end_reached)
 );
 
 // ---------- END CODE ---------- //

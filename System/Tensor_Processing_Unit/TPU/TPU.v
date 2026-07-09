@@ -30,10 +30,9 @@ module TPU (
     input      [7:0]  i_input_data,         // device-mode input value
     output wire [7:0] o_output_data,        // output value (both modes)
     output wire       o_output_data_valid,  // one-cycle pulse: o_output_data valid
-	 output wire		 o_end_reached,   // one-cycle pulse when an end instruction is fetched
+	 output wire		 o_end_reached   // one-cycle pulse when an end instruction is fetched
 
     // ---------- DEBUG ---------- //
-	 output wire [31:0] o_debug_val
     // ---------- END DEBUG ---------- //
 );
 
@@ -84,14 +83,6 @@ wire [9:0]   dm_offset_a;
 // Memory read outputs
 wire [127:0] pm_q;
 wire [7:0]   dm_q_a, dm_q_b;
-
-// Debug-compatibility aliases: prior to v0.4 the weight memory and the 0x1
-// buffer were separate; they are now unified behind Data_Memory. These aliases
-// keep the (user-owned) debug section below unchanged.
-wire [7:0]   wm_q_a  = dm_q_a;
-wire [7:0]   wm_q_b  = dm_q_b;
-wire [7:0]   buf_q_a = dm_q_a;
-wire [7:0]   buf_q_b = dm_q_b;
 
 // Data_Memory error flags (observability; the Programmer/Vector_Processor own
 // their own error handling for reserved-address writes).
@@ -422,6 +413,5 @@ Systolic_Array #(.N(8)) sa (
 // ---------- END CODE ---------- //
 
 // ---------- DEBUG ---------- //
-assign o_debug_val = {vb_q[3:0], buf_q_a[3:0], buf_q_b[3:0], wm_q_a[3:0], wm_q_b[3:0], pm_q[127:124], alu_data[3:0], act_data[3:0]};
 // ---------- END DEBUG ---------- //
 endmodule
