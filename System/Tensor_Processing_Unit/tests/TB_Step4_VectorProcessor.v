@@ -88,8 +88,8 @@ endtask
 reg        vp_vector_start;
 reg  [2:0] vp_vect_source;
 reg  [2:0] vp_vect_dest;
-reg [15:0] vp_mem_source_address;
-reg [15:0] vp_mem_dest_address;
+reg [23:0] vp_mem_source_address;
+reg [23:0] vp_mem_dest_address;
 reg [15:0] vp_length;
 reg  [3:0] vp_dim0;
 reg  [3:0] vp_dim1;
@@ -98,12 +98,11 @@ reg  [7:0] vp_shift;   // n:  dyadic requant right-shift
 
 wire        vp_vector_idle;
 wire        vp_element_valid;
-wire [15:0] vp_wm_address;
-wire        vp_wm_wren;
-wire  [7:0] vp_wm_data;
-wire [15:0] vp_buf_address;
-wire        vp_buf_wren;
-wire  [7:0] vp_buf_data;
+// v0.4: single unified Data_Memory port (flat 24-bit address + 0x1 offset).
+wire [23:0] vp_dm_address;
+wire        vp_dm_wren;
+wire  [7:0] vp_dm_data;
+wire  [9:0] vp_dm_offset;
 wire        vp_vb_rdreq;
 wire  [7:0] vp_data;
 wire  [7:0] vp_sa_top_data;
@@ -125,19 +124,40 @@ localparam VDST_ALU_A   = 3'd4;
 localparam VDST_ALU_B   = 3'd5;
 
 // ---------------------------------------------------------------------------
-// Behavioral memories
+// Behavioral Data_Memory model (v0.4 unified wrapper)
+//
+// Mirrors the real Data_Memory decode as seen by the Vector_Processor:
+//   flat address 0x0        -> hardwired zero (read returns 0)
+//   flat address 0x1        -> 0x1 buffer, indexed by the offset port
+//   any other flat address  -> main data memory, indexed by the flat address
+// The wrapper has a 2-cycle registered read latency (registered address +
+// registered output), which is exactly why the VP has two memory wait states;
+// this model reproduces it with a two-stage output pipeline so the timing is
+// faithful. main_mem is indexed by the low bits of the flat address (the test
+// programs use small addresses), and buf_mem by the 0x1 offset port.
 // ---------------------------------------------------------------------------
-reg [7:0] wm_mem  [0:63];  // Weight_Memory model (64 words)
-reg [7:0] buf_mem [0:63];  // 0x1 Buffer model (64 words)
+reg [7:0] main_mem [0:1023];  // flat main data memory
+reg [7:0] buf_mem  [0:1023];  // 0x1 I/O-staging buffer
 
-reg [7:0] wm_q, buf_q;
+wire dm_is_zero = (vp_dm_address == 24'd0);
+wire dm_is_buf  = (vp_dm_address == 24'd1);
 
-// 1-cycle registered output RAM (write-first not needed; wren is only on write)
+// Combinational read selection (pre-latency), matching the wrapper decode.
+wire [7:0] dm_read_sel = dm_is_zero ? 8'd0 :
+                         dm_is_buf  ? buf_mem[vp_dm_offset] :
+                         main_mem[vp_dm_address[9:0]];
+
+reg [7:0] dm_q_stage1, dm_q_reg;
+wire [7:0] dm_q = dm_q_reg;
+
 always @(posedge clk) begin
-    if (vp_wm_wren)  wm_mem[vp_wm_address[5:0]]  <= vp_wm_data;
-    if (vp_buf_wren) buf_mem[vp_buf_address[5:0]] <= vp_buf_data;
-    wm_q  <= wm_mem[vp_wm_address[5:0]];
-    buf_q <= buf_mem[vp_buf_address[5:0]];
+    if (vp_dm_wren) begin
+        if (dm_is_buf)        buf_mem[vp_dm_offset]        <= vp_dm_data;
+        else if (!dm_is_zero) main_mem[vp_dm_address[9:0]] <= vp_dm_data;
+    end
+    // Two-stage output pipeline -> 2-cycle registered read latency.
+    dm_q_stage1 <= dm_read_sel;
+    dm_q_reg    <= dm_q_stage1;
 end
 
 // ---------------------------------------------------------------------------
@@ -215,14 +235,11 @@ Vector_Processor dut (
     .i_shift              (vp_shift),
     .o_vector_idle        (vp_vector_idle),
     .o_element_valid      (vp_element_valid),
-    .o_wm_address         (vp_wm_address),
-    .o_wm_wren            (vp_wm_wren),
-    .o_wm_data            (vp_wm_data),
-    .i_wm_q               (wm_q),
-    .o_buf_address        (vp_buf_address),
-    .o_buf_wren           (vp_buf_wren),
-    .o_buf_data           (vp_buf_data),
-    .i_buf_q              (buf_q),
+    .o_dm_address         (vp_dm_address),
+    .o_dm_wren            (vp_dm_wren),
+    .o_dm_data            (vp_dm_data),
+    .o_dm_offset          (vp_dm_offset),
+    .i_dm_q               (dm_q),
     .o_vb_rdreq           (vp_vb_rdreq),
     .i_vb_q               (vb_q),
     .o_data               (vp_data),
@@ -278,8 +295,8 @@ end
 task vp_start_and_wait;
     input  [2:0] src;
     input  [2:0] dst;
-    input [15:0] msrc;
-    input [15:0] mdst;
+    input [23:0] msrc;
+    input [23:0] mdst;
     input [15:0] len;
     input  [3:0] d0;
     input  [3:0] d1;
@@ -315,8 +332,8 @@ initial begin
     vp_vector_start  = 0;
     vp_vect_source   = 0;
     vp_vect_dest     = 0;
-    vp_mem_source_address = 16'd0;
-    vp_mem_dest_address   = 16'd0;
+    vp_mem_source_address = 24'd0;
+    vp_mem_dest_address   = 24'd0;
     vp_length        = 16'd0;
     vp_dim0          = 4'd0;
     vp_dim1          = 4'd0;
@@ -338,7 +355,7 @@ initial begin
     pass_count       = 0;
     fail_count       = 0;
 
-    for (j = 0; j < 64; j = j + 1) begin wm_mem[j] = 8'd0; buf_mem[j] = 8'd0; end
+    for (j = 0; j < 1024; j = j + 1) begin main_mem[j] = 8'd0; buf_mem[j] = 8'd0; end
     for (j = 0; j < 16; j = j + 1) vb_fifo[j] = 8'd0;
 
     // -----------------------------------------------------------------------
@@ -348,15 +365,15 @@ initial begin
     check(vp_vector_idle === 1'b1, 1);
 
     // -----------------------------------------------------------------------
-    // TEST 2: VSRC_MEM → VDST_ACT  (4 elements streamed from WM to Activator)
-    //   WM internal 0..3 (ISA 0x0002..0x0005) = 0xA1..0xA4
+    // TEST 2: VSRC_MEM → VDST_ACT  (4 elements streamed from memory to Activator)
+    //   Flat main-memory 0x2..0x5 = 0xA1..0xA4
     //   Expect element_valid HIGH 4 times, o_data = 0xA1, 0xA2, 0xA3, 0xA4
     // -----------------------------------------------------------------------
-    wm_mem[0] = 8'hA1; wm_mem[1] = 8'hA2;
-    wm_mem[2] = 8'hA3; wm_mem[3] = 8'hA4;
+    main_mem[2] = 8'hA1; main_mem[3] = 8'hA2;
+    main_mem[4] = 8'hA3; main_mem[5] = 8'hA4;
     ev_count = 0; ev_ok = 1;
 
-    vp_start_and_wait(VSRC_MEM, VDST_ACT, 16'h0002, 16'h0002, 16'd4, 4'd0, 4'd0);
+    vp_start_and_wait(VSRC_MEM, VDST_ACT, 24'h000002, 24'h000002, 16'd4, 4'd0, 4'd0);
 
     // ev_count and ev_data[] are updated by the always block above
     if (ev_count !== 4)         ev_ok = 0;
@@ -369,16 +386,16 @@ initial begin
 
     // -----------------------------------------------------------------------
     // TEST 3: VSRC_MEM → VDST_SA_A  (2x2 matrix rows → top SA buffers)
-    //   WM[0..3] = 0x11, 0x12, 0x21, 0x22 (row-major)
+    //   Flat main-memory 0x2..0x5 = 0x11, 0x12, 0x21, 0x22 (row-major)
     //   Expected sequence: wrreq=0x01/data=0x11, wrreq=0x01/data=0x12,
     //                      wrreq=0x02/data=0x21, wrreq=0x02/data=0x22
     // -----------------------------------------------------------------------
-    wm_mem[0] = 8'h11; wm_mem[1] = 8'h12;
-    wm_mem[2] = 8'h21; wm_mem[3] = 8'h22;
+    main_mem[2] = 8'h11; main_mem[3] = 8'h12;
+    main_mem[4] = 8'h21; main_mem[5] = 8'h22;
     sa_cnt = 0; sa_ok = 1;
     capture_sa_top = 1; capture_active = 1;
 
-    vp_start_and_wait(VSRC_MEM, VDST_SA_A, 16'h0002, 16'h0002, 16'd0, 4'd2, 4'd2);
+    vp_start_and_wait(VSRC_MEM, VDST_SA_A, 24'h000002, 24'h000002, 16'd0, 4'd2, 4'd2);
     capture_active = 0;
 
     if (sa_cnt !== 4)                                     sa_ok = 0;
@@ -391,13 +408,13 @@ initial begin
 
     // -----------------------------------------------------------------------
     // TEST 4: VSRC_MEM → VDST_SA_B  (2x2 matrix columns → left SA buffers, stride)
-    //   Same WM data. Stride: col0=WM[0,2], col1=WM[1,3]
+    //   Same main-memory data. Stride: col0=mem[0,2], col1=mem[1,3]
     //   Expected: wrreq=0x01/0x11, wrreq=0x01/0x21, wrreq=0x02/0x12, wrreq=0x02/0x22
     // -----------------------------------------------------------------------
     sa_cnt = 0; sa_ok = 1;
     capture_sa_top = 0; capture_active = 1;
 
-    vp_start_and_wait(VSRC_MEM, VDST_SA_B, 16'h0002, 16'h0002, 16'd0, 4'd2, 4'd2);
+    vp_start_and_wait(VSRC_MEM, VDST_SA_B, 24'h000002, 24'h000002, 16'd0, 4'd2, 4'd2);
     capture_active = 0;
 
     if (sa_cnt !== 4)                                     sa_ok = 0;
@@ -409,46 +426,45 @@ initial begin
     check(sa_ok === 1, 4);
 
     // -----------------------------------------------------------------------
-    // TEST 5: VSRC_VEC_BUF → VDST_MEM  (VB read, WM write)
-    //   Push 0xBB and 0xCC into VB; VP writes to WM internal addrs 0 & 1
-    //   (ISA dest 0x0002 → WM addr 0; ISA dest 0x0003 → WM addr 1)
+    // TEST 5: VSRC_VEC_BUF → VDST_MEM  (VB read, main-memory write)
+    //   Push 0xBB and 0xCC into VB; VP writes to flat main-memory 0x2 & 0x3.
     // -----------------------------------------------------------------------
-    wm_mem[0] = 8'hFF; wm_mem[1] = 8'hFF;  // sentinel: should be overwritten
+    main_mem[2] = 8'hFF; main_mem[3] = 8'hFF;  // sentinel: should be overwritten
     vb_push(8'hBB);
     vb_push(8'hCC);
 
-    vp_start_and_wait(VSRC_VEC_BUF, VDST_MEM, 16'd0, 16'h0002, 16'd2, 4'd0, 4'd0);
-    @(posedge clk); #1; // let WM write propagate one extra cycle
+    vp_start_and_wait(VSRC_VEC_BUF, VDST_MEM, 24'd0, 24'h000002, 16'd2, 4'd0, 4'd0);
+    @(posedge clk); #1; // let the memory write propagate one extra cycle
 
-    check((wm_mem[0] === 8'hBB) && (wm_mem[1] === 8'hCC), 5);
+    check((main_mem[2] === 8'hBB) && (main_mem[3] === 8'hCC), 5);
 
     // -----------------------------------------------------------------------
-    // TEST 6: VSRC_SA_OUT → VDST_MEM  (requantize SA outputs, write to WM)
-    //   dim0=1, dim1=2 — two outputs:
+    // TEST 6: VSRC_SA_OUT → VDST_MEM  (requantize SA outputs, write to memory)
+    //   dim0=1, dim1=2 — two outputs written to flat main-memory 0x2 & 0x3:
     //     Element 0: o_sa_row=0, o_sa_col=0 → sa_c=256, M0=1, n=8
-    //                (256 + (1<<7))>>8 = 384>>8 = 1        → WM[0]=0x01
+    //                (256 + (1<<7))>>8 = 384>>8 = 1        → mem[2]=0x01
     //     Element 1: o_sa_row=1, o_sa_col=0 → sa_c=40000
-    //                (40000 + 128)>>8 = 156 → >127 → sat   → WM[1]=0x7F
+    //                (40000 + 128)>>8 = 156 → >127 → sat   → mem[3]=0x7F
     //   sa_c_stub driven by the always @(*) block at module level.
     // -----------------------------------------------------------------------
-    wm_mem[0] = 8'hFF; wm_mem[1] = 8'hFF;
+    main_mem[2] = 8'hFF; main_mem[3] = 8'hFF;
     vp_scale = 8'd1; vp_shift = 8'd8;
 
-    vp_start_and_wait(VSRC_SA_OUT, VDST_MEM, 16'd0, 16'h0002, 16'd0, 4'd1, 4'd2);
+    vp_start_and_wait(VSRC_SA_OUT, VDST_MEM, 24'd0, 24'h000002, 16'd0, 4'd1, 4'd2);
     @(posedge clk); #1;
 
-    check((wm_mem[0] === 8'h01) && (wm_mem[1] === 8'h7F), 6);
+    check((main_mem[2] === 8'h01) && (main_mem[3] === 8'h7F), 6);
 
     // -----------------------------------------------------------------------
-    // TEST 7: MEM_ERROR — VP stalls on write to ISA address 0x0000
+    // TEST 7: MEM_ERROR — VP stalls on write to reserved address 0x0
     //   The VP should enter MEM_ERROR (o_vector_idle LOW) and not complete.
     // -----------------------------------------------------------------------
     do_reset;
 
     vp_vect_source        = VSRC_MEM;
     vp_vect_dest          = VDST_MEM;
-    vp_mem_source_address = 16'h0002;
-    vp_mem_dest_address   = 16'h0000;  // illegal dest
+    vp_mem_source_address = 24'h000002;
+    vp_mem_dest_address   = 24'h000000;  // illegal dest
     vp_length             = 16'd1;
     vp_dim0               = 4'd0;
     vp_dim1               = 4'd0;
@@ -467,15 +483,15 @@ initial begin
 
     // -----------------------------------------------------------------------
     // TEST 8: VSRC_MEM (src=0x0001) → VDST_ACT  (0x1 Buffer as source)
-    //   buf_mem[0]=0xD1, buf_mem[1]=0xD2 (internal offsets 0 and 1).
-    //   ISA source 0x0001: buf_rd_addr = cur_rd_isa - mem_source_lat = elem_cnt.
+    //   buf_mem[0]=0xD1, buf_mem[1]=0xD2 (buffer offsets 0 and 1).
+    //   ISA source 0x0001: flat address held at 0x1, o_dm_offset walks 0,1.
     //   Expect element_valid twice, o_data = 0xD1 then 0xD2.
     // -----------------------------------------------------------------------
     do_reset;
     buf_mem[0] = 8'hD1; buf_mem[1] = 8'hD2;
     ev_count = 0; ev_ok = 1;
 
-    vp_start_and_wait(VSRC_MEM, VDST_ACT, 16'h0001, 16'h0002, 16'd2, 4'd0, 4'd0);
+    vp_start_and_wait(VSRC_MEM, VDST_ACT, 24'h000001, 24'h000002, 16'd2, 4'd0, 4'd0);
 
     if (ev_count !== 2)        ev_ok = 0;
     if (ev_data[0] !== 8'hD1) ev_ok = 0;
@@ -485,14 +501,14 @@ initial begin
 
     // -----------------------------------------------------------------------
     // TEST 9: VSRC_VEC_BUF → VDST_MEM (dest=0x0001)  (0x1 Buffer as dest)
-    //   Push 0xE1, 0xE2 into VB; VP writes to buf_mem internal addrs 0 & 1.
-    //   ISA dest 0x0001: buf_wr_addr = cur_wr_isa - mem_dest_lat = elem_cnt.
+    //   Push 0xE1, 0xE2 into VB; VP writes to buffer offsets 0 & 1.
+    //   ISA dest 0x0001: flat address held at 0x1, o_dm_offset walks 0,1.
     // -----------------------------------------------------------------------
     buf_mem[0] = 8'hFF; buf_mem[1] = 8'hFF;  // sentinel: should be overwritten
     vb_push(8'hE1);
     vb_push(8'hE2);
 
-    vp_start_and_wait(VSRC_VEC_BUF, VDST_MEM, 16'd0, 16'h0001, 16'd2, 4'd0, 4'd0);
+    vp_start_and_wait(VSRC_VEC_BUF, VDST_MEM, 24'd0, 24'h000001, 16'd2, 4'd0, 4'd0);
     @(posedge clk); #1;
 
     check((buf_mem[0] === 8'hE1) && (buf_mem[1] === 8'hE2), 9);
@@ -505,7 +521,7 @@ initial begin
     // -----------------------------------------------------------------------
     ev_count = 0; ev_ok = 1;
 
-    vp_start_and_wait(VSRC_MEM, VDST_ACT, 16'h0000, 16'h0002, 16'd2, 4'd0, 4'd0);
+    vp_start_and_wait(VSRC_MEM, VDST_ACT, 24'h000000, 24'h000002, 16'd2, 4'd0, 4'd0);
 
     if (ev_count !== 2)        ev_ok = 0;
     if (ev_data[0] !== 8'h00) ev_ok = 0;
@@ -514,15 +530,15 @@ initial begin
     check(ev_ok === 1, 10);
 
     // -----------------------------------------------------------------------
-    // TEST 11: VSRC_MEM → VDST_ALU_A  (stream WM data to the ALU input A)
-    //   WM[0..1] = 0xB1, 0xB2. The VP routes ALU destinations the same way as
-    //   the activator: element_valid pulses with o_data = 0xB1, 0xB2.
+    // TEST 11: VSRC_MEM → VDST_ALU_A  (stream memory data to the ALU input A)
+    //   Flat main-memory 0x2..0x3 = 0xB1, 0xB2. The VP routes ALU destinations
+    //   the same way as the activator: element_valid pulses o_data = 0xB1, 0xB2.
     // -----------------------------------------------------------------------
     do_reset;
-    wm_mem[0] = 8'hB1; wm_mem[1] = 8'hB2;
+    main_mem[2] = 8'hB1; main_mem[3] = 8'hB2;
     ev_count = 0; ev_ok = 1;
 
-    vp_start_and_wait(VSRC_MEM, VDST_ALU_A, 16'h0002, 16'h0002, 16'd2, 4'd0, 4'd0);
+    vp_start_and_wait(VSRC_MEM, VDST_ALU_A, 24'h000002, 24'h000002, 16'd2, 4'd0, 4'd0);
 
     if (ev_count !== 2)        ev_ok = 0;
     if (ev_data[0] !== 8'hB1) ev_ok = 0;
@@ -539,12 +555,12 @@ initial begin
     do_reset;
     neg_mode = 1'b1;
     vp_scale = 8'd1; vp_shift = 8'd8;
-    wm_mem[0] = 8'hFF;  // sentinel
+    main_mem[2] = 8'hFF;  // sentinel
 
-    vp_start_and_wait(VSRC_SA_OUT, VDST_MEM, 16'd0, 16'h0002, 16'd0, 4'd1, 4'd1);
+    vp_start_and_wait(VSRC_SA_OUT, VDST_MEM, 24'd0, 24'h000002, 16'd0, 4'd1, 4'd1);
     @(posedge clk); #1;
 
-    check(wm_mem[0] === 8'h80, 12);
+    check(main_mem[2] === 8'h80, 12);
     neg_mode = 1'b0;
 
     // -----------------------------------------------------------------------
@@ -558,12 +574,12 @@ initial begin
     force_mode = 1'b1;
     sa_c_force = 32'sd62;
     vp_scale = 8'd1; vp_shift = 8'd2;
-    wm_mem[0] = 8'hFF;  // sentinel
+    main_mem[2] = 8'hFF;  // sentinel
 
-    vp_start_and_wait(VSRC_SA_OUT, VDST_MEM, 16'd0, 16'h0002, 16'd0, 4'd1, 4'd1);
+    vp_start_and_wait(VSRC_SA_OUT, VDST_MEM, 24'd0, 24'h000002, 16'd0, 4'd1, 4'd1);
     @(posedge clk); #1;
 
-    check(wm_mem[0] === 8'h10, 13);
+    check(main_mem[2] === 8'h10, 13);
 
     // -----------------------------------------------------------------------
     // TEST 14: VSRC_SA_OUT → VDST_MEM  (M0 scale multiply)
@@ -576,12 +592,12 @@ initial begin
     force_mode = 1'b1;
     sa_c_force = 32'sd10;
     vp_scale = 8'd25; vp_shift = 8'd3;
-    wm_mem[0] = 8'hFF;  // sentinel
+    main_mem[2] = 8'hFF;  // sentinel
 
-    vp_start_and_wait(VSRC_SA_OUT, VDST_MEM, 16'd0, 16'h0002, 16'd0, 4'd1, 4'd1);
+    vp_start_and_wait(VSRC_SA_OUT, VDST_MEM, 24'd0, 24'h000002, 16'd0, 4'd1, 4'd1);
     @(posedge clk); #1;
 
-    check(wm_mem[0] === 8'h1F, 14);
+    check(main_mem[2] === 8'h1F, 14);
     force_mode = 1'b0;
 
     // -----------------------------------------------------------------------

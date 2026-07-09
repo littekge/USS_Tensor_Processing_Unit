@@ -37,8 +37,9 @@
  *        vlog -work work TPU/PROGRAMMER/Programmer.v
  *        vlog -work work TPU/PROGRAMMER/Feeder.v
  *        vlog -work work TPU/CONTROL/Controller.v
- *        vlog -work work TPU/MEMORY/WEIGHT_MEMORY/Weight_Memory.v
  *        vlog -work work TPU/MEMORY/0X1_BUFFER/TPU_0x1_Buffer.v
+ *        vlog -work work TPU/MEMORY/MEM_UNIT/Mem_Unit.v
+ *        vlog -work work TPU/MEMORY/Data_Memory.v
  *        vlog -work work TPU/MEMORY/VECTOR_BUFFER/Vector_Buffer.v
  *        vlog -work work TPU/PROCESSING/Activator.v
  *        vlog -work work TPU/PROCESSING/ALU.v
@@ -175,16 +176,25 @@ module TB_Step8_FullSystem;
     end
 
     // -----------------------------------------------------------------------
-    // Weight-memory shadow — mirrors the muxed weight-memory port-a writes
-    // (both the Programmer's flashed weights and the Vector_Processor's compute
-    // write-backs flow through this port). Lets the compute tests read back the
-    // requantized mult result without referencing any vendor-IP internal array.
+    // Data_Memory shadow — mirrors the muxed Data_Memory port-a writes (both the
+    // Programmer's flashed data and the Vector_Processor's compute write-backs
+    // flow through this port). v0.4 flat unified addressing: a write to flat
+    // address 0x1 targets the 0x1 buffer (indexed by the offset port); any other
+    // non-zero flat address targets main data memory (indexed by the flat
+    // address). Lets the compute tests read back the requantized mult result
+    // without referencing any vendor-IP internal array.
     // -----------------------------------------------------------------------
-    reg [7:0] shadow_wm [0:255];
+    reg [7:0] shadow_main [0:1023];
+    reg [7:0] shadow_buf  [0:1023];
     integer si;
 
     always @(posedge clk) begin
-        if (dut.wm_wren_a) shadow_wm[dut.wm_address_a[7:0]] <= dut.wm_data_a;
+        if (dut.dm_wren_a) begin
+            if (dut.dm_address_a == 24'd1)
+                shadow_buf[dut.dm_offset_a] <= dut.dm_data_a;
+            else if (dut.dm_address_a != 24'd0)
+                shadow_main[dut.dm_address_a[9:0]] <= dut.dm_data_a;
+        end
     end
 
     // -----------------------------------------------------------------------
@@ -232,53 +242,58 @@ module TB_Step8_FullSystem;
         end
     endtask
 
-    // ReLU instruction builder (opcode 1001 | rs1 | rd | len | pad | funct3)
+    // ReLU instruction builder — ISA v0.4 ACT format:
+    //   opcode[127:124] | rs1[123:100] | rd[99:76] | len[75:60] | pad[59:0]
     function [127:0] mk_relu;
-        input [15:0] rs1;
-        input [15:0] rd;
+        input [23:0] rs1;
+        input [23:0] rd;
         input [15:0] len;
         begin
-            mk_relu = {4'b1001, rs1, rd, len, 73'd0, 3'd0};
+            mk_relu = {4'b1001, rs1, rd, len, 60'd0};
         end
     endfunction
 
-    // mult instruction builder with explicit per-layer requant parameters
-    // (opcode 1000 | rs1 | sz11 | sz12 | rs2 | sz21 | sz22 | rd | M0 | n | pad
-    //  | funct3). M0 = scale (bits 59-52), n = shift (bits 51-44).
+    // mult instruction builder with explicit per-layer requant parameters —
+    // ISA v0.4 MUL format:
+    //   opcode[127:124] | rs1[123:100] | sz11[99:96] | sz12[95:92] |
+    //   rs2[91:68] | sz21[67:64] | sz22[63:60] | rd[59:36] |
+    //   M0[35:28] | n[27:20] | pad[19:0]
     function [127:0] mk_mul_rq;
-        input [15:0] rs1;
+        input [23:0] rs1;
         input [3:0]  sz11, sz12;
-        input [15:0] rs2;
+        input [23:0] rs2;
         input [3:0]  sz21, sz22;
-        input [15:0] rd;
+        input [23:0] rd;
         input [7:0]  scale, shift;
         begin
             mk_mul_rq = {4'b1000, rs1, sz11, sz12, rs2, sz21, sz22, rd,
-                         scale, shift, 41'd0, 3'd0};
+                         scale, shift, 20'd0};
         end
     endfunction
 
     // Default mult builder: M0=1, n=8 reproduces the pre-v0.3 fixed >>8
     // requantization so the existing compute tests keep their expected results.
     function [127:0] mk_mul;
-        input [15:0] rs1;
+        input [23:0] rs1;
         input [3:0]  sz11, sz12;
-        input [15:0] rs2;
+        input [23:0] rs2;
         input [3:0]  sz21, sz22;
-        input [15:0] rd;
+        input [23:0] rd;
         begin
             mk_mul = mk_mul_rq(rs1, sz11, sz12, rs2, sz21, sz22, rd, 8'd1, 8'd8);
         end
     endfunction
 
-    // Send a 4-byte MEM command block to a 16-bit ISA address.
+    // Send a 4-byte MEM command block to a 24-bit flat ISA address (Message
+    // Protocol v0.3: 3-byte little-endian address LADD/MADD/UADD, then length).
     task send_mem4;
-        input [15:0] addr;
+        input [23:0] addr;
         input [7:0]  b0, b1, b2, b3;
         begin
             send_spi_byte(MEM_CODE);
-            send_spi_byte(addr[7:0]);
-            send_spi_byte(addr[15:8]);
+            send_spi_byte(addr[7:0]);    // LADD
+            send_spi_byte(addr[15:8]);   // MADD
+            send_spi_byte(addr[23:16]);  // UADD
             send_spi_byte(8'd4);   // LLEN = 4
             send_spi_byte(8'd0);   // ULEN = 0
             send_spi_byte(b0);
@@ -349,7 +364,7 @@ module TB_Step8_FullSystem;
         // FLASH a 1-element relu program: relu 0x0001 -> 0x0001, len 1, then end.
         spi_ss = 0;
         send_spi_byte(FLASH_CODE);
-        send_program(mk_relu(16'h0001, 16'h0001, 16'd1));
+        send_program(mk_relu(24'h000001, 24'h000001, 16'd1));
         send_program(128'd0); // end
         send_spi_byte(STOP_CODE);
         spi_ss = 1;
@@ -397,7 +412,7 @@ module TB_Step8_FullSystem;
         // Re-FLASH a 10-element relu program: relu 0x0001 -> 0x0001, len 10.
         spi_ss = 0;
         send_spi_byte(FLASH_CODE);
-        send_program(mk_relu(16'h0001, 16'h0001, 16'd10));
+        send_program(mk_relu(24'h000001, 24'h000001, 16'd10));
         send_program(128'd0); // end
         send_spi_byte(STOP_CODE);
         spi_ss = 1;
@@ -424,7 +439,8 @@ module TB_Step8_FullSystem;
         spi_ss = 0;
         send_spi_byte(INPUT_CODE);
         send_spi_byte(MEM_CODE);
-        send_spi_byte(8'h01);   // LADD = ISA 0x0001 (0x1 buffer)
+        send_spi_byte(8'h01);   // LADD = ISA 0x000001 (0x1 buffer)
+        send_spi_byte(8'h00);   // MADD
         send_spi_byte(8'h00);   // UADD
         send_spi_byte(8'd10);   // LLEN = 10
         send_spi_byte(8'd0);    // ULEN
@@ -468,8 +484,9 @@ module TB_Step8_FullSystem;
         spi_ss = 0;
         send_spi_byte(INPUT_CODE);
         send_spi_byte(MEM_CODE);
-        send_spi_byte(8'h01);   // ISA 0x0001 (0x1 buffer)
-        send_spi_byte(8'h00);
+        send_spi_byte(8'h01);   // LADD = ISA 0x000001 (0x1 buffer)
+        send_spi_byte(8'h00);   // MADD
+        send_spi_byte(8'h00);   // UADD
         send_spi_byte(8'd10);   // LLEN = 10
         send_spi_byte(8'd0);
         for (m = 0; m < 10; m = m + 1) send_spi_byte(ext_in[m]);
@@ -489,106 +506,106 @@ module TB_Step8_FullSystem;
         // ===================================================================
         // Test 9: FLASH weights via MEM + a single mult against them.
         //   Verifies the weight-flash + systolic-array mult path end to end.
-        //   Unified map (ISA addr -> WM phys = ISA-2):
-        //     rs1 @0x0002 = [[16,0],[0,16]]   -> WM phys 0..3
-        //     rs2 @0x0006 = [[16,32],[48,64]] -> WM phys 4..7
-        //     rd  @0x000A                      -> WM phys 8..11
+        //   v0.4 flat unified addressing (physical addr == ISA addr):
+        //     rs1 @0x000002 = [[16,0],[0,16]]   -> flat 2..5
+        //     rs2 @0x000006 = [[16,32],[48,64]] -> flat 6..9
+        //     rd  @0x00000A                      -> flat 10..13
         //   Products 256/512/768/1024 requantized (>>8) -> [[1,2],[3,4]].
         // ===================================================================
         $display("Test 9: FLASH weights via MEM + single mult (coverage gap #3)");
         rst = 0; repeat (4) @(posedge clk); rst = 1; repeat (4) @(posedge clk);
         mode_select = 1'b0;
-        for (si = 0; si < 256; si = si + 1) shadow_wm[si] = 8'hEE;
+        for (si = 0; si < 1024; si = si + 1) shadow_main[si] = 8'hEE;
         spi_ss = 0;
         send_spi_byte(FLASH_CODE);
-        send_mem4(16'h0002, 8'd16, 8'd0,  8'd0,  8'd16); // rs1
-        send_mem4(16'h0006, 8'd16, 8'd32, 8'd48, 8'd64); // rs2
-        send_program(mk_mul(16'h0002, 4'd2, 4'd2, 16'h0006, 4'd2, 4'd2, 16'h000A));
+        send_mem4(24'h000002, 8'd16, 8'd0,  8'd0,  8'd16); // rs1
+        send_mem4(24'h000006, 8'd16, 8'd32, 8'd48, 8'd64); // rs2
+        send_program(mk_mul(24'h000002, 4'd2, 4'd2, 24'h000006, 4'd2, 4'd2, 24'h00000A));
         send_program(128'd0); // end
         send_spi_byte(STOP_CODE);
         spi_ss = 1;
         wait_feeder_done(200000);
         repeat (60) @(posedge clk);
-        $display("  mult result WM[8..11] = %0d %0d %0d %0d  (expect 1 2 3 4)",
-                 $signed(shadow_wm[8]),  $signed(shadow_wm[9]),
-                 $signed(shadow_wm[10]), $signed(shadow_wm[11]));
-        check((shadow_wm[8]  === 8'd1) && (shadow_wm[9]  === 8'd2) &&
-              (shadow_wm[10] === 8'd3) && (shadow_wm[11] === 8'd4),
+        $display("  mult result mem[10..13] = %0d %0d %0d %0d  (expect 1 2 3 4)",
+                 $signed(shadow_main[10]), $signed(shadow_main[11]),
+                 $signed(shadow_main[12]), $signed(shadow_main[13]));
+        check((shadow_main[10] === 8'd1) && (shadow_main[11] === 8'd2) &&
+              (shadow_main[12] === 8'd3) && (shadow_main[13] === 8'd4),
               "single mult from flashed weights = [1,2,3,4]");
 
         // ===================================================================
         // Test 10: two consecutive mult instructions in one program.
         //   Both mults use the SAME operands and so must produce the SAME
-        //   result. mult1 -> rdA @0x000A (WM 8..11); mult2 -> rdB @0x000E
-        //   (WM 12..15). If the MAC accumulators are not cleared between the
+        //   result. mult1 -> rdA @0x00000A (flat 10..13); mult2 -> rdB @0x00000E
+        //   (flat 14..17). If the MAC accumulators are not cleared between the
         //   two mults, mult2 accumulates on top of mult1 (doubling to
         //   [[2,4],[6,8]] or saturating) and this test fails.
         // ===================================================================
         $display("Test 10: two consecutive mults — MAC clear between ops (possibility #2)");
         rst = 0; repeat (4) @(posedge clk); rst = 1; repeat (4) @(posedge clk);
         mode_select = 1'b0;
-        for (si = 0; si < 256; si = si + 1) shadow_wm[si] = 8'hEE;
+        for (si = 0; si < 1024; si = si + 1) shadow_main[si] = 8'hEE;
         spi_ss = 0;
         send_spi_byte(FLASH_CODE);
-        send_mem4(16'h0002, 8'd16, 8'd0,  8'd0,  8'd16); // rs1
-        send_mem4(16'h0006, 8'd16, 8'd32, 8'd48, 8'd64); // rs2
-        send_program(mk_mul(16'h0002, 4'd2, 4'd2, 16'h0006, 4'd2, 4'd2, 16'h000A)); // mult1 -> WM 8..11
-        send_program(mk_mul(16'h0002, 4'd2, 4'd2, 16'h0006, 4'd2, 4'd2, 16'h000E)); // mult2 -> WM 12..15
+        send_mem4(24'h000002, 8'd16, 8'd0,  8'd0,  8'd16); // rs1
+        send_mem4(24'h000006, 8'd16, 8'd32, 8'd48, 8'd64); // rs2
+        send_program(mk_mul(24'h000002, 4'd2, 4'd2, 24'h000006, 4'd2, 4'd2, 24'h00000A)); // mult1 -> flat 10..13
+        send_program(mk_mul(24'h000002, 4'd2, 4'd2, 24'h000006, 4'd2, 4'd2, 24'h00000E)); // mult2 -> flat 14..17
         send_program(128'd0); // end
         send_spi_byte(STOP_CODE);
         spi_ss = 1;
         wait_feeder_done(200000);
         repeat (80) @(posedge clk);
-        $display("  mult1 WM[8..11]  = %0d %0d %0d %0d",
-                 $signed(shadow_wm[8]),  $signed(shadow_wm[9]),
-                 $signed(shadow_wm[10]), $signed(shadow_wm[11]));
-        $display("  mult2 WM[12..15] = %0d %0d %0d %0d  (expect 1 2 3 4)",
-                 $signed(shadow_wm[12]), $signed(shadow_wm[13]),
-                 $signed(shadow_wm[14]), $signed(shadow_wm[15]));
-        check((shadow_wm[12] === 8'd1) && (shadow_wm[13] === 8'd2) &&
-              (shadow_wm[14] === 8'd3) && (shadow_wm[15] === 8'd4),
+        $display("  mult1 mem[10..13] = %0d %0d %0d %0d",
+                 $signed(shadow_main[10]), $signed(shadow_main[11]),
+                 $signed(shadow_main[12]), $signed(shadow_main[13]));
+        $display("  mult2 mem[14..17] = %0d %0d %0d %0d  (expect 1 2 3 4)",
+                 $signed(shadow_main[14]), $signed(shadow_main[15]),
+                 $signed(shadow_main[16]), $signed(shadow_main[17]));
+        check((shadow_main[14] === 8'd1) && (shadow_main[15] === 8'd2) &&
+              (shadow_main[16] === 8'd3) && (shadow_main[17] === 8'd4),
               "second mult result = [1,2,3,4] (MACs cleared between mults)");
 
         // ===================================================================
         // Test 11: Signed mult (v0.2.1) — negative operands through the array.
-        //   rs1 @0x0002 = [[16,0],[0,16]]        -> WM phys 0..3  (identity*16)
-        //   rs2 @0x0006 = [[-16,32],[48,-64]]    -> WM phys 4..7  (mixed sign)
-        //   rd  @0x000A                           -> WM phys 8..11
+        //   rs1 @0x000002 = [[16,0],[0,16]]        -> flat 2..5  (identity*16)
+        //   rs2 @0x000006 = [[-16,32],[48,-64]]    -> flat 6..9  (mixed sign)
+        //   rd  @0x00000A                           -> flat 10..13
         //   With rs1 = identity*16, C = rs2 * 16, requantized (>>>8) = rs2/16:
         //     C[0][0] = 16*(-16) = -256  >>>8 = -1
         //     C[0][1] = 16*  32  =  512  >>>8 =  2
         //     C[1][0] = 16*  48  =  768  >>>8 =  3
         //     C[1][1] = 16*(-64) = -1024 >>>8 = -4  -> [[-1,2],[3,-4]]
         //   Old unsigned MAC: -16 (0xF0) reads as +240 -> 16*240 = 3840 >>>8 =
-        //   15 (positive), so shadow_wm[8] would be +15, failing this check.
+        //   15 (positive), so mem[10] would be +15, failing this check.
         // ===================================================================
         $display("Test 11: signed mult with negative operands (v0.2.1 MAC fix)");
         rst = 0; repeat (4) @(posedge clk); rst = 1; repeat (4) @(posedge clk);
         mode_select = 1'b0;
-        for (si = 0; si < 256; si = si + 1) shadow_wm[si] = 8'hEE;
+        for (si = 0; si < 1024; si = si + 1) shadow_main[si] = 8'hEE;
         spi_ss = 0;
         send_spi_byte(FLASH_CODE);
-        send_mem4(16'h0002, 8'd16, 8'd0, 8'd0, 8'd16);            // rs1 identity*16
-        send_mem4(16'h0006, -8'sd16, 8'd32, 8'd48, -8'sd64);      // rs2 mixed sign
-        send_program(mk_mul(16'h0002, 4'd2, 4'd2, 16'h0006, 4'd2, 4'd2, 16'h000A));
+        send_mem4(24'h000002, 8'd16, 8'd0, 8'd0, 8'd16);            // rs1 identity*16
+        send_mem4(24'h000006, -8'sd16, 8'd32, 8'd48, -8'sd64);      // rs2 mixed sign
+        send_program(mk_mul(24'h000002, 4'd2, 4'd2, 24'h000006, 4'd2, 4'd2, 24'h00000A));
         send_program(128'd0); // end
         send_spi_byte(STOP_CODE);
         spi_ss = 1;
         wait_feeder_done(200000);
         repeat (60) @(posedge clk);
-        $display("  signed mult WM[8..11] = %0d %0d %0d %0d  (expect -1 2 3 -4)",
-                 $signed(shadow_wm[8]),  $signed(shadow_wm[9]),
-                 $signed(shadow_wm[10]), $signed(shadow_wm[11]));
-        check(($signed(shadow_wm[8])  === -8'sd1) && (shadow_wm[9]  === 8'd2) &&
-              (shadow_wm[10] === 8'd3) && ($signed(shadow_wm[11]) === -8'sd4),
+        $display("  signed mult mem[10..13] = %0d %0d %0d %0d  (expect -1 2 3 -4)",
+                 $signed(shadow_main[10]), $signed(shadow_main[11]),
+                 $signed(shadow_main[12]), $signed(shadow_main[13]));
+        check(($signed(shadow_main[10]) === -8'sd1) && (shadow_main[11] === 8'd2) &&
+              (shadow_main[12] === 8'd3) && ($signed(shadow_main[13]) === -8'sd4),
               "signed mult with negative operands = [-1,2,3,-4]");
 
         // ===================================================================
         // Test 12: per-layer dyadic requantization (v0.3) — a mult carrying a
         //   non-trivial M0/n, verifying the runtime requant datapath end to end.
-        //   rs1 @0x0002 = [[1,0],[0,1]]      -> WM phys 0..3  (identity)
-        //   rs2 @0x0006 = [[100,50],[25,10]] -> WM phys 4..7
-        //   rd  @0x000A                       -> WM phys 8..11
+        //   rs1 @0x000002 = [[1,0],[0,1]]      -> flat 2..5  (identity)
+        //   rs2 @0x000006 = [[100,50],[25,10]] -> flat 6..9
+        //   rd  @0x00000A                       -> flat 10..13
         //   With rs1 = identity, C = rs2. Requant M0=3, n=4:
         //     result = clamp((3*x + (1<<3)) >> 4) = (3x + 8) >> 4
         //     x=100 -> (308)>>4 = 19    x=50 -> (158)>>4 = 9
@@ -599,23 +616,23 @@ module TB_Step8_FullSystem;
         $display("Test 12: per-layer dyadic requant (M0=3, n=4)");
         rst = 0; repeat (4) @(posedge clk); rst = 1; repeat (4) @(posedge clk);
         mode_select = 1'b0;
-        for (si = 0; si < 256; si = si + 1) shadow_wm[si] = 8'hEE;
+        for (si = 0; si < 1024; si = si + 1) shadow_main[si] = 8'hEE;
         spi_ss = 0;
         send_spi_byte(FLASH_CODE);
-        send_mem4(16'h0002, 8'd1,   8'd0,  8'd0,  8'd1);  // rs1 identity
-        send_mem4(16'h0006, 8'd100, 8'd50, 8'd25, 8'd10); // rs2
-        send_program(mk_mul_rq(16'h0002, 4'd2, 4'd2, 16'h0006, 4'd2, 4'd2,
-                               16'h000A, 8'd3, 8'd4));
+        send_mem4(24'h000002, 8'd1,   8'd0,  8'd0,  8'd1);  // rs1 identity
+        send_mem4(24'h000006, 8'd100, 8'd50, 8'd25, 8'd10); // rs2
+        send_program(mk_mul_rq(24'h000002, 4'd2, 4'd2, 24'h000006, 4'd2, 4'd2,
+                               24'h00000A, 8'd3, 8'd4));
         send_program(128'd0); // end
         send_spi_byte(STOP_CODE);
         spi_ss = 1;
         wait_feeder_done(200000);
         repeat (60) @(posedge clk);
-        $display("  requant WM[8..11] = %0d %0d %0d %0d  (expect 19 9 5 2)",
-                 $signed(shadow_wm[8]),  $signed(shadow_wm[9]),
-                 $signed(shadow_wm[10]), $signed(shadow_wm[11]));
-        check((shadow_wm[8]  === 8'd19) && (shadow_wm[9]  === 8'd9) &&
-              (shadow_wm[10] === 8'd5)  && (shadow_wm[11] === 8'd2),
+        $display("  requant mem[10..13] = %0d %0d %0d %0d  (expect 19 9 5 2)",
+                 $signed(shadow_main[10]), $signed(shadow_main[11]),
+                 $signed(shadow_main[12]), $signed(shadow_main[13]));
+        check((shadow_main[10] === 8'd19) && (shadow_main[11] === 8'd9) &&
+              (shadow_main[12] === 8'd5)  && (shadow_main[13] === 8'd2),
               "per-layer requant (M0=3,n=4) = [19,9,5,2]");
 
         // ===================================================================

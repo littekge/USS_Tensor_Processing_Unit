@@ -2,6 +2,69 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-09 — v0.4 Memory Expansion: testbenches (unblocked)
+
+- **Context:** the prior v0.4 entry left testbench work BLOCKED by a permission
+  glob that made the section `tests/` unwritable. That is fixed; this session
+  places/updates the v0.4 testbenches against the merged RTL (read as ground
+  truth: `Data_Memory.v`, `TPU.v`, `Vector_Processor.v`, `Programmer.v`,
+  `Feeder.v`, `Controller.v`). Linux laptop — no `vsim.exe`/`altera_mf` — so
+  **nothing was simulated**; `run_regression.sh` self-gates.
+
+- **`tests/TB_Step1_DataMemory.v` (NEW).** 10 cases for the `Data_Memory`
+  wrapper: zero-register read (0x0), 0x1-buffer routing via `i_offset`, offset
+  independence, block A select (addr[16]=0), block B select (addr[16]=1),
+  block A/B isolation, 0x0 write error, out-of-range error (bit >[16]), dual-
+  port independence, and 2-cycle read latency. DUT instantiation verified
+  against the merged `Data_Memory` port list (i_data_a/i_address_a[23:0]/
+  i_wren_a/i_offset_a[9:0]/o_q_a + port b + four error flags).
+- **`tests/run_regression.sh`.** Added the `TB_Step1_DataMemory` block
+  (TPU_0x1_Buffer.v + Mem_Unit.v + Data_Memory.v + tb). Fixed the Step 8 source
+  list: `MEMORY/WEIGHT_MEMORY/Weight_Memory.v` -> `MEMORY/MEM_UNIT/Mem_Unit.v`
+  + `MEMORY/Data_Memory.v`. Both lists mirror the "How to run" headers.
+- **`tests/TB_Step2_Feeder.v`.** `pm_address`/`PM_MAX` widened 10 -> 13 bits
+  (`13'd3`); `pm_address == 13'd0` / `13'd1` comparisons updated for the 8192-
+  word program memory.
+- **`tests/TB_Step4_VectorProcessor.v`.** Replaced the separate `o_wm_*`/
+  `o_buf_*`/`i_wm_q`/`i_buf_q` ports with the unified `o_dm_address[23:0]`/
+  `o_dm_wren`/`o_dm_data`/`o_dm_offset[9:0]`/`i_dm_q`. Added a Data_Memory-style
+  read model (flat main memory by address, 0x1 buffer by offset, 2-cycle
+  registered read latency) and widened source/dest addresses to 24 bits. Test
+  data moved to flat addresses (ISA 0x2 -> main_mem[2], etc.); 0x1 tests drive
+  the offset port. All 14 cases preserved.
+- **`tests/TB_Step1_Programmer.v`.** DUT ports -> `o_dm_data_a`/
+  `o_dm_address_a[23:0]`/`o_dm_wren_a`/`o_dm_offset_a[9:0]`/`i_dm_q_a`. MEM
+  address sends are now 3-byte little-endian (LADD/MADD/UADD). Flat unified
+  addressing (dropped the ISA-2 weight mapping): main-memory writes land at the
+  flat address; 0x1 writes hold address 0x1 and walk the offset. Added a
+  Data_Memory shadow (main + 0x1 buffer) and reworked the write-capture into a
+  main-memory log (by flat address) and a 0x1-buffer log (by offset). 12 cases
+  preserved; `pm_address` widened to 13 bits.
+- **`tests/TB_Step8_FullSystem.v`.** Shadow now snoops the unified port
+  (`dut.dm_wren_a`/`dm_address_a`/`dm_offset_a`/`dm_data_a`) into a main-memory
+  shadow (flat) + 0x1-buffer shadow; `send_mem4` sends the 3-byte address; all
+  MEM/INPUT sends carry MADD. Flat addressing: mult results read at flat
+  addresses (rd 0x0A -> mem[10..13], rd 0x0E -> mem[14..17]) instead of the old
+  WM-phys 8..11/12..15. **Instruction builders `mk_relu`/`mk_mul_rq`/`mk_mul`
+  rewritten to the ISA v0.4 128-bit layout** (24-bit rs1[123:100], MUL
+  rs2[91:68]/rd[59:36]/M0[35:28]/n[27:20], ACT rd[99:76]/len[75:60]) — required
+  for the Controller decode, otherwise Tests 9-12 decode garbage. Compile
+  source list header updated (Weight_Memory -> Mem_Unit + Data_Memory).
+
+- **Verification: PENDING.** Deferred to the Questa PC per the machine gate.
+  Expected once `./tests/run_regression.sh` runs there: Step1 (TB_Step1_Programmer
+  12/12 and TB_Step1_DataMemory 10/10), Step2 (9/9), Step4 (14/14), Step8 (12/12),
+  plus the unchanged Step5/6/7 for regressions. A pass = every testbench prints
+  its `Results:` line with 0 FAIL and no `Test N: FAIL`. v0.4 `main.md` steps
+  left UNMARKED until that run confirms.
+- **Out-of-scope finding (surfaced, not changed): `tests/TB_Step3_Controller.v`.**
+  It still builds instructions with the pre-v0.4 16-bit ISA field layout
+  (`make_relu = {opcode, rs1[15:0], rd[15:0], len[15:0], 73'd0, 3'd0}`, 16-bit
+  addresses) while the merged `Controller.v` decodes the v0.4 24-bit-field
+  layout. Step 3 will FAIL on the Questa PC until its builders and expected
+  decode values are updated to the v0.4 layout. This testbench was not in the
+  assigned update list, so it was left untouched pending user direction.
+
 ## 2026-07-09 — v0.4 Memory Expansion: RTL (Steps 1-5) + address-width threading
 
 - **Context:** v0.4 grows data memory to 2^17 = 131072 words behind a new

@@ -157,6 +157,12 @@ run_tb 1 TB_Step1_Programmer \
   TPU/PROGRAMMER/Programmer.v \
   tests/TB_Step1_Programmer.v
 
+run_tb 1 TB_Step1_DataMemory \
+  TPU/MEMORY/0X1_BUFFER/TPU_0x1_Buffer.v \
+  TPU/MEMORY/MEM_UNIT/Mem_Unit.v \
+  TPU/MEMORY/Data_Memory.v \
+  tests/TB_Step1_DataMemory.v
+
 run_tb 2 TB_Step2_Feeder \
   TPU/PROGRAMMER/Feeder.v \
   tests/TB_Step2_Feeder.v
@@ -191,8 +197,9 @@ run_tb 8 TB_Step8_FullSystem \
   TPU/PROGRAMMER/Programmer.v \
   TPU/PROGRAMMER/Feeder.v \
   TPU/CONTROL/Controller.v \
-  TPU/MEMORY/WEIGHT_MEMORY/Weight_Memory.v \
   TPU/MEMORY/0X1_BUFFER/TPU_0x1_Buffer.v \
+  TPU/MEMORY/MEM_UNIT/Mem_Unit.v \
+  TPU/MEMORY/Data_Memory.v \
   TPU/MEMORY/VECTOR_BUFFER/Vector_Buffer.v \
   TPU/PROCESSING/Activator.v \
   TPU/PROCESSING/ALU.v \

@@ -94,14 +94,15 @@ function [127:0] make_add_instr;
 endfunction
 
 // ---------------------------------------------------------------------------
-// Behavioral Program Memory (PM_MAX=10'd3 → 4 addresses 0-3)
+// Behavioral Program Memory (PM_MAX=13'd3 → 4 addresses 0-3)
 // Using a small size for fast simulation; Feeder is parameterized to match.
+// v0.4: program memory is 8192 words, so the address bus is 13 bits wide.
 // ---------------------------------------------------------------------------
-localparam [9:0] PM_MAX = 10'd3;
+localparam [12:0] PM_MAX = 13'd3;
 
 reg [127:0] pmem [0:3]; // 4-word behavioral memory
 
-wire [9:0]  pm_address;
+wire [12:0]  pm_address;
 wire        pm_wren;    // Feeder never writes; wire present for completeness
 
 // 2-cycle registered read latency, matches the Quartus IP (registered address +
@@ -219,7 +220,7 @@ begin
     // One cycle after reset the state machine is in START with pc=0
     @(posedge clk); #1;
 
-    report_test((dut_ctrl_start == 1'b0 && pm_address == 10'd0), 1);
+    report_test((dut_ctrl_start == 1'b0 && pm_address == 13'd0), 1);
 
     // =======================================================================
     // Test 2: end at address 0 → DONE; controller_start never asserts HIGH
@@ -304,7 +305,7 @@ begin
     // Allow cycles for FETCH of address 1: WAIT_CTRL→FETCH→...
     repeat (4) @(posedge clk); #1;
 
-    report_test((pm_address == 10'd1), 5);
+    report_test((pm_address == 13'd1), 5);
 
     // =======================================================================
     // Test 6: Correct instruction content forwarded to controller
