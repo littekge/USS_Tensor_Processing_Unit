@@ -17,11 +17,13 @@ multiplier `M` (which was computed with that same `S_w`). Biases are still
 quantized and mapped so weight addresses stay stable, but their scale is
 irrelevant -- they are dropped from the instruction stream downstream.
 
-Address layout (per `Functional_TPU_ISA.md`):
-  * 0x0 is hardwired zero, 0x1 is the scratch/temporary designation.
-  * The network input is mapped to 0x1 (it is the first temporary value, and the
-    assembler reuses 0x1 for every intermediate result).
+Address layout (per `Functional_TPU_ISA.md`, v0.4):
+  * 0x0 is hardwired zero; 0x1 is the reserved network I/O designation.
+  * The network input is mapped to 0x1, and the network's final output is written
+    back to 0x1 (see `FINAL_OUTPUT_ADDRESS`) so the programmer can read it.
   * Weights and biases are laid out contiguously starting at 0x2, in `__order__`.
+  * Intermediate results live in main data memory past the weight region; the
+    assembler assigns them via `IntermediateAllocator`, reusing freed regions.
 """
 
 from __future__ import annotations
@@ -33,7 +35,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .Protocol import build_mem_block
+from .Protocol import build_mem_blocks
 
 # Per-tensor symmetric int8: values map through S so that round(v/S) lands in
 # [-127, 127]. -128 is intentionally excluded to keep the range symmetric about
@@ -48,6 +50,10 @@ REQUANT_MANTISSA_BITS = 8
 
 INPUT_LABEL = "__input__"
 INPUT_ADDRESS = 0x1
+# The network's final output is written back to the reserved I/O designation so
+# the programmer can read it. 0x1 is architecturally isolated (ISA), and by the
+# time the last op runs the input it aliases is already consumed.
+FINAL_OUTPUT_ADDRESS = 0x1
 FIRST_WEIGHT_ADDRESS = 0x2
 
 # npz metadata key prefixes written by the neural-network export
@@ -134,6 +140,67 @@ def _num_words(shape: list[int]) -> int:
     for dim in shape:
         count *= dim
     return count
+
+
+def first_free_address(weight_map: dict) -> int:
+    """First main-memory address past the contiguous weight/bias region.
+
+    Intermediate results are allocated from here upward so they never collide
+    with resident weights or biases. Falls back to `FIRST_WEIGHT_ADDRESS` when
+    the network has no mapped weights.
+    """
+    end = FIRST_WEIGHT_ADDRESS
+    for entry in weight_map.values():
+        if entry.get("kind") in ("weight", "bias"):
+            words = entry.get("num_words", _num_words(entry.get("shape", [])))
+            end = max(end, entry["address"] + words)
+    return end
+
+
+class IntermediateAllocator:
+    """Assigns main-memory addresses to intermediate tensor results.
+
+    Regions returned via `free` are reused by later `allocate` calls (simple
+    scope-based reuse -- the caller frees a value once its last consuming op has
+    run; there is no cross-branch liveness analysis yet). A fresh high-water
+    address is used only when no freed region is large enough.
+    """
+
+    def __init__(self, base_address: int) -> None:
+        assert base_address >= FIRST_WEIGHT_ADDRESS, (
+            f"Intermediate base {base_address} overlaps reserved addresses (<0x2)."
+        )
+        self._next = base_address
+        self._free: list[tuple[int, int]] = []  # (address, num_words), address-sorted
+
+    def allocate(self, num_words: int) -> int:
+        """Reserve `num_words` contiguous words; reuse a freed region if one fits."""
+        assert num_words > 0, f"Cannot allocate {num_words} words."
+        for index, (address, size) in enumerate(self._free):
+            if size >= num_words:
+                self._free.pop(index)
+                if size > num_words:
+                    self._free.append((address + num_words, size - num_words))
+                    self._merge()
+                return address
+        address = self._next
+        self._next += num_words
+        return address
+
+    def free(self, address: int, num_words: int) -> None:
+        """Return a region to the free list for reuse by later allocations."""
+        self._free.append((address, num_words))
+        self._merge()
+
+    def _merge(self) -> None:
+        self._free.sort()
+        merged: list[tuple[int, int]] = []
+        for address, size in self._free:
+            if merged and merged[-1][0] + merged[-1][1] == address:
+                merged[-1] = (merged[-1][0], merged[-1][1] + size)
+            else:
+                merged.append((address, size))
+        self._free = merged
 
 
 def _weight_scale(npz, weight_name: str) -> float:
@@ -252,5 +319,5 @@ def _write_mem(mem_path: Path, regions: list[tuple[int, bytes]]) -> None:
 
     blob = bytearray()
     for address, data in merged:
-        blob += build_mem_block(address, bytes(data))
+        blob += build_mem_blocks(address, bytes(data))
     mem_path.write_bytes(bytes(blob))

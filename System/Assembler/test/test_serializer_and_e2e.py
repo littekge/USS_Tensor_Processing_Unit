@@ -85,10 +85,14 @@ def test_full_pipeline(tmp_path):
     def _bits(value, hi, lo):
         return (value >> lo) & ((1 << (hi - lo + 1)) - 1)
 
-    # No ADD opcodes survive, and each mult carries its layer's M0/n.
+    # No ADD opcodes survive, and each mult carries its layer's M0/n (v0.4: M0 at
+    # bits 35-28, n at bits 27-20).
     assert all(_bits(instr, 127, 124) != OPCODE_ADD for instr in instructions)
-    assert (_bits(instructions[0], 59, 52), _bits(instructions[0], 51, 44)) == (192, 8)  # M=0.75
-    assert (_bits(instructions[1], 59, 52), _bits(instructions[1], 51, 44)) == (128, 8)  # M=0.5
+    assert (_bits(instructions[0], 35, 28), _bits(instructions[0], 27, 20)) == (192, 8)  # M=0.75
+    assert (_bits(instructions[1], 35, 28), _bits(instructions[1], 27, 20)) == (128, 8)  # M=0.5
+
+    # The final output (second mult's result) is pinned to the I/O address 0x1.
+    assert _bits(instructions[1], 59, 36) == 1
 
     data = out_path.read_bytes()
     assert data[0] == FLASH and data[-1] == STOP

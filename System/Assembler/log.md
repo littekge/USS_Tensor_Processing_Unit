@@ -2,6 +2,57 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-09 — v0.4: Expanded memory & address widening
+
+- Aligned the assembler with the system-wide v0.4 memory overhaul: 24-bit
+  instruction address fields, a 3-byte MEM address, and a unified data memory
+  where 0x1 is the reserved network I/O designation and all intermediates live
+  in main data memory (0x2+). Matmul partitioning (`MAX_MATMUL_SIZE`) stays
+  deferred. Verified against `Specifications/Functional_TPU_ISA.md` v0.4 and
+  `Functional_TPU_Message_Protocol.md` v0.3 (both read-only).
+- **Step 1 — `Assembler.py`:** rewrote `encode_mult`/`encode_add`/`encode_relu`
+  to the v0.4 field layout (MULT: rs1 123-100, sz11 99-96, sz12 95-92, rs2 91-68,
+  sz21 67-64, sz22 63-60, rd 59-36, M0 35-28, n 27-20; ELEM add: rs1 123-100,
+  rs2 99-76, sz1 75-68, sz2 67-60, rd 59-36; ACT relu: rs1 123-100, rd 99-76,
+  len 75-60). M0/n moved from the old 59-52/51-44 positions. Added 24-bit
+  address-field asserts; instructions remain 128 bits with reserved bits zeroed.
+- **Step 2 — `Protocol.py`:** MEM command now emits a 3-byte address
+  (LADD/MADD/UADD, LSB first) then the unchanged 16-bit length (LLEN/ULEN);
+  `ADDRESS_SPACE` widened to 2^24. Added `build_mem_blocks(address, data)` which
+  chunks tensors longer than 65535 words across consecutive MEM commands with
+  incrementing 24-bit addresses (e.g. Bigger_NN's 100000-word layer).
+- **Step 3 — `Process_Weights.py` + `Assembler.py`:** added
+  `FINAL_OUTPUT_ADDRESS = 0x1`, `first_free_address(weight_map)` (first address
+  past the contiguous weight/bias region), and an `IntermediateAllocator` (free
+  list with adjacent-region merge; simple scope reuse, no full liveness).
+  `Process_Weights._write_mem` now uses `build_mem_blocks`. `assemble_program`
+  allocates each intermediate result in main memory, reuses regions once their
+  last consuming op has run, and pins the `tpu.return` value to 0x1 for readback.
+  Weights/biases still map contiguously from 0x2.
+- **Step 4 — verification:** ran `python -m nn_assembler Tiny_NN Recent` (Tiny_NN
+  npz now carries v0.3 requant metadata, regenerated 2026-07-07); it produced a
+  framed `out/TRANSMISSION.bin`. Decode confirmed: two MULTs carry 24-bit
+  addresses with M0/n at 35-28/27-20 and reserved bits zero; `%1` intermediate
+  lands at 0xF (main memory, past the 13-word weight region), the final output
+  targets 0x1, and the single MEM command uses a 3-byte address (addr 0x2,
+  len 13).
+- Files modified: `nn_assembler/Assembler.py`, `nn_assembler/Protocol.py`,
+  `nn_assembler/Process_Weights.py`, `test/test_assembler.py`,
+  `test/test_process_weights.py`, `test/test_serializer_and_e2e.py`, `log.md`.
+  Files created: `test/test_protocol.py`.
+- Tests: 41 pytest tests pass (was 26). Added: 24-bit MULT/ADD/RELU field
+  placement incl. moved M0/n and full-24-bit addresses; assembler intermediate
+  placement in main memory, freed-region reuse, and final output at 0x1; 3-byte
+  MEM address, over-length/over-address rejection, and multi-command chunking of
+  a >65535-word tensor; `IntermediateAllocator` bump/reuse/merge and
+  `first_free_address`; 0x1 reserved for I/O with weights never on 0x0/0x1.
+- Note: run pytest with `PYTHONPATH` pointed at this tree — the shared venv's
+  editable install resolves `nn_assembler` to the main working copy, not a
+  worktree.
+- Open item: the v0.4 build plan (`### v0.4 — Expanded Memory & Address
+  Widening`) is not present in this tree's `main.md`; per section rules the plan
+  was not written and no steps were marked complete. Surfaced for user approval.
+
 ## 2026-07-06 — v0.3: Per-layer requantization & bias removal
 
 - Implemented the full v0.3 build plan (assembler side of the system-wide v0.3 quantization upgrade). Work done on branch `v0.3-assember`.
