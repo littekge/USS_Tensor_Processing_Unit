@@ -48,9 +48,9 @@
       "Write(**/CLAUDE.md)",
       "Edit(CLAUDE.md)",
       "Write(CLAUDE.md)",
-      "Read(Tests/**)",
-      "Edit(Tests/**)",
-      "Write(Tests/**)",
+      "Read(/Tests/**)",
+      "Edit(/Tests/**)",
+      "Write(/Tests/**)",
       "Bash(rm -rf:*)",
       "Bash(sudo:*)",
       "Bash(git push --force:*)",
@@ -61,5 +61,8 @@
       "Bash(git reset --hard:*)",
       "Bash(git rebase:*)"
     ]
+  },
+  "worktree": {
+    "baseRef": "head"
   }
 }
