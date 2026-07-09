@@ -80,8 +80,8 @@ wire        vector_start_a;
 wire        vector_start_b;
 wire [2:0]  vect_source_a;
 wire [2:0]  vect_dest_a;
-wire [15:0] mem_source_address_a;
-wire [15:0] mem_dest_address_a;
+wire [23:0] mem_source_address_a;
+wire [23:0] mem_dest_address_a;
 wire [15:0] length_a;
 wire [3:0]  dim0_a;
 wire [3:0]  dim1_a;
@@ -90,7 +90,7 @@ wire [7:0]  shift_a;
 wire        vector_start_b_out;
 wire [2:0]  vect_source_b;
 wire [2:0]  vect_dest_b;
-wire [15:0] mem_source_address_b;
+wire [23:0] mem_source_address_b;
 wire [15:0] length_b;
 wire [3:0]  dim0_b;
 wire [3:0]  dim1_b;
@@ -161,37 +161,41 @@ always @(posedge clk)
     if (trst === 1'b1 && systolic_array_start === 1'b1)
         sa_start_count = sa_start_count + 1;
 
-// Build a mult instruction with explicit requant parameters:
-// opcode | rs1 | sz11 | sz12 | rs2 | sz21 | sz22 | rd | M0 | n | reserved | funct3
+// Build a mult instruction with explicit requant parameters (ISA v0.4 MUL
+// format): opcode[127:124] | rs1[123:100] | sz11[99:96] | sz12[95:92] |
+// rs2[91:68] | sz21[67:64] | sz22[63:60] | rd[59:36] | M0[35:28] | n[27:20] |
+// reserved[19:0] (funct3 in bits 2:0 = 0).
 function [127:0] make_mult_rq;
-    input [15:0] rs1, rs2, rd;
+    input [23:0] rs1, rs2, rd;
     input [3:0]  sz11, sz12, sz21, sz22;
     input [7:0]  scale, shift;
     make_mult_rq = {OP_MULT, rs1, sz11, sz12, rs2, sz21, sz22, rd,
-                    scale, shift, 41'd0, 3'd0};
+                    scale, shift, 20'd0};
 endfunction
 
 // Build a mult instruction with zero requant parameters (existing tests do not
 // inspect scale/shift, so M0=n=0 keeps their behavior unchanged).
 function [127:0] make_mult;
-    input [15:0] rs1, rs2, rd;
+    input [23:0] rs1, rs2, rd;
     input [3:0]  sz11, sz12, sz21, sz22;
     make_mult = make_mult_rq(rs1, rs2, rd, sz11, sz12, sz21, sz22, 8'd0, 8'd0);
 endfunction
 
-// Build a relu instruction:
-// opcode | rs1 | rd | len | reserved | funct3
+// Build a relu instruction (ISA v0.4 ACT format):
+// opcode[127:124] | rs1[123:100] | rd[99:76] | len[75:60] | reserved[59:0].
 function [127:0] make_relu;
-    input [15:0] rs1, rd, len;
-    make_relu = {OP_RELU, rs1, rd, len, 73'd0, 3'd0};
+    input [23:0] rs1, rd;
+    input [15:0] len;
+    make_relu = {OP_RELU, rs1, rd, len, 60'd0};
 endfunction
 
-// Build an add instruction:
-// opcode | rs1 | rs2 | sz1 | sz2 | rd | reserved | funct3
+// Build an add instruction (ISA v0.4 ELEM format):
+// opcode[127:124] | rs1[123:100] | rs2[99:76] | sz1[75:68] | sz2[67:60] |
+// rd[59:36] | reserved[35:0] (funct3 in bits 2:0 = 0).
 function [127:0] make_add;
-    input [15:0] rs1, rs2, rd;
+    input [23:0] rs1, rs2, rd;
     input [7:0]  sz1, sz2;
-    make_add = {OP_ADD, rs1, rs2, sz1, sz2, rd, 57'd0, 3'd0};
+    make_add = {OP_ADD, rs1, rs2, sz1, sz2, rd, 36'd0};
 endfunction
 
 // ---------------------------------------------------------------------------
@@ -242,10 +246,10 @@ integer clear_cycles;
 integer vstart_a_seen, vstart_b_seen;
 integer sa_start_seen;
 reg [2:0] captured_vect_source_a, captured_vect_dest_a;
-reg [15:0] captured_mem_src_a, captured_mem_dst_a;
+reg [23:0] captured_mem_src_a, captured_mem_dst_a;
 reg [3:0] captured_dim0_a, captured_dim1_a;
 reg [2:0] captured_vect_source_b, captured_vect_dest_b;
-reg [15:0] captured_mem_src_b;
+reg [23:0] captured_mem_src_b;
 reg [3:0] captured_dim0_b, captured_dim1_b;
 reg [2:0] captured_vect_source_b2, captured_vect_dest_b2;
 reg [15:0] captured_length_a, captured_length_b;
@@ -277,7 +281,7 @@ begin
     // Test 2: controller_start triggers clear for exactly one cycle
     // -----------------------------------------------------------------------
     do_reset;
-    instruction = make_mult(16'h0010, 16'h0020, 16'h0030, 4'd2, 4'd3, 4'd3, 4'd4);
+    instruction = make_mult(24'h000010, 24'h000020, 24'h000030, 4'd2, 4'd3, 4'd3, 4'd4);
 
     // Pulse controller_start
     @(posedge clk); #1;
@@ -336,7 +340,7 @@ begin
     systolic_array_idle = 1'b0;
 
     instruction = make_mult(
-        16'h0010, 16'h0020, 16'h0030,
+        24'h000010, 24'h000020, 24'h000030,
         4'd2, 4'd3, 4'd3, 4'd4
     );
 
@@ -364,12 +368,12 @@ begin
     check(
         (captured_vect_source_a === VSRC_MEM)  &&
         (captured_vect_dest_a   === VDST_SA_A) &&
-        (captured_mem_src_a     === 16'h0010)  &&
+        (captured_mem_src_a     === 24'h000010)  &&
         (captured_dim0_a        === 4'd2)      &&
         (captured_dim1_a        === 4'd3)      &&
         (captured_vect_source_b === VSRC_MEM)  &&
         (captured_vect_dest_b   === VDST_SA_B) &&
-        (captured_mem_src_b     === 16'h0020)  &&
+        (captured_mem_src_b     === 24'h000020)  &&
         (captured_dim0_b        === 4'd3)      &&
         (captured_dim1_b        === 4'd4),
         4
@@ -389,7 +393,7 @@ begin
     vector_idle_b     = 1'b1; // B is idle but should NOT be started
     systolic_array_idle = 1'b1;
 
-    instruction = make_relu(16'h0050, 16'h0060, 16'd8);
+    instruction = make_relu(24'h000050, 24'h000060, 16'd8);
 
     vstart_b_seen = 0;
 
@@ -418,7 +422,7 @@ begin
         (vstart_b_seen === 0) &&
         (captured_vect_source_a === VSRC_MEM) &&
         (captured_vect_dest_a   === VDST_ACT) &&
-        (captured_mem_src_a     === 16'h0050) &&
+        (captured_mem_src_a     === 24'h000050) &&
         (captured_length_a      === 16'd8),
         5
     );
@@ -436,7 +440,7 @@ begin
     vector_idle_b     = 1'b0;
     systolic_array_idle = 1'b1;
 
-    instruction = make_add(16'h0070, 16'h0080, 16'h0090, 8'd3, 8'd4);
+    instruction = make_add(24'h000070, 24'h000080, 24'h000090, 8'd3, 8'd4);
 
     @(posedge clk); #1;
     controller_start = 1'b1;
@@ -458,11 +462,11 @@ begin
     check(
         (captured_vect_source_a  === VSRC_MEM)   &&
         (captured_vect_dest_a    === VDST_ALU_A) &&
-        (captured_mem_src_a      === 16'h0070)   &&
+        (captured_mem_src_a      === 24'h000070)   &&
         (captured_length_a       === 16'd12)     &&
         (captured_vect_source_b2 === VSRC_MEM)   &&
         (captured_vect_dest_b2   === VDST_ALU_B) &&
-        (captured_mem_src_b      === 16'h0080)   &&
+        (captured_mem_src_b      === 24'h000080)   &&
         (captured_length_b       === 16'd12),
         6
     );
@@ -482,7 +486,7 @@ begin
     vector_idle_b     = 1'b1;
     systolic_array_idle = 1'b1;
 
-    instruction = make_relu(16'h00A0, 16'h00B0, 16'd5);
+    instruction = make_relu(24'h0000A0, 24'h0000B0, 16'd5);
 
     @(posedge clk); #1;
     controller_start = 1'b1;
@@ -520,15 +524,15 @@ begin
     vector_idle_a = 1'b1; vector_idle_b = 1'b1; systolic_array_idle = 1'b1;
 
     sa_start_count = 0;
-    send_instruction(make_mult(16'h0010, 16'h0020, 16'h0030, 4'd2, 4'd2, 4'd2, 4'd2));
+    send_instruction(make_mult(24'h000010, 24'h000020, 24'h000030, 4'd2, 4'd2, 4'd2, 4'd2));
     mult_saw_sa = (sa_start_count > 0);
 
     sa_start_count = 0;
-    send_instruction(make_relu(16'h0050, 16'h0060, 16'd4));
+    send_instruction(make_relu(24'h000050, 24'h000060, 16'd4));
     relu_saw_sa = (sa_start_count > 0);
 
     sa_start_count = 0;
-    send_instruction(make_add(16'h0070, 16'h0080, 16'h0090, 8'd2, 8'd2));
+    send_instruction(make_add(24'h000070, 24'h000080, 24'h000090, 8'd2, 8'd2));
     add_saw_sa = (sa_start_count > 0);
 
     check((mult_saw_sa === 1'b1) && (relu_saw_sa === 1'b0) &&
@@ -541,7 +545,7 @@ begin
     // relu -> activator RELU
     do_reset;
     vector_idle_a = 1'b0; vector_idle_b = 1'b1; systolic_array_idle = 1'b1;
-    instruction = make_relu(16'h0050, 16'h0060, 16'd4);
+    instruction = make_relu(24'h000050, 24'h000060, 16'd4);
     @(posedge clk); #1; controller_start = 1'b1;
     @(posedge clk); #1; controller_start = 1'b0;
     @(posedge clk); #1; // CLEAR
@@ -553,7 +557,7 @@ begin
     // add -> ALU ADD
     do_reset;
     vector_idle_a = 1'b0; vector_idle_b = 1'b0; systolic_array_idle = 1'b1;
-    instruction = make_add(16'h0070, 16'h0080, 16'h0090, 8'd2, 8'd2);
+    instruction = make_add(24'h000070, 24'h000080, 24'h000090, 8'd2, 8'd2);
     @(posedge clk); #1; controller_start = 1'b1;
     @(posedge clk); #1; controller_start = 1'b0;
     @(posedge clk); #1; // CLEAR
@@ -565,7 +569,7 @@ begin
     // mult -> both NOOP
     do_reset;
     vector_idle_a = 1'b0; vector_idle_b = 1'b0; systolic_array_idle = 1'b0;
-    instruction = make_mult(16'h0010, 16'h0020, 16'h0030, 4'd2, 4'd2, 4'd2, 4'd2);
+    instruction = make_mult(24'h000010, 24'h000020, 24'h000030, 4'd2, 4'd2, 4'd2, 4'd2);
     @(posedge clk); #1; controller_start = 1'b1;
     @(posedge clk); #1; controller_start = 1'b0;
     @(posedge clk); #1; // CLEAR
@@ -587,7 +591,7 @@ begin
     // -----------------------------------------------------------------------
     do_reset;
     vector_idle_a = 1'b1; vector_idle_b = 1'b1; systolic_array_idle = 1'b1;
-    instruction = make_mult_rq(16'h0010, 16'h0020, 16'h0030,
+    instruction = make_mult_rq(24'h000010, 24'h000020, 24'h000030,
                                4'd2, 4'd2, 4'd2, 4'd2, 8'd7, 8'd5);
     wb_captured  = 1'b0;
     exec_rq_zero = 1'b1;

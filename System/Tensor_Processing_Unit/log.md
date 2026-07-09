@@ -2,6 +2,33 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-09 — v0.4 Memory Expansion: TB_Step3_Controller ISA-layout update
+
+- **Context:** follow-up to the entry below (coordinator-approved). The prior
+  session flagged `tests/TB_Step3_Controller.v` as still using the pre-v0.4
+  16-bit ISA field layout while the merged `Controller.v` decodes the v0.4
+  24-bit-field layout. Updated it to match; same mechanical treatment applied to
+  TB_Step8. Confirmed this is a pure testbench-layout mismatch, NOT an RTL bug:
+  every expected decode value in Step 3 lines up with the v0.4 field positions
+  (e.g. add `elem_length = sz1*sz2 = 12`; mult dims sz11/sz12/sz21/sz22 at
+  99-96/95-92/67-64/63-60; M0/n at 35-28/27-20), so no RTL was touched.
+- **`tests/TB_Step3_Controller.v`.** Rewrote `make_mult_rq`/`make_mult`/
+  `make_relu`/`make_add` to the ISA v0.4 128-bit layout: rs1[123:100], MUL
+  rs2[91:68]/sz11[99:96]/sz12[95:92]/sz21[67:64]/sz22[63:60]/rd[59:36]/
+  M0[35:28]/n[27:20], ELEM rs2[99:76]/sz1[75:68]/sz2[67:60]/rd[59:36], ACT
+  rd[99:76]/len[75:60]; opcode[127:124], reserved bits (incl. funct3) 0.
+  Widened the DUT address wires (`mem_source_address_a`/`mem_dest_address_a`/
+  `mem_source_address_b`) and the captured-address regs 16 -> 24 bits, and the
+  instruction/expected address literals to 24-bit. Length stays 16-bit; sz/M0/n
+  stay as-is. All 10 cases preserved.
+- **`tests/run_regression.sh`.** Step 3 block unchanged — its only RTL
+  dependency is `Controller.v` (plus the testbench), which did not change; the
+  block already matches the "How to run" header.
+- **Verification: PENDING.** No Questa on this machine. Expected on the Questa PC:
+  `TB_Step3_Controller` 10/10 (pass = `Results:` line with 0 FAIL and no
+  `Test N: FAIL`). v0.4 `main.md` steps stay UNMARKED until the full regression
+  passes there.
+
 ## 2026-07-09 — v0.4 Memory Expansion: testbenches (unblocked)
 
 - **Context:** the prior v0.4 entry left testbench work BLOCKED by a permission
@@ -53,17 +80,16 @@
 
 - **Verification: PENDING.** Deferred to the Questa PC per the machine gate.
   Expected once `./tests/run_regression.sh` runs there: Step1 (TB_Step1_Programmer
-  12/12 and TB_Step1_DataMemory 10/10), Step2 (9/9), Step4 (14/14), Step8 (12/12),
-  plus the unchanged Step5/6/7 for regressions. A pass = every testbench prints
-  its `Results:` line with 0 FAIL and no `Test N: FAIL`. v0.4 `main.md` steps
-  left UNMARKED until that run confirms.
-- **Out-of-scope finding (surfaced, not changed): `tests/TB_Step3_Controller.v`.**
-  It still builds instructions with the pre-v0.4 16-bit ISA field layout
-  (`make_relu = {opcode, rs1[15:0], rd[15:0], len[15:0], 73'd0, 3'd0}`, 16-bit
-  addresses) while the merged `Controller.v` decodes the v0.4 24-bit-field
-  layout. Step 3 will FAIL on the Questa PC until its builders and expected
-  decode values are updated to the v0.4 layout. This testbench was not in the
-  assigned update list, so it was left untouched pending user direction.
+  12/12 and TB_Step1_DataMemory 10/10), Step2 (9/9), Step3 (10/10), Step4 (14/14),
+  Step8 (12/12), plus the unchanged Step5/6/7 for regressions. A pass = every
+  testbench prints its `Results:` line with 0 FAIL and no `Test N: FAIL`. v0.4
+  `main.md` steps left UNMARKED until that run confirms.
+- **Out-of-scope finding (surfaced): `tests/TB_Step3_Controller.v`.** It still
+  builds instructions with the pre-v0.4 16-bit ISA field layout while the merged
+  `Controller.v` decodes the v0.4 24-bit-field layout, so Step 3 would FAIL on
+  the Questa PC. Not in this task's update list; left for user direction.
+  **RESOLVED** in the follow-up entry above (coordinator-approved) — builders and
+  address widths updated to the v0.4 layout.
 
 ## 2026-07-09 — v0.4 Memory Expansion: RTL (Steps 1-5) + address-width threading
 
