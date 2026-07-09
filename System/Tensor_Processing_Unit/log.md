@@ -2,6 +2,86 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-09 — v0.4 Memory Expansion: RTL (Steps 1-5) + address-width threading
+
+- **Context:** v0.4 grows data memory to 2^17 = 131072 words behind a new
+  `Data_Memory` wrapper, unifies the data address space to a flat 24-bit dual
+  port (a/b), grows program memory to 8192 words, widens ISA address fields
+  16 -> 24 bits, and adds the 3-byte MEM address (Message Protocol v0.3). RTL
+  for all five build steps is implemented; testbench work is BLOCKED (see the
+  "Verification / blocker" note below).
+
+- **`TPU/MEMORY/Data_Memory.v`** (Step 1) — implemented the user-provided
+  skeleton. Instantiates `TPU_0x1_Buffer` (buff) and two `Mem_Unit` blocks
+  (mem_a, mem_b) by name. Per-port 24-bit decode: `0x0` -> hardwired-zero read
+  and `o_write_error_*` on a write; `0x1` -> buffer addressed by `i_offset_*`;
+  `0x2..0x1FFFF` -> Mem_Unit with `address[16]` selecting block B(1)/A(0) and
+  `address[15:0]` the within-block offset; any bit above [16] -> `o_range_error_*`
+  and a 0 read. Write enables are gated by the region decode (writes to `0x0`/
+  out-of-range never reach a RAM). The output data mux selects among
+  {zero, buffer, block A, block B} using the region decode delayed by two clock
+  cycles so it aligns with the RAMs' 2-cycle registered read latency — total
+  latency stays 2 cycles.
+- **`TPU/PROCESSING/Vector_Processor.v`** (Step 3) — widened
+  `i_mem_source_address`/`i_mem_dest_address` and all internal address registers
+  to 24 bits. Replaced the separate weight-memory + 0x1-buffer port groups
+  (`o_wm_*`/`o_buf_*`/`i_wm_q`/`i_buf_q`, and the `-2` weight offset / `mem_rd_data`
+  mux) with one flat Data_Memory port (`o_dm_address[23:0]`, `o_dm_wren`,
+  `o_dm_data`, `o_dm_offset[9:0]`, `i_dm_q`). The VP now issues flat ISA
+  addresses; only the reserved 0x0 (address held at 0 so the wrapper returns 0
+  for every element) and the isolated 0x1 buffer (address held at 0x1, element
+  index carried on `o_dm_offset`) are special-cased. Flatten<->matrix ordering,
+  length/dim walking, and the dyadic requantization datapath are unchanged.
+- **`TPU/CONTROL/Controller.v`** (address-width threading, per scope note) —
+  updated all instruction field aliases to the ISA v0.4 layout and widened the
+  address outputs to 24 bits: rs1 [123:100], MUL rs2 [91:68] / rd [59:36] /
+  M0 [35:28] / n [27:20], ACT rd [99:76] / len [75:60], ELEM rs2 [99:76] /
+  sz1 [75:68] / sz2 [67:60] / rd [59:36]. No control-flow / requant changes.
+- **`TPU/PROGRAMMER/Programmer.v`** (Step 4) — widened `mem_addr` to 24 bits;
+  added the 3-byte little-endian MEM address decode (LADD/MADD/UADD via new
+  `M_MADD_*` states). Replaced the `o_wm_*`/`o_buf_*` ports with the unified
+  Data_Memory port a (`o_dm_data_a`, `o_dm_address_a[23:0]`, `o_dm_wren_a`,
+  `o_dm_offset_a[9:0]`, `i_dm_q_a`). MEM writes to the 0x1 buffer hold the flat
+  address at 0x1 and walk the offset; main-memory writes issue the flat address
+  directly (no `-2`, the wrapper owns block decode). Device/external I/O still
+  staged at 0x1. Widened the program-memory write path for the deeper memory:
+  `o_pm_address` -> [12:0], `pc` -> 14 bits, overflow at `PM_DEPTH = 8192`.
+- **`TPU/PROGRAMMER/Feeder.v`** (Step 5) — `pc` and `o_pm_address` widened to
+  13 bits; `PM_MAX_ADDRESS = 13'd8191`; FEED_ERROR/overflow now keyed to the
+  8192-word program memory. Confirmed the `Program_Memory` IP is 8192 words
+  (13-bit address).
+- **`TPU/TPU.v`** (Step 2) — replaced the direct `Weight_Memory` +
+  `TPU_0x1_Buffer` instantiations with a single `Data_Memory` instance. The
+  port-a memory MUX now routes Programmer (program LOW) / VP_A (program HIGH)
+  data/address/wren/offset into the wrapper; VP_B drives port b. Widened all
+  data-memory address nets to 24 bits, program-memory nets to 13 bits, and the
+  Controller<->VP address nets to 24 bits. The user-owned DEBUG section is
+  unchanged; because the weight memory and 0x1 buffer are now unified, the
+  removed nets it references (`wm_q_a/b`, `buf_q_a/b`) are preserved as
+  code-section aliases of `dm_q_a/b` so the debug section still elaborates.
+
+- **Verification / blocker (Verification: PENDING).** This is not the Questa PC
+  (Linux; no `vsim.exe`), so simulation is deferred per the machine gate.
+  Additionally, the section `tests/` directory is currently **inaccessible to
+  the agent**: the committed `.claude/settings.json` deny glob `Read/Edit/Write
+  (Tests/**)` — intended for the repo-root `Tests/` scratchpad — matches
+  `System/Tensor_Processing_Unit/tests/` case-insensitively, so no testbench or
+  `run_regression.sh` change could be written in place. The RTL above breaks the
+  existing testbenches (old interfaces) until they are updated. Ready-to-drop-in
+  artifacts were produced in the session scratchpad:
+  `tests_v0.4/TB_Step1_DataMemory.v` (new, 10 decode/latency cases) and
+  `tests_v0.4/run_regression.sh` (adds a `TB_Step1_DataMemory` block; fixes the
+  Step 8 source list: `WEIGHT_MEMORY/Weight_Memory.v` -> `MEM_UNIT/Mem_Unit.v`
+  + `MEMORY/Data_Memory.v`). Still to update once `tests/` is writable:
+  `TB_Step2_Feeder.v` (pc/pm_address -> 13 bits, `PM_MAX` -> `13'd3`),
+  `TB_Step4_VectorProcessor.v` (DUT ports -> `o_dm_*`/`i_dm_q`, 24-bit
+  addresses, drive `o_dm_offset` for 0x1), `TB_Step1_Programmer.v` (3-byte MEM
+  address, `o_dm_*_a`/`i_dm_q_a` ports, flat addresses instead of ISA-2),
+  `TB_Step8_FullSystem.v` (unified flat addressing — physical addr == ISA addr,
+  3-byte MEM sends, Data_Memory shadow instead of weight-memory shadow).
+  Expected once run on the Questa PC: Step1 (Programmer + DataMemory), Step2,
+  Step3, Step4, Step7, Step8 pass; v0.4 `main.md` steps left UNMARKED until then.
+
 ## 2026-07-07 — Regression runner + machine-gated test workflow
 
 - **Added `tests/run_regression.sh`** — one-command Questa regression driver.
