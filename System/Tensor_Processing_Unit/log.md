@@ -2,6 +2,27 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-09 — v0.4 Memory Expansion: full Questa regression PASS
+
+- **Ran the pending v0.4 regression** on the Questa PC (`vsim.exe` confirmed at
+  `C:\intelFPGA_lite\23.1std\questa_fse\win64\`) via `./tests/run_regression.sh`
+  — the step the prior sessions could not run (they were on non-Questa machines
+  and recorded `Verification: PENDING`).
+- **Results — all PASS, no regressions:** TB_Step1_Programmer 19/19,
+  **TB_Step1_DataMemory 10/10** (new), TB_Step2_Feeder 9/9, TB_Step3_Controller
+  10/10, TB_Step4_VectorProcessor 14/14, TB_Step5_Activator 7/7, TB_Step6_ALU
+  7/7, TB_Step7_SystolicArray 9/9, TB_Step8_FullSystem 12/12. Runner reported
+  `ALL PASS`. No compile/elaboration errors or fatals across the suite.
+- This confirms the merged v0.4 RTL (flat 24-bit dual-port `Data_Memory`
+  wrapper, unified addressing threaded through TPU/Vector_Processor/Controller/
+  Programmer/Feeder, 8192-word program memory, 3-byte MEM address) against the
+  updated testbenches. The `TB_Step1_DataMemory` decode/latency cases and the
+  flat-addressing rework in Step1_Programmer/Step4/Step8 all hold on hardware-IP
+  simulation.
+- **`main.md`:** all six v0.4 build steps (Data_Memory wrapper, TPU rewire,
+  Vector_Processor widening, Programmer 3-byte MEM, Feeder/PM depth, Regression)
+  marked ✅ Complete. v0.4 build done.
+
 ## 2026-07-09 — v0.4 Memory Expansion: TB_Step3_Controller ISA-layout update
 
 - **Context:** follow-up to the entry below (coordinator-approved). The prior

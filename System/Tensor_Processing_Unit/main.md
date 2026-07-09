@@ -394,7 +394,7 @@ logic and wiring only — no new `.v` files are created (per the architecture ru
 that address it. The compute datapath (Systolic_Array, Activator, ALU,
 Vector_Buffer) is unaffected apart from address-width changes threaded through.
 
-#### Step 1 — Data_Memory Wrapper
+#### Step 1 — Data_Memory Wrapper — ✅ Complete (2026-07-09)
 
 Implement `Data_Memory.v` (user-provided skeleton):
 
@@ -408,7 +408,7 @@ Implement `Data_Memory.v` (user-provided skeleton):
 - Add `tests/TB_Step1_DataMemory.v` covering each decode case (zero-register read,
   `0x1` routing, block A/B select, `0x0` write error, out-of-range error).
 
-#### Step 2 — TPU Top-Level Rewire
+#### Step 2 — TPU Top-Level Rewire — ✅ Complete (2026-07-09)
 
 Update `TPU.v`:
 
@@ -419,7 +419,7 @@ Update `TPU.v`:
 - Widen all data-memory address nets to 24 bits.
 - Revise `tests/TB_Step8_FullSystem.v` dependencies for the rewire.
 
-#### Step 3 — Vector_Processor Address Widening
+#### Step 3 — Vector_Processor Address Widening — ✅ Complete (2026-07-09)
 
 Update `Vector_Processor.v`:
 
@@ -430,7 +430,7 @@ Update `Vector_Processor.v`:
   ordering, length/dim walking, requantization).
 - Update `tests/TB_Step4_VectorProcessor.v` for 24-bit addressing.
 
-#### Step 4 — Programmer Address & 3-Byte MEM
+#### Step 4 — Programmer Address & 3-Byte MEM — ✅ Complete (2026-07-09)
 
 Update `Programmer.v`:
 
@@ -441,7 +441,7 @@ Update `Programmer.v`:
   `Data_Memory` wrapper (port *a*).
 - Update `tests/TB_Step1_Programmer.v` for the 3-byte address.
 
-#### Step 5 — Feeder & Program Memory Depth
+#### Step 5 — Feeder & Program Memory Depth — ✅ Complete (2026-07-09)
 
 Update `Feeder.v`:
 
@@ -450,7 +450,7 @@ Update `Feeder.v`:
 - Confirm the `Program_Memory` IP is 8192 words deep.
 - Update `tests/TB_Step2_Feeder.v`.
 
-#### Step 6 — Regression
+#### Step 6 — Regression — ✅ Complete (2026-07-09)
 
 - Update `tests/run_regression.sh` for the new/renamed testbenches.
 - Run the full regression on the Questa PC and record results in `log.md`.
