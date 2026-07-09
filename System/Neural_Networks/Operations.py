@@ -30,17 +30,7 @@ class TRAINING_PARAMS:
 def Start(model_params, training_params, trainSet=None, testSet=None, exportSet=None):
     # Set up warnings
     import warnings
-    warnings.filterwarnings(
-        action='ignore',
-        category=DeprecationWarning,
-        module=r'.*'
-    )
-    warnings.filterwarnings(
-        action='ignore',
-        category=FutureWarning,
-        module=r'.*'
-    )
-    
+    warnings.filterwarnings("ignore")
 
     # assertions
     assert isinstance(model_params, MODEL_PARAMS) # asserts that model_params is correct type
@@ -57,8 +47,8 @@ def Start(model_params, training_params, trainSet=None, testSet=None, exportSet=
     PATH = CURRENT_DIR / model_params.MODEL_NAME / str(model_params.MODEL_NAME + "_" + model_params.RUN_NAME) # setting save path
 
     if model_params.TRAIN: Train(model=model_params.MODEL, dataset=trainSet, save_file_path=PATH, params=training_params)
-    if model_params.EXPORT: Save(model=model_params.MODEL, sample_input=exportSet, save_file_path=PATH, calibration_set=testSet)
     if model_params.RUN: Run(model=model_params.MODEL, dataset=testSet, load_file_path=PATH, params=training_params)
+    if model_params.EXPORT: Save(model=model_params.MODEL, sample_input=exportSet, save_file_path=PATH, calibration_set=testSet)
     
     
 
@@ -265,7 +255,6 @@ def Save(model, sample_input, save_file_path, calibration_set):
         )
 
     np.savez(Path(str(save_file_path) + ".weights.npz"), **weight_arrays)
-    print(weight_arrays)
     print("Weights exported to .weights.npz successfully!")
 
     

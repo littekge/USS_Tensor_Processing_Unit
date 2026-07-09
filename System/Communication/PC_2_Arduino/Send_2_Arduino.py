@@ -45,7 +45,7 @@ def send_2_arduino(file_path):
     
 if __name__ == "__main__":
     CURRENT_DIR = Path(__file__).parent
-    FILE_PATH = CURRENT_DIR.parent / "Neural_Network_2_TPU_ISA" / "out" / "TRANSMISSION.bin"
+    FILE_PATH = CURRENT_DIR.parent.parent / "Assembler" / "out" / "TRANSMISSION.bin"
     assert FILE_PATH.is_file()
     send_2_arduino(FILE_PATH)
 
