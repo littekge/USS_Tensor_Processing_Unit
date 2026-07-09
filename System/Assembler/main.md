@@ -433,7 +433,7 @@ data memory. Matmul partitioning (`MAX_MATMUL_SIZE`) remains deferred to a later
 version; this scope keeps the simple allocator sufficient for the current linear
 models.
 
-#### Step 1 — 24-bit Instruction Encoding
+#### Step 1 — 24-bit Instruction Encoding — ✅ Complete (2026-07-09)
 
 Update `Assembler.py`:
 
@@ -443,7 +443,7 @@ Update `Assembler.py`:
   `Functional_TPU_ISA.md` exactly.
 - Verify emitted instructions remain 128 bits with reserved bits zeroed.
 
-#### Step 2 — 3-Byte MEM Address & Chunking
+#### Step 2 — 3-Byte MEM Address & Chunking — ✅ Complete (2026-07-09)
 
 Update `Protocol.py`:
 
@@ -452,7 +452,7 @@ Update `Protocol.py`:
   multiple MEM commands with incrementing addresses (e.g. `Bigger_NN`'s
   100000-word layer). The length field is **not** widened.
 
-#### Step 3 — Data-Memory Allocation
+#### Step 3 — Data-Memory Allocation — ✅ Complete (2026-07-09)
 
 Update weight/address mapping (`Process_Weights.py`) and the assembler
 (`Assembler.py`):
@@ -464,7 +464,7 @@ Update weight/address mapping (`Process_Weights.py`) and the assembler
   full liveness analysis yet).
 - Keep weights/biases mapped contiguously as before.
 
-#### Step 4 — End-to-End Verification
+#### Step 4 — End-to-End Verification — ✅ Complete (2026-07-09)
 
 - Run the full pipeline on `Tiny_NN`; confirm a framed `/out/TRANSMISSION.bin`.
 - Verify MUL/ADD/RELU carry 24-bit addresses, MEM blocks use 3-byte addresses,
