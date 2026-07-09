@@ -37,8 +37,8 @@ module Controller (
     output wire        o_vector_start_a,
     output reg  [2:0]  o_vect_source_a,
     output reg  [2:0]  o_vect_dest_a,
-    output reg  [15:0] o_mem_source_address_a,
-    output reg  [15:0] o_mem_dest_address_a,
+    output reg  [23:0] o_mem_source_address_a,
+    output reg  [23:0] o_mem_dest_address_a,
     output reg  [15:0] o_length_a,
     output reg  [3:0]  o_dim0_a,
     output reg  [3:0]  o_dim1_a,
@@ -52,7 +52,7 @@ module Controller (
     output wire        o_vector_start_b,
     output reg  [2:0]  o_vect_source_b,
     output reg  [2:0]  o_vect_dest_b,
-    output reg  [15:0] o_mem_source_address_b,
+    output reg  [23:0] o_mem_source_address_b,
     output reg  [15:0] o_length_b,
     output reg  [3:0]  o_dim0_b,
     output reg  [3:0]  o_dim1_b,
@@ -121,29 +121,30 @@ reg [127:0] instr_latch;
 // State machine registers
 reg [3:0] S, NS;
 
-// Combinational field aliases decoded from instr_latch (all formats share rs1)
+// Combinational field aliases decoded from instr_latch per ISA v0.4 (all
+// formats share the 24-bit rs1 field at bits 123-100).
 wire [3:0]  instr_opcode = instr_latch[127:124];
-wire [15:0] instr_rs1    = instr_latch[123:108];
+wire [23:0] instr_rs1    = instr_latch[123:100];
 
-// MUL-format field aliases
-wire [3:0]  mul_sz11 = instr_latch[107:104]; // rows of matrix 1
-wire [3:0]  mul_sz12 = instr_latch[103:100]; // cols of matrix 1
-wire [15:0] mul_rs2  = instr_latch[99:84];   // source 2 address
-wire [3:0]  mul_sz21 = instr_latch[83:80];   // rows of matrix 2
-wire [3:0]  mul_sz22 = instr_latch[79:76];   // cols of matrix 2 (= cols of output)
-wire [15:0] mul_rd   = instr_latch[75:60];   // destination address
-wire [7:0]  mul_scale = instr_latch[59:52];  // M0: dyadic requant multiplier
-wire [7:0]  mul_shift = instr_latch[51:44];  // n:  dyadic requant right-shift
+// MUL-format field aliases (v0.4)
+wire [3:0]  mul_sz11 = instr_latch[99:96];   // rows of matrix 1
+wire [3:0]  mul_sz12 = instr_latch[95:92];   // cols of matrix 1
+wire [23:0] mul_rs2  = instr_latch[91:68];   // source 2 address
+wire [3:0]  mul_sz21 = instr_latch[67:64];   // rows of matrix 2
+wire [3:0]  mul_sz22 = instr_latch[63:60];   // cols of matrix 2 (= cols of output)
+wire [23:0] mul_rd   = instr_latch[59:36];   // destination address
+wire [7:0]  mul_scale = instr_latch[35:28];  // M0: dyadic requant multiplier
+wire [7:0]  mul_shift = instr_latch[27:20];  // n:  dyadic requant right-shift
 
-// ACT-format field aliases (relu)
-wire [15:0] act_rd  = instr_latch[107:92];   // destination address
-wire [15:0] act_len = instr_latch[91:76];    // number of elements
+// ACT-format field aliases (relu, v0.4)
+wire [23:0] act_rd  = instr_latch[99:76];    // destination address
+wire [15:0] act_len = instr_latch[75:60];    // number of elements
 
-// ELEM-format field aliases (add)
-wire [15:0] elem_rs2    = instr_latch[107:92]; // source 2 address
-wire [7:0]  elem_sz1    = instr_latch[91:84];  // row count
-wire [7:0]  elem_sz2    = instr_latch[83:76];  // col count
-wire [15:0] elem_rd     = instr_latch[75:60];  // destination address
+// ELEM-format field aliases (add, v0.4)
+wire [23:0] elem_rs2    = instr_latch[99:76];  // source 2 address
+wire [7:0]  elem_sz1    = instr_latch[75:68];  // row count
+wire [7:0]  elem_sz2    = instr_latch[67:60];  // col count
+wire [23:0] elem_rd     = instr_latch[59:36];  // destination address
 // Total elements for add: sz1 * sz2 (at most 255*255 = 65025 fits in 16 bits)
 wire [15:0] elem_length = {8'd0, elem_sz1} * {8'd0, elem_sz2};
 
@@ -258,8 +259,8 @@ begin
     // Safe defaults — route nothing and address zero
     o_vect_source_a        = VSRC_MEM;
     o_vect_dest_a          = VDST_MEM;
-    o_mem_source_address_a = 16'd0;
-    o_mem_dest_address_a   = 16'd0;
+    o_mem_source_address_a = 24'd0;
+    o_mem_dest_address_a   = 24'd0;
     o_length_a             = 16'd0;
     o_dim0_a               = 4'd0;
     o_dim1_a               = 4'd0;
@@ -268,7 +269,7 @@ begin
 
     o_vect_source_b        = VSRC_MEM;
     o_vect_dest_b          = VDST_MEM;
-    o_mem_source_address_b = 16'd0;
+    o_mem_source_address_b = 24'd0;
     o_length_b             = 16'd0;
     o_dim0_b               = 4'd0;
     o_dim1_b               = 4'd0;

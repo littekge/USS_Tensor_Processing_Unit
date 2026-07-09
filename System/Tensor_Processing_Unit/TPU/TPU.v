@@ -1,13 +1,13 @@
-/* 
+/*
  * File: TPU.v
  * Author: Gabe Litteken
  * Date: 2026-06-15
- * 
+ *
  * Top-level module for the Functional TPU. Instantiates the Programmer,
- * Program_Memory, Weight_Memory, TPU_0x1_Buffer, Feeder, and Controller.
- * Defines the trst signal and implements the memory MUX. Controller clear
- * is combined with inverted trst for the vector buffer sclr. Vector_Processor,
- * ALU, Activator, and Systolic_Array connections are stubbed for steps 4-7.
+ * Program_Memory, Data_Memory (unified 0x1 buffer + 2x Mem_Unit), Feeder,
+ * Controller, both Vector_Processors, Activator, ALU, Vector_Buffer, and
+ * Systolic_Array. Defines the trst signal and implements the memory MUX.
+ * Controller clear is combined with inverted trst for the vector buffer sclr.
  */
 module TPU (
 
@@ -44,14 +44,12 @@ module TPU (
 
 // Programmer memory write outputs
 wire [127:0] prog_pm_data;
-wire [9:0]   prog_pm_address;
+wire [12:0]  prog_pm_address;
 wire         prog_pm_wren;
-wire [7:0]   prog_wm_data_a;
-wire [15:0]  prog_wm_address_a;
-wire         prog_wm_wren_a;
-wire [7:0]   prog_buf_data_a;
-wire [15:0]  prog_buf_address_a;
-wire         prog_buf_wren_a;
+wire [7:0]   prog_dm_data_a;
+wire [23:0]  prog_dm_address_a;
+wire         prog_dm_wren_a;
+wire [9:0]   prog_dm_offset_a;
 
 // program: LOW while the Programmer owns the device memory bus
 wire program;
@@ -74,25 +72,34 @@ assign trst = i_rst & prog_tpu_rst;
 // MUX-selected inputs to memories.
 // Programmer controls all ports when program=LOW.
 // Feeder controls Program_Memory when program=HIGH.
-// Vector_Processor A controls Weight_Memory and 0x1 Buffer port A when
-// program=HIGH (stub: connected in step 4).
+// Vector_Processor A controls the Data_Memory port A when program=HIGH.
 wire [127:0] pm_data;
-wire [9:0]   pm_address;
+wire [12:0]  pm_address;
 wire         pm_wren;
-wire [7:0]   wm_data_a;
-wire [15:0]  wm_address_a;
-wire         wm_wren_a;
-wire [7:0]   buf_data_a;
-wire [15:0]  buf_address_a;
-wire         buf_wren_a;
+wire [7:0]   dm_data_a;
+wire [23:0]  dm_address_a;
+wire         dm_wren_a;
+wire [9:0]   dm_offset_a;
 
 // Memory read outputs
 wire [127:0] pm_q;
-wire [7:0]   wm_q_a, wm_q_b;
-wire [7:0]   buf_q_a, buf_q_b;
+wire [7:0]   dm_q_a, dm_q_b;
+
+// Debug-compatibility aliases: prior to v0.4 the weight memory and the 0x1
+// buffer were separate; they are now unified behind Data_Memory. These aliases
+// keep the (user-owned) debug section below unchanged.
+wire [7:0]   wm_q_a  = dm_q_a;
+wire [7:0]   wm_q_b  = dm_q_b;
+wire [7:0]   buf_q_a = dm_q_a;
+wire [7:0]   buf_q_b = dm_q_b;
+
+// Data_Memory error flags (observability; the Programmer/Vector_Processor own
+// their own error handling for reserved-address writes).
+wire dm_write_error_a, dm_write_error_b;
+wire dm_range_error_a, dm_range_error_b;
 
 // Feeder program memory and controller outputs
-wire [9:0]   feeder_pm_address;
+wire [12:0]  feeder_pm_address;
 wire         feeder_pm_wren;
 wire [127:0] feeder_instruction;
 wire         feeder_controller_start;
@@ -102,12 +109,11 @@ wire         ctrl_controller_idle;
 wire         ctrl_clear;
 
 // Controller outputs — Vector_Processor_A control
-// (connected to Vector_Processor_A in build step 4)
 wire         ctrl_vector_start_a;
 wire [2:0]   ctrl_vect_source_a;
 wire [2:0]   ctrl_vect_dest_a;
-wire [15:0]  ctrl_mem_source_address_a;
-wire [15:0]  ctrl_mem_dest_address_a;
+wire [23:0]  ctrl_mem_source_address_a;
+wire [23:0]  ctrl_mem_dest_address_a;
 wire [15:0]  ctrl_length_a;
 wire [3:0]   ctrl_dim0_a;
 wire [3:0]   ctrl_dim1_a;
@@ -117,43 +123,36 @@ wire [7:0]   ctrl_scale_a;
 wire [7:0]   ctrl_shift_a;
 
 // Controller outputs — Vector_Processor_B control
-// (connected to Vector_Processor_B in build step 4)
 wire         ctrl_vector_start_b;
 wire [2:0]   ctrl_vect_source_b;
 wire [2:0]   ctrl_vect_dest_b;
-wire [15:0]  ctrl_mem_source_address_b;
+wire [23:0]  ctrl_mem_source_address_b;
 wire [15:0]  ctrl_length_b;
 wire [3:0]   ctrl_dim0_b;
 wire [3:0]   ctrl_dim1_b;
 
 // Controller outputs — Activator and ALU function selects
-// (connected in build steps 5 and 6)
 wire [2:0]   ctrl_activator_funct;
 wire [2:0]   ctrl_alu_funct;
 
 // Controller output — Systolic_Array start pulse
-// (connected in build step 7)
 wire         ctrl_systolic_array_start;
 
 // Vector buffer sclr: asserted when trst is LOW or controller clear is HIGH
 wire vb_sclr;
 assign vb_sclr = ctrl_clear | ~trst;
 
-// Vector_Processor_A outputs — memory port a
-wire [15:0]  vpa_wm_address;
-wire         vpa_wm_wren;
-wire [7:0]   vpa_wm_data;
-wire [15:0]  vpa_buf_address;
-wire         vpa_buf_wren;
-wire [7:0]   vpa_buf_data;
+// Vector_Processor_A outputs — Data_Memory port a
+wire [23:0]  vpa_dm_address;
+wire         vpa_dm_wren;
+wire [7:0]   vpa_dm_data;
+wire [9:0]   vpa_dm_offset;
 
-// Vector_Processor_B outputs — memory port b
-wire [15:0]  vpb_wm_address;
-wire         vpb_wm_wren;
-wire [7:0]   vpb_wm_data;
-wire [15:0]  vpb_buf_address;
-wire         vpb_buf_wren;
-wire [7:0]   vpb_buf_data;
+// Vector_Processor_B outputs — Data_Memory port b
+wire [23:0]  vpb_dm_address;
+wire         vpb_dm_wren;
+wire [7:0]   vpb_dm_data;
+wire [9:0]   vpb_dm_offset;
 
 // VP handshake signals
 wire         vpa_vector_idle;
@@ -205,14 +204,11 @@ assign pm_data    = (program == 1'b0) ? prog_pm_data    : 128'd0;
 assign pm_address = (program == 1'b0) ? prog_pm_address : feeder_pm_address;
 assign pm_wren    = (program == 1'b0) ? prog_pm_wren    : 1'b0;
 
-// When program=HIGH, VP_A drives weight memory and 0x1 buffer port a
-assign wm_data_a    = (program == 1'b0) ? prog_wm_data_a    : vpa_wm_data;
-assign wm_address_a = (program == 1'b0) ? prog_wm_address_a : vpa_wm_address;
-assign wm_wren_a    = (program == 1'b0) ? prog_wm_wren_a    : vpa_wm_wren;
-
-assign buf_data_a    = (program == 1'b0) ? prog_buf_data_a    : vpa_buf_data;
-assign buf_address_a = (program == 1'b0) ? prog_buf_address_a : vpa_buf_address;
-assign buf_wren_a    = (program == 1'b0) ? prog_buf_wren_a    : vpa_buf_wren;
+// When program=HIGH, VP_A drives the Data_Memory port a
+assign dm_data_a    = (program == 1'b0) ? prog_dm_data_a    : vpa_dm_data;
+assign dm_address_a = (program == 1'b0) ? prog_dm_address_a : vpa_dm_address;
+assign dm_wren_a    = (program == 1'b0) ? prog_dm_wren_a    : vpa_dm_wren;
+assign dm_offset_a  = (program == 1'b0) ? prog_dm_offset_a  : vpa_dm_offset;
 
 Programmer prog (
     .i_clk              (i_clk),
@@ -227,13 +223,11 @@ Programmer prog (
     .o_pm_data          (prog_pm_data),
     .o_pm_address       (prog_pm_address),
     .o_pm_wren          (prog_pm_wren),
-    .o_wm_data_a        (prog_wm_data_a),
-    .o_wm_address_a     (prog_wm_address_a),
-    .o_wm_wren_a        (prog_wm_wren_a),
-    .o_buf_data_a       (prog_buf_data_a),
-    .o_buf_address_a    (prog_buf_address_a),
-    .o_buf_wren_a       (prog_buf_wren_a),
-    .i_buf_q_a          (buf_q_a),
+    .o_dm_data_a        (prog_dm_data_a),
+    .o_dm_address_a     (prog_dm_address_a),
+    .o_dm_wren_a        (prog_dm_wren_a),
+    .o_dm_offset_a      (prog_dm_offset_a),
+    .i_dm_q_a           (dm_q_a),
     .o_program          (program),
     .o_tpu_rst          (prog_tpu_rst),
     .i_SPI_Clk          (i_SPI_Clk),
@@ -250,28 +244,22 @@ Program_Memory pm (
     .q      (pm_q)
 );
 
-Weight_Memory wm (
-    .clock    (i_clk),
-    .data_a   (wm_data_a),
-    .address_a(wm_address_a),
-    .wren_a   (wm_wren_a),
-    .data_b   (vpb_wm_data),
-    .address_b(vpb_wm_address),
-    .wren_b   (vpb_wm_wren),
-    .q_a      (wm_q_a),
-    .q_b      (wm_q_b)
-);
-
-TPU_0x1_Buffer buff (
-    .clock    (i_clk),
-    .data_a   (buf_data_a),
-    .address_a(buf_address_a),
-    .wren_a   (buf_wren_a),
-    .data_b   (vpb_buf_data),
-    .address_b(vpb_buf_address),
-    .wren_b   (vpb_buf_wren),
-    .q_a      (buf_q_a),
-    .q_b      (buf_q_b)
+Data_Memory dm (
+    .i_clk           (i_clk),
+    .i_data_a        (dm_data_a),
+    .i_address_a     (dm_address_a),
+    .i_wren_a        (dm_wren_a),
+    .i_offset_a      (dm_offset_a),
+    .o_q_a           (dm_q_a),
+    .i_data_b        (vpb_dm_data),
+    .i_address_b     (vpb_dm_address),
+    .i_wren_b        (vpb_dm_wren),
+    .i_offset_b      (vpb_dm_offset),
+    .o_q_b           (dm_q_b),
+    .o_write_error_a (dm_write_error_a),
+    .o_write_error_b (dm_write_error_b),
+    .o_range_error_a (dm_range_error_a),
+    .o_range_error_b (dm_range_error_b)
 );
 
 Feeder feeder (
@@ -333,14 +321,11 @@ Vector_Processor vp_a (
     .i_shift               (ctrl_shift_a),
     .o_vector_idle         (vpa_vector_idle),
     .o_element_valid       (vpa_element_valid),
-    .o_wm_address          (vpa_wm_address),
-    .o_wm_wren             (vpa_wm_wren),
-    .o_wm_data             (vpa_wm_data),
-    .i_wm_q                (wm_q_a),
-    .o_buf_address         (vpa_buf_address),
-    .o_buf_wren            (vpa_buf_wren),
-    .o_buf_data            (vpa_buf_data),
-    .i_buf_q               (buf_q_a),
+    .o_dm_address          (vpa_dm_address),
+    .o_dm_wren             (vpa_dm_wren),
+    .o_dm_data             (vpa_dm_data),
+    .o_dm_offset           (vpa_dm_offset),
+    .i_dm_q                (dm_q_a),
     .o_vb_rdreq            (vpa_vb_rdreq),
     .i_vb_q                (vb_q),
     .o_data                (vpa_data),
@@ -360,7 +345,7 @@ Vector_Processor vp_b (
     .i_vect_source         (ctrl_vect_source_b),
     .i_vect_dest           (ctrl_vect_dest_b),
     .i_mem_source_address  (ctrl_mem_source_address_b),
-    .i_mem_dest_address    (16'd0),     // VP_B never writes to memory in current ISA
+    .i_mem_dest_address    (24'd0),     // VP_B never writes to memory in current ISA
     .i_length              (ctrl_length_b),
     .i_dim0                (ctrl_dim0_b),
     .i_dim1                (ctrl_dim1_b),
@@ -368,14 +353,11 @@ Vector_Processor vp_b (
     .i_shift               (8'd0),
     .o_vector_idle         (vpb_vector_idle),
     .o_element_valid       (vpb_element_valid),
-    .o_wm_address          (vpb_wm_address),
-    .o_wm_wren             (vpb_wm_wren),
-    .o_wm_data             (vpb_wm_data),
-    .i_wm_q                (wm_q_b),
-    .o_buf_address         (vpb_buf_address),
-    .o_buf_wren            (vpb_buf_wren),
-    .o_buf_data            (vpb_buf_data),
-    .i_buf_q               (buf_q_b),
+    .o_dm_address          (vpb_dm_address),
+    .o_dm_wren             (vpb_dm_wren),
+    .o_dm_data             (vpb_dm_data),
+    .o_dm_offset           (vpb_dm_offset),
+    .i_dm_q                (dm_q_b),
     .o_vb_rdreq            (),          // VP_B never reads vector buffer
     .i_vb_q                (8'd0),
     .o_data                (vpb_data),
@@ -416,7 +398,7 @@ ALU alu (
 	.i_enable(alu_enable),
 	.i_clear(ctrl_clear),
 	.o_write(alu_write),
-	.i_alu_op(ctrl_alu_funct), 
+	.i_alu_op(ctrl_alu_funct),
 	.i_data_a(vpa_data),
 	.i_data_b(vpb_data),
 	.o_data(alu_data)

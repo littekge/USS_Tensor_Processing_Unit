@@ -18,7 +18,7 @@ module Feeder (
 
     // Program Memory read interface
     input  [127:0]     i_pm_q,
-    output reg [9:0]   o_pm_address,
+    output reg [12:0]  o_pm_address,
     output wire        o_pm_wren,
 
     // Controller interface
@@ -37,7 +37,8 @@ module Feeder (
 );
 
 // ---------- PARAMETERS ---------- //
-parameter [9:0] PM_MAX_ADDRESS = 10'd1023;
+// Program_Memory is 8192 words deep (v0.4), so the last valid address is 8191.
+parameter [12:0] PM_MAX_ADDRESS = 13'd8191;
 
 parameter [3:0]
     STATE_ERROR = 4'd0,
@@ -64,7 +65,7 @@ parameter [3:0] END_OPCODE = 4'b0000;
 assign o_pm_wren = 1'b0;
 
 // Program counter
-reg [9:0] pc;
+reg [12:0] pc;
 
 // State machine registers
 reg [3:0] S, NS;
@@ -124,8 +125,8 @@ always @ (posedge i_clk or negedge i_trst)
 begin
     if (i_trst == 1'b0)
     begin
-        pc                 <= 10'd0;
-        o_pm_address       <= 10'd0;
+        pc                 <= 13'd0;
+        o_pm_address       <= 13'd0;
         o_instruction      <= 128'd0;
         o_controller_start <= 1'b0;
         o_end_reached      <= 1'b0;
@@ -169,7 +170,7 @@ begin
                 // Increment pc when controller acknowledges, guard against overflow
                 if (i_controller_idle == 1'b1 && pc != PM_MAX_ADDRESS)
                 begin
-                    pc <= pc + 10'd1;
+                    pc <= pc + 13'd1;
                 end
             end
             default:;

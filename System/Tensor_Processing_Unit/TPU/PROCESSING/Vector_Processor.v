@@ -5,13 +5,17 @@
  *
  * Handles memory accesses, data routing to and from the Activator, ALU, and
  * Systolic Array, and ISA-compliant formatting of data. Two instances are
- * used by the TPU: instance A (port a of memories, top SA buffers, Activator,
- * ALU input A, SA output read) and instance B (port b of memories, left SA
- * buffers, ALU input B).
+ * used by the TPU: instance A (port a of the Data_Memory, top SA buffers,
+ * Activator, ALU input A, SA output read) and instance B (port b of the
+ * Data_Memory, left SA buffers, ALU input B).
  *
- * Memory abstraction: ISA address 0x0 maps to a hardwired-zero source,
- * 0x1 maps to TPU_0x1_Buffer (internal offset starting at 0), and
- * addresses >= 0x2 map to Weight_Memory at (ISA_addr - 2).
+ * Memory model (v0.4): the Vector_Processor issues flat 24-bit ISA addresses
+ * to the Data_Memory wrapper, which owns all physical-memory selection
+ * (0x0 zero register, 0x1 buffer, block A/B decode, out-of-range detection).
+ * The only remaining special case here is the architecturally isolated 0x1
+ * buffer: a tensor at 0x1 occupies buffer offsets 0,1,2,..., so accesses to
+ * 0x1 hold the flat address at 0x1 and walk the buffer via o_dm_offset. For
+ * all other addresses the flat address itself walks and the offset is unused.
  *
  * SA loading convention (for C = rs1 * rs2, rs1 M x K, rs2 K x N):
  *   VP_A (VDST_SA_A): loads rows of rs1 into top SA input buffers
@@ -37,8 +41,8 @@ module Vector_Processor (
     // Controller combinational control inputs
     input  [2:0]       i_vect_source,
     input  [2:0]       i_vect_dest,
-    input  [15:0]      i_mem_source_address,
-    input  [15:0]      i_mem_dest_address,
+    input  [23:0]      i_mem_source_address,
+    input  [23:0]      i_mem_dest_address,
     input  [15:0]      i_length,
     input  [3:0]       i_dim0,
     input  [3:0]       i_dim1,
@@ -55,17 +59,12 @@ module Vector_Processor (
     output wire        o_vector_idle,
     output reg         o_element_valid,
 
-    // Weight Memory port interface
-    output reg  [15:0] o_wm_address,
-    output reg         o_wm_wren,
-    output reg  [7:0]  o_wm_data,
-    input       [7:0]  i_wm_q,
-
-    // TPU_0x1_Buffer port interface
-    output reg  [15:0] o_buf_address,
-    output reg         o_buf_wren,
-    output reg  [7:0]  o_buf_data,
-    input       [7:0]  i_buf_q,
+    // Data Memory port interface (flat 24-bit unified address space)
+    output reg  [23:0] o_dm_address,
+    output reg         o_dm_wren,
+    output reg  [7:0]  o_dm_data,
+    output reg  [9:0]  o_dm_offset,   // 0x1 buffer internal offset
+    input       [7:0]  i_dm_q,
 
     // Vector buffer interface (read only — writes come from Activator and ALU)
     output reg         o_vb_rdreq,
@@ -136,8 +135,8 @@ reg [3:0] S, NS;
 // Latched control signals (stable throughout an operation)
 reg [2:0]  vect_source_lat;
 reg [2:0]  vect_dest_lat;
-reg [15:0] mem_source_lat;   // ISA source base address
-reg [15:0] mem_dest_lat;     // ISA dest base address
+reg [23:0] mem_source_lat;   // ISA source base address (flat, 24-bit)
+reg [23:0] mem_dest_lat;     // ISA dest base address (flat, 24-bit)
 reg [15:0] length_lat;       // element count for length-based operations
 reg [3:0]  dim0_lat;         // rows (SA ops) or outer dimension
 reg [3:0]  dim1_lat;         // cols (SA ops) or inner dimension
@@ -153,48 +152,35 @@ reg [3:0]  col_cnt;    // column index for SA operations
 // VDST_SA_B uses a stride: ISA_offset = row_cnt*dim1_lat + col_cnt.
 // All other VSRC_MEM operations use a flat sequential offset.
 wire [7:0]  sa_b_stride;   // zero-extended multiply to avoid 4-bit truncation
-wire [15:0] cur_rd_isa;
+wire [23:0] cur_rd_isa;
 assign sa_b_stride  = {4'd0, row_cnt} * {4'd0, dim1_lat};
 assign cur_rd_isa   = (vect_dest_lat == VDST_SA_B)
-                    ? (mem_source_lat + {8'd0, sa_b_stride} + {12'd0, col_cnt})
-                    : (mem_source_lat + elem_cnt);
+                    ? (mem_source_lat + {16'd0, sa_b_stride} + {20'd0, col_cnt})
+                    : (mem_source_lat + {8'd0, elem_cnt});
 
 // ISA dest address for current write element (always sequential)
-wire [15:0] cur_wr_isa;
-assign cur_wr_isa = mem_dest_lat + elem_cnt;
+wire [23:0] cur_wr_isa;
+assign cur_wr_isa = mem_dest_lat + {8'd0, elem_cnt};
 
-// Source type decode (based on latched base address)
-wire src_is_zero = (mem_source_lat == 16'h0000);
-wire src_is_buf  = (mem_source_lat == 16'h0001);
+// Source / destination type decode. Two cases need special handling here: the
+// hardwired-zero register at 0x0 (the flat address is held at 0x0 for every
+// element so the Data_Memory wrapper returns 0 for the whole vector) and the
+// isolated 0x1 buffer (flat address held at 0x1, element index carried on the
+// offset). For every other flat address the Data_Memory wrapper owns block A/B
+// decode, so this VP simply issues the walking flat ISA address.
+wire src_is_zero = (mem_source_lat == 24'd0);
+wire src_is_buf  = (mem_source_lat == 24'd1);
+wire dst_is_buf  = (mem_dest_lat   == 24'd1);
+wire dst_is_zero = (mem_dest_lat   == 24'd0);
 
-// Destination type decode
-wire dst_is_zero = (mem_dest_lat == 16'h0000);
-wire dst_is_buf  = (mem_dest_lat == 16'h0001);
-
-// Internal memory addresses (subtract the ISA base and reserved offsets).
-// For 0x1 Buffer, the internal offset is the element index within the buffer:
-//   buf_rd/wr_addr = cur_rd/wr_isa - mem_source/dest_lat = elem_cnt (linear)
-// For Weight_Memory, the internal address is the ISA address minus 2 (reserved).
-wire [15:0] wm_rd_addr;
-wire [15:0] wm_wr_addr;
-wire [15:0] buf_rd_addr;
-wire [15:0] buf_wr_addr;
-assign wm_rd_addr  = cur_rd_isa - 16'd2;
-assign wm_wr_addr  = cur_wr_isa - 16'd2;
-assign buf_rd_addr = cur_rd_isa - mem_source_lat;
-assign buf_wr_addr = cur_wr_isa - mem_dest_lat;
-
-// Muxed data read from memory based on source type
-reg [7:0] mem_rd_data; // registered on posedge after MEM_WAIT
-always @(*)
-begin
-    if (src_is_zero)
-        mem_rd_data = 8'd0;
-    else if (src_is_buf)
-        mem_rd_data = i_buf_q;
-    else
-        mem_rd_data = i_wm_q;
-end
+// Effective flat address and 0x1-buffer offset for the current read / write.
+wire [23:0] rd_buf_off = cur_rd_isa - mem_source_lat;
+wire [23:0] wr_buf_off = cur_wr_isa - mem_dest_lat;
+wire [23:0] rd_addr    = src_is_zero ? 24'd0 :
+                         src_is_buf  ? 24'd1 : cur_rd_isa;
+wire [9:0]  rd_offset  = src_is_buf ? rd_buf_off[9:0] : 10'd0;
+wire [23:0] wr_addr    = dst_is_buf ? 24'd1 : cur_wr_isa;
+wire [9:0]  wr_offset  = dst_is_buf ? wr_buf_off[9:0] : 10'd0;
 
 // Per-layer dyadic requantization of the 32-bit MAC accumulator to a signed
 // 8-bit value: result = clamp((scale * x + (1 << (shift - 1))) >> shift).
@@ -266,9 +252,9 @@ begin
             // zero value there is legal (the Controller leaves it at 0).
             NS = (vect_dest_lat == VDST_MEM && dst_is_zero) ? MEM_ERROR : MEM_WAIT;
         MEM_WAIT:
-            // Weight_Memory / 0x1 Buffer (registered address + registered
-            // output) have a two-cycle read latency, so a second wait state is
-            // required before the RAM output is valid on i_wm_q / i_buf_q.
+            // The Data_Memory wrapper (registered address + registered output)
+            // has a two-cycle read latency, so a second wait state is required
+            // before the read data is valid on i_dm_q.
             NS = MEM_WAIT2;
         MEM_WAIT2:
             NS = MEM_FORWARD;
@@ -314,8 +300,8 @@ begin
     begin
         vect_source_lat  <= 3'd0;
         vect_dest_lat    <= 3'd0;
-        mem_source_lat   <= 16'd0;
-        mem_dest_lat     <= 16'd0;
+        mem_source_lat   <= 24'd0;
+        mem_dest_lat     <= 24'd0;
         length_lat       <= 16'd0;
         dim0_lat         <= 4'd0;
         dim1_lat         <= 4'd0;
@@ -324,12 +310,10 @@ begin
         elem_cnt         <= 16'd0;
         row_cnt          <= 4'd0;
         col_cnt          <= 4'd0;
-        o_wm_address     <= 16'd0;
-        o_wm_wren        <= 1'b0;
-        o_wm_data        <= 8'd0;
-        o_buf_address    <= 16'd0;
-        o_buf_wren       <= 1'b0;
-        o_buf_data       <= 8'd0;
+        o_dm_address     <= 24'd0;
+        o_dm_wren        <= 1'b0;
+        o_dm_data        <= 8'd0;
+        o_dm_offset      <= 10'd0;
         o_vb_rdreq       <= 1'b0;
         o_data           <= 8'd0;
         o_sa_top_data    <= 8'd0;
@@ -343,8 +327,7 @@ begin
     else
     begin
         // Default: deassert all one-cycle signals
-        o_wm_wren       <= 1'b0;
-        o_buf_wren      <= 1'b0;
+        o_dm_wren       <= 1'b0;
         o_vb_rdreq      <= 1'b0;
         o_sa_top_wrreq  <= 8'd0;
         o_sa_left_wrreq <= 8'd0;
@@ -374,39 +357,33 @@ begin
 
             MEM_ADDR:
             begin
-                // Drive the correct memory read address for the current element.
-                // The mux on cur_rd_isa_addr handles SA_B stride vs linear.
-                if (src_is_buf)
-                begin
-                    o_buf_address <= buf_rd_addr;
-                end
-                else if (!src_is_zero)
-                begin
-                    o_wm_address <= wm_rd_addr;
-                end
-                // Zero source: no address needed, mem_rd_data returns 0 combinationally
+                // Drive the flat read address (and 0x1-buffer offset) for the
+                // current element. The Data_Memory wrapper returns 0 for a 0x0
+                // source, so no explicit zero-source handling is needed here.
+                o_dm_address <= rd_addr;
+                o_dm_offset  <= rd_offset;
             end
 
             MEM_WAIT:;  // RAM read latency cycle 1; hold address
-            MEM_WAIT2:; // RAM read latency cycle 2; i_wm_q/i_buf_q valid next cycle
+            MEM_WAIT2:; // RAM read latency cycle 2; i_dm_q valid next cycle
 
             MEM_FORWARD:
             begin
-                // mem_rd_data is now valid. Route to destination.
+                // i_dm_q is now valid. Route to destination.
                 case (vect_dest_lat)
                     VDST_ACT, VDST_ALU_A, VDST_ALU_B:
                     begin
                         // Both o_data and o_element_valid are registered (NBA).
                         // Setting o_element_valid here means it is HIGH on the
                         // NEXT cycle, which is exactly when o_data is also valid.
-                        o_data          <= mem_rd_data;
+                        o_data          <= i_dm_q;
                         o_element_valid <= 1'b1;
                     end
 
                     VDST_SA_A:
                     begin
                         // Push data to top SA input buffer for current row
-                        o_sa_top_data          <= mem_rd_data;
+                        o_sa_top_data          <= i_dm_q;
                         o_sa_top_wrreq         <= (8'd1 << row_cnt);
 
                         // Advance col counter; when a row is complete advance row
@@ -426,7 +403,7 @@ begin
                     VDST_SA_B:
                     begin
                         // Push data to left SA input buffer for current column
-                        o_sa_left_data          <= mem_rd_data;
+                        o_sa_left_data          <= i_dm_q;
                         o_sa_left_wrreq         <= (8'd1 << col_cnt);
 
                         // Advance row counter; when column is complete advance col
@@ -462,21 +439,13 @@ begin
 
             VB_WRITE:
             begin
-                // Write the FIFO output to destination memory
-                if (dst_is_buf)
-                begin
-                    o_buf_address <= buf_wr_addr;
-                    o_buf_data    <= i_vb_q;
-                    o_buf_wren    <= 1'b1;
-                end
-                else
-                begin
-                    // Destination >= 0x2: Weight_Memory
-                    o_wm_address <= wm_wr_addr;
-                    o_wm_data    <= i_vb_q;
-                    o_wm_wren    <= 1'b1;
-                end
-                elem_cnt <= elem_cnt + 16'd1;
+                // Write the FIFO output to destination memory (flat address;
+                // 0x1-buffer element index carried on o_dm_offset).
+                o_dm_address <= wr_addr;
+                o_dm_offset  <= wr_offset;
+                o_dm_data    <= i_vb_q;
+                o_dm_wren    <= 1'b1;
+                elem_cnt     <= elem_cnt + 16'd1;
             end
 
             SA_OUT_SEL:
@@ -490,18 +459,10 @@ begin
             SA_OUT_WRITE:
             begin
                 // Write requantized MAC value to destination memory
-                if (dst_is_buf)
-                begin
-                    o_buf_address <= buf_wr_addr;
-                    o_buf_data    <= sa_c_quantized;
-                    o_buf_wren    <= 1'b1;
-                end
-                else
-                begin
-                    o_wm_address <= wm_wr_addr;
-                    o_wm_data    <= sa_c_quantized;
-                    o_wm_wren    <= 1'b1;
-                end
+                o_dm_address <= wr_addr;
+                o_dm_offset  <= wr_offset;
+                o_dm_data    <= sa_c_quantized;
+                o_dm_wren    <= 1'b1;
 
                 // Advance col counter; when all cols done advance row
                 col_cnt <= col_cnt + 4'd1;

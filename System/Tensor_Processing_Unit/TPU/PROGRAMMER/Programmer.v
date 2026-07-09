@@ -4,19 +4,26 @@
  * Date: 2026-06-30
  *
  * Central controller for all device IO. Decodes the Functional TPU Message
- * Protocol (v0.2) from the SPI input buffer and also exposes device-level
+ * Protocol (v0.3) from the SPI input buffer and also exposes device-level
  * input/output. The FSM is organized into six meta-states:
  *
  *   IDLE            - await an SPI header, a device input, or program end.
  *   PROGRAM         - FLASH header: overwrite program memory and write
  *                     weights/inputs to device memory (MEM/PROGRAM commands).
- *   DEVICE_INPUT    - device mode: latch i_input_data into 0x1 buffer addr 0.
+ *   DEVICE_INPUT    - device mode: latch i_input_data into the 0x1 buffer.
  *   DEVICE_OUTPUT   - device mode: emit the first 0x1-buffer value on end.
  *   EXTERNAL_INPUT  - external mode: INPUT header writes a new input to memory
  *                     (unified address routing; PROGRAM command invalid).
  *   EXTERNAL_OUTPUT - external mode: emit the first 10 0x1-buffer values on end.
  *                     For each value the module forwards the datum, waits for
  *                     i_device_ready HIGH, then pulses output_data_valid.
+ *
+ * Memory writes go through the unified Data_Memory wrapper on port a. The MEM
+ * command carries a 3-byte little-endian address (LADD/MADD/UADD -> 24 bits)
+ * per Message Protocol v0.3 followed by a 16-bit length. Data is written to
+ * consecutive flat addresses starting from that 24-bit address; a MEM targeting
+ * the isolated 0x1 buffer holds the flat address at 0x1 and walks the buffer
+ * via the offset port.
  *
  * o_program (active LOW) hands the device memory bus to the Programmer.
  * o_tpu_rst (active LOW) holds the TPU processing internals in reset while
@@ -41,19 +48,15 @@ module Programmer (
 
     // Program Memory write interface
     output reg [127:0] o_pm_data,
-    output reg [9:0]   o_pm_address,
+    output reg [12:0]  o_pm_address,
     output reg         o_pm_wren,
 
-    // Weight Memory port a write interface
-    output reg [7:0]   o_wm_data_a,
-    output reg [15:0]  o_wm_address_a,
-    output reg         o_wm_wren_a,
-
-    // 0x1 Buffer port a write/read interface
-    output reg [7:0]   o_buf_data_a,
-    output reg [15:0]  o_buf_address_a,
-    output reg         o_buf_wren_a,
-    input      [7:0]   i_buf_q_a,           // 0x1 buffer read data (port a)
+    // Data Memory port a write/read interface (unified flat address space)
+    output reg [7:0]   o_dm_data_a,
+    output reg [23:0]  o_dm_address_a,
+    output reg         o_dm_wren_a,
+    output reg [9:0]   o_dm_offset_a,       // 0x1 buffer internal offset
+    input      [7:0]   i_dm_q_a,            // Data_Memory read data (port a)
 
     // Programming / reset indicators
     output reg         o_program,           // LOW: Programmer owns device memory bus
@@ -73,7 +76,7 @@ module Programmer (
 );
 
 // ---------- PARAMETERS ---------- //
-// Functional TPU Message Protocol v0.2 function codes (single-byte ASCII).
+// Functional TPU Message Protocol v0.3 function codes (single-byte ASCII).
 parameter [7:0]
     FLASH_CODE = 8'h55,  // 'U' header: program the entire peripheral
     INPUT_CODE = 8'h49,  // 'I' header: write a new input
@@ -88,6 +91,9 @@ parameter integer BUFFER_LATENCY = 1;
 
 // Number of output values emitted in external mode.
 parameter integer EXT_OUTPUT_COUNT = 10;
+
+// Program memory depth (words). pc overflows when it reaches this count.
+parameter [13:0] PM_DEPTH = 14'd8192;
 
 parameter [5:0]
     START_STATE         = 6'd0,
@@ -153,7 +159,12 @@ parameter [5:0]
     STATE_ERROR         = 6'd52,
     COM_ERROR           = 6'd53,
     WRITE_ERROR         = 6'd54,
-    PROG_OVERFLOW_ERROR = 6'd55;
+    PROG_OVERFLOW_ERROR = 6'd55,
+    // MEM middle-address byte read (v0.3 3-byte address)
+    M_MADD_IDLE         = 6'd56,
+    M_MADD_POP          = 6'd57,
+    M_MADD_WAIT         = 6'd58,
+    M_MADD_EXEC         = 6'd59;
 // ---------- END PARAMETERS ---------- //
 
 // ---------- CODE ---------- //
@@ -177,15 +188,19 @@ SPI_Interface spi_if (
 
 reg [5:0] S, NS;
 
-reg [15:0]  mem_addr;    // current 16-bit ISA write address
+reg [23:0]  mem_addr;    // current 24-bit flat ISA write address
 reg [15:0]  mem_len;     // remaining bytes to write in MEM sequence
-reg         mem_target;  // 0 = Weight_Memory, 1 = 0x1 Buffer
+reg         mem_target;  // 0 = main data memory, 1 = 0x1 buffer
 reg [7:0]   data_byte;   // latched data byte for MEM writes
 reg [127:0] instr_reg;   // instruction accumulator for PROGRAM writes
 reg [3:0]   byte_count;  // byte index within a PROGRAM instruction (0-15)
-reg [10:0]  pc;          // program-memory write pointer (11 bits to detect overflow)
+reg [13:0]  pc;          // program-memory write pointer (14 bits to detect overflow)
 reg [31:0]  wait_count;  // cycles spent in current SPI WAIT state
 reg         session_type;// 0 = FLASH/PROGRAM session, 1 = INPUT/EXTERNAL_INPUT session
+
+// 0x1-buffer internal offset for the current MEM write (flat address held at
+// 0x1 while the offset walks the isolated buffer).
+wire [23:0] buf_off = mem_addr - 24'd1;
 
 // Latched device-input request: i_input_data_valid is a one-cycle pulse, so it
 // is captured here (with its data) and serviced when the FSM returns to IDLE.
@@ -234,16 +249,22 @@ always @(*) begin
                          (spi_q == PROG_CODE) ?
                              // PROGRAM is only valid inside a FLASH session
                              ((session_type == 1'b0) ?
-                                 ((pc >= 11'd1024) ? PROG_OVERFLOW_ERROR : P_BYTE_IDLE) :
+                                 ((pc >= PM_DEPTH) ? PROG_OVERFLOW_ERROR : P_BYTE_IDLE) :
                                  COM_ERROR) :
                          (spi_q == STOP_CODE) ? IDLE_CHECK :
                          COM_ERROR;
 
         // ----- MEM command --------------------------------------------------
+        // v0.3 address is 3 bytes little-endian: LADD, MADD, UADD.
         M_LADD_IDLE: NS = (spi_empty == 1'b0) ? M_LADD_POP : M_LADD_IDLE;
         M_LADD_POP:  NS = M_LADD_WAIT;
         M_LADD_WAIT: NS = (wait_count >= BUFFER_LATENCY - 1) ? M_LADD_EXEC : M_LADD_WAIT;
-        M_LADD_EXEC: NS = M_UADD_IDLE;
+        M_LADD_EXEC: NS = M_MADD_IDLE;
+
+        M_MADD_IDLE: NS = (spi_empty == 1'b0) ? M_MADD_POP : M_MADD_IDLE;
+        M_MADD_POP:  NS = M_MADD_WAIT;
+        M_MADD_WAIT: NS = (wait_count >= BUFFER_LATENCY - 1) ? M_MADD_EXEC : M_MADD_WAIT;
+        M_MADD_EXEC: NS = M_UADD_IDLE;
 
         M_UADD_IDLE: NS = (spi_empty == 1'b0) ? M_UADD_POP : M_UADD_IDLE;
         M_UADD_POP:  NS = M_UADD_WAIT;
@@ -258,7 +279,7 @@ always @(*) begin
         M_ULEN_IDLE: NS = (spi_empty == 1'b0) ? M_ULEN_POP : M_ULEN_IDLE;
         M_ULEN_POP:  NS = M_ULEN_WAIT;
         M_ULEN_WAIT: NS = (wait_count >= BUFFER_LATENCY - 1) ? M_ULEN_EXEC : M_ULEN_WAIT;
-        M_ULEN_EXEC: NS = (mem_addr == 16'd0)             ? WRITE_ERROR :
+        M_ULEN_EXEC: NS = (mem_addr == 24'd0)             ? WRITE_ERROR :
                          ({spi_q, mem_len[7:0]} == 16'd0) ? FC_IDLE     :
                          M_DATA_IDLE;
 
@@ -313,25 +334,23 @@ always @(posedge i_clk or negedge i_rst) begin
     if (i_rst == 1'b0) begin
         spi_rdreq           <= 1'b0;
         o_pm_data           <= 128'd0;
-        o_pm_address        <= 10'd0;
+        o_pm_address        <= 13'd0;
         o_pm_wren           <= 1'b0;
-        o_wm_data_a         <= 8'd0;
-        o_wm_address_a      <= 16'd0;
-        o_wm_wren_a         <= 1'b0;
-        o_buf_data_a        <= 8'd0;
-        o_buf_address_a     <= 16'd0;
-        o_buf_wren_a        <= 1'b0;
+        o_dm_data_a         <= 8'd0;
+        o_dm_address_a      <= 24'd0;
+        o_dm_wren_a         <= 1'b0;
+        o_dm_offset_a       <= 10'd0;
         o_program           <= 1'b1;
         o_tpu_rst           <= 1'b1;
         o_output_data       <= 8'd0;
         o_output_data_valid <= 1'b0;
-        mem_addr            <= 16'd0;
+        mem_addr            <= 24'd0;
         mem_len             <= 16'd0;
         mem_target          <= 1'b0;
         data_byte           <= 8'd0;
         instr_reg           <= 128'd0;
         byte_count          <= 4'd0;
-        pc                  <= 11'd0;
+        pc                  <= 14'd0;
         wait_count          <= 32'd0;
         session_type        <= 1'b0;
         input_pending       <= 1'b0;
@@ -342,8 +361,7 @@ always @(posedge i_clk or negedge i_rst) begin
         // Default: deassert single-cycle strobes; reset wait counter.
         spi_rdreq           <= 1'b0;
         o_pm_wren           <= 1'b0;
-        o_wm_wren_a         <= 1'b0;
-        o_buf_wren_a        <= 1'b0;
+        o_dm_wren_a         <= 1'b0;
         o_output_data_valid <= 1'b0;
         wait_count          <= 32'd0;
 
@@ -366,7 +384,7 @@ always @(posedge i_clk or negedge i_rst) begin
                     session_type <= 1'b0;
                     o_program    <= 1'b0;
                     o_tpu_rst    <= 1'b0;
-                    pc           <= 11'd0;
+                    pc           <= 14'd0;
                     end_latched  <= 1'b0;
                 end else if (spi_q == INPUT_CODE && i_mode_select == 1'b1) begin
                     // INPUT (external mode): begin an EXTERNAL_INPUT session;
@@ -391,11 +409,15 @@ always @(posedge i_clk or negedge i_rst) begin
             // ----- MEM command ----------------------------------------------
             M_LADD_POP:  spi_rdreq  <= 1'b1;
             M_LADD_WAIT: wait_count <= wait_count + 32'd1;
-            M_LADD_EXEC: mem_addr[7:0]  <= spi_q;
+            M_LADD_EXEC: mem_addr[7:0]   <= spi_q;
+
+            M_MADD_POP:  spi_rdreq  <= 1'b1;
+            M_MADD_WAIT: wait_count <= wait_count + 32'd1;
+            M_MADD_EXEC: mem_addr[15:8]  <= spi_q;
 
             M_UADD_POP:  spi_rdreq  <= 1'b1;
             M_UADD_WAIT: wait_count <= wait_count + 32'd1;
-            M_UADD_EXEC: mem_addr[15:8] <= spi_q;
+            M_UADD_EXEC: mem_addr[23:16] <= spi_q;
 
             M_LLEN_POP:  spi_rdreq  <= 1'b1;
             M_LLEN_WAIT: wait_count <= wait_count + 32'd1;
@@ -405,7 +427,7 @@ always @(posedge i_clk or negedge i_rst) begin
             M_ULEN_WAIT: wait_count <= wait_count + 32'd1;
             M_ULEN_EXEC: begin
                 mem_len[15:8] <= spi_q;
-                mem_target    <= (mem_addr == 16'd1) ? 1'b1 : 1'b0;
+                mem_target    <= (mem_addr == 24'd1) ? 1'b1 : 1'b0;
             end
 
             M_DATA_POP:  spi_rdreq  <= 1'b1;
@@ -413,24 +435,20 @@ always @(posedge i_clk or negedge i_rst) begin
             M_DATA_EXEC: data_byte  <= spi_q;
 
             M_WRITE: begin
-                case (mem_target)
-                    1'b0: begin
-                        // Weight_Memory: ISA addresses 0x0 and 0x1 are reserved,
-                        // so ISA address A maps to physical address A-2, matching
-                        // the Vector_Processor's read/write mapping (unified
-                        // address space).
-                        o_wm_wren_a    <= 1'b1;
-                        o_wm_address_a <= mem_addr - 16'd2;
-                        o_wm_data_a    <= data_byte;
-                    end
-                    default: begin
-                        // 0x1 Buffer: ISA address 0x0001 -> internal address 0x0000
-                        o_buf_wren_a    <= 1'b1;
-                        o_buf_address_a <= mem_addr - 16'd1;
-                        o_buf_data_a    <= data_byte;
-                    end
-                endcase
-                mem_addr <= mem_addr + 16'd1;
+                o_dm_wren_a <= 1'b1;
+                o_dm_data_a <= data_byte;
+                if (mem_target == 1'b1) begin
+                    // 0x1 Buffer: flat address held at 0x1, element index on the
+                    // offset port (ISA address A -> buffer offset A-1).
+                    o_dm_address_a <= 24'd1;
+                    o_dm_offset_a  <= buf_off[9:0];
+                end else begin
+                    // Main data memory: flat unified address (Data_Memory owns
+                    // the block-A/B decode), offset unused.
+                    o_dm_address_a <= mem_addr;
+                    o_dm_offset_a  <= 10'd0;
+                end
+                mem_addr <= mem_addr + 24'd1;
                 mem_len  <= mem_len  - 16'd1;
             end
 
@@ -445,9 +463,9 @@ always @(posedge i_clk or negedge i_rst) begin
             end
             P_WRITE: begin
                 o_pm_wren    <= 1'b1;
-                o_pm_address <= pc[9:0];
+                o_pm_address <= pc[12:0];
                 o_pm_data    <= instr_reg;
-                pc           <= pc + 11'd1;
+                pc           <= pc + 14'd1;
                 byte_count   <= 4'd0;
             end
 
@@ -459,10 +477,11 @@ always @(posedge i_clk or negedge i_rst) begin
                 end_latched   <= 1'b0;   // a fresh run will re-assert end
             end
             D_IN_WRITE: begin
-                // Write the latched input to the first 0x1-buffer address.
-                o_buf_wren_a    <= 1'b1;
-                o_buf_address_a <= 16'd0;
-                o_buf_data_a    <= input_data_lat;
+                // Write the latched input to the first 0x1-buffer offset.
+                o_dm_wren_a    <= 1'b1;
+                o_dm_address_a <= 24'd1;
+                o_dm_offset_a  <= 10'd0;
+                o_dm_data_a    <= input_data_lat;
             end
             D_IN_DONE: begin
                 o_program <= 1'b1;
@@ -471,12 +490,13 @@ always @(posedge i_clk or negedge i_rst) begin
 
             // ----- DEVICE_OUTPUT meta-state ---------------------------------
             D_OUT_START: begin
-                o_program       <= 1'b0;   // take the bus to read the 0x1 buffer
-                o_buf_address_a <= 16'd0;
-                end_latched     <= 1'b0;
+                o_program      <= 1'b0;   // take the bus to read the 0x1 buffer
+                o_dm_address_a <= 24'd1;
+                o_dm_offset_a  <= 10'd0;
+                end_latched    <= 1'b0;
             end
             D_OUT_FWD: begin
-                o_output_data       <= i_buf_q_a;
+                o_output_data       <= i_dm_q_a;
                 o_output_data_valid <= 1'b1;
             end
             D_OUT_DONE: o_program <= 1'b1;
@@ -487,9 +507,12 @@ always @(posedge i_clk or negedge i_rst) begin
                 out_cnt     <= 4'd0;
                 end_latched <= 1'b0;
             end
-            X_OUT_ADDR: o_buf_address_a <= {12'd0, out_cnt};
+            X_OUT_ADDR: begin
+                o_dm_address_a <= 24'd1;
+                o_dm_offset_a  <= {6'd0, out_cnt};
+            end
             // Forward the datum now; valid is asserted only after device_ready.
-            X_OUT_FWD:  o_output_data <= i_buf_q_a;
+            X_OUT_FWD:  o_output_data <= i_dm_q_a;
             // device_ready seen HIGH -> pulse output_data_valid for one cycle.
             X_OUT_VALID: o_output_data_valid <= 1'b1;
             X_OUT_INC:  out_cnt   <= out_cnt + 4'd1;
