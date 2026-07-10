@@ -3,7 +3,7 @@
 > **Purpose:** This document contains the *Functional TPU* instruction set
 > architecture specification.
 >
-> **Version: 0.5.0**
+> **Version: 0.4.0**
 
 ## Memory
 
@@ -113,16 +113,6 @@ ISA.
 | 4 | 24 | 4 | 4 | 24 | 4 | 4 | 24 | 8 | 8 | 17 | 3 |
 | opcode | rs1 | sz11 | sz12 | rs2 | sz21 | sz22 | rd | M0 | n | reserved | funct3 |
 | MUL | src1 | dim11 | dim12 | src2 | dim21 | dim22 | dest | scale | shift | 0 | MULT |
-| MUL | src1 | dim11 | dim12 | src2 | dim21 | dim22 | dest | scale | shift | 0 | MULTIP |
-
-The Functional TPU maintains an internal matrix accumulator that holds multiply
-results at full internal precision, prior to requantization. Both multiplication
-instructions compute the matrix product of their operands, add it into the
-accumulator, requantize the accumulator's contents, and store the result to
-dest; they differ only in their treatment of the accumulator after writeback,
-selected by *funct3*. The maximum dimensions of the accumulator are an
-implementation-defined hardware parameter, and a sequence of accumulating
-multiplies must target identical *dest* dimensions that do not exceed it.
 
 #### mult
 
@@ -131,21 +121,9 @@ and multiplies it by a matrix of dimensions *dim21* x *dim22* located at address
 *src2*, storing the result contiguously starting from address *dest* in
 Row-Major order. Before storage, each resultant value is requantized according
 to the following equation: result = clamp((*scale* * x + (1 << (*shift* - 1)))
-\>\> *shift*) (**Note:** clamp() denotes saturation to XLEN min/max). After
-writeback, the accumulator is cleared. *reserved* bits are set to 0. Note that
-the current revision of the ISA does not support matrix dimensions greater than
-15x15 for this instruction.
-
-#### multip
-
-*multip* performs the identical multiply → accumulate → requantize → writeback
-sequence as *mult*, but does not clear the accumulator afterward, so a
-subsequent multiplication accumulates into the same accumulator. A run of
-*multip* instructions terminated by a *mult* computes the requantized sum of
-their individual products, enabling matrix multiplications whose contraction
-dimension exceeds a single instruction. Every instruction in such a run must
-reference identical *dest* dimensions; intermediate writebacks are overwritten
-by later ones, so only the final *mult* writeback is meaningful.
+>> *shift*) (**Note:** clamp() denotes saturation to XLEN min/max). *reserved*
+bits are set to 0. Note that the current revision of the
+ISA does not support matrix dimensions greater than 15x15 for this instruction.
 
 ### Activation Instructions
 
@@ -211,12 +189,11 @@ This section defines the concrete binary layouts for all instructions in the
 
 | Instruction | opcode | funct3 |
 | --- | --- | --- |
-| MULT | 1000 | 0x0 |
-| MULTIP | 1000 | 0x1 |
-| RELU | 1001 | 0x0 |
-| ADD | 1010 | 0x0 |
+| mult | 1000 | 0x0 |
+| relu | 1001 | 0x0 |
+| add | 1010 | 0x0 |
 
 | Instruction | opcode | funct7 |
 | --- | --- | --- |
-| END | 0000 | 0x0 |
-| SYSCALL | 0000 | 0x1 |
+| end | 0000 | 0x0 |
+| syscall | 0000 | 0x1 |

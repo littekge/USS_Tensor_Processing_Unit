@@ -2,6 +2,15 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-08 — Functional TPU ISA v0.5
+
+- **Added multiply-in-place functionality**
+- Explicitly defined the internal matrix accumulator.
+- Modified the description of *mult* to include an accumulator clear after the
+operation is complete.
+- Added the ***multip*** instruction for multiply-in-place -> same exact
+function as *mult*, but does not clear the accumulator.
+
 ## 2026-07-08 — Functional TPU ISA v0.4
 
 - **Changed address length in instructions**
