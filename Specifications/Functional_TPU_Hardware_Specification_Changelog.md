@@ -2,6 +2,16 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-08 — Functional TPU Hardware Specification v0.5 — *multip* Update
+
+- **Implemented multiply-in-place functionality.**
+- Separated *clear* in Systolic_Array/Multiply_Accumulate_Unit modules into two
+signals, *clear* and *accumulator_clear*.
+  - *clear* flushes residuals.
+  - *accumulator_clear* clears the *c* accumulators in the MACs.
+- Updated the Controller module to assert *accumulator_clear* after writeback
+based on instruction.
+
 ## 2026-07-08 — Functional TPU Hardware Specification v0.4 — Memory Update
 
 - **Abstracted memory into a unified Data_Memory module**

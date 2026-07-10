@@ -3,7 +3,7 @@
 > **Purpose:** This document outlines the Functional TPU hardware specification,
 > including module instantiation hierarchy and functional descriptions of modules.
 >
-> **Version: 0.5.0**
+> **Version: 0.4.0**
 >
 > **ISA:** `Functional_TPU_ISA.md`
 > **Message Protocol:** `Functional_TPU_Message_Protocol.md`
@@ -448,11 +448,7 @@ formats are defined in *Functional TPU ISA*.
   - **Outputs:**
     - ***controller_idle***: Asserted HIGH when the controller is ready to
     receive a new instruction.
-    - ***clear***: Asserted HIGH to flush residual operand data from buffers and
-    operand pipelines between each operation.
-    - ***accumulator_clear***: Asserted HIGH for one clock cycle after writeback
-    to zero the systolic array accumulators. Asserted only when the decoded
-    instruction's *funct3* selects clearing (*mult*, not *multip*).
+    - ***clear***: Asserted HIGH to clear buffers between each operation.
 - **Dual Vector Processors:** The TPU has two vector processors. The controller
 has two sets of identical control signals to interface with each vector
 processor. The controller leverages both processors to perform simultaneous
@@ -466,8 +462,7 @@ processors at the same clock cycle to ensure synchronization.
   LOW and continue.
   - Assert *clear* signals for the vector buffer (via *clear* in the TPU
   module), ALU, activator, and systolic array HIGH for one clock cycle to clear
-  all residual data from the previous operation (**NOTE:** this step does NOT
-  clear the systolic array accumulators).
+  all residual data from the previous operation.
   - Combinationally decode instruction from the Feeder and send control signals
   to other modules. (Decode)
   - Assert the vector processors' *vector_start* signals HIGH for one clock
@@ -481,9 +476,6 @@ processors at the same clock cycle to ensure synchronization.
   - Assert the vector processors' *vector_start* signals HIGH for one clock cycle.
   (Writeback)
   - Wait for vector processors to finish writeback operations. (Writeback)
-  - If the decoded instruction's *funct3* selects accumulator clearing (*mult*,
-  not *multip*), assert *accumulator_clear* HIGH for one clock cycle to zero the
-  systolic array accumulators.
   - Assert *controller_idle* signal HIGH.
   - Repeat control loop.
 - **Error States:** The state machine defaults to a STATE_ERROR state in the
@@ -647,8 +639,7 @@ of the systolic array.
   - **Inputs:**
     - ***clk***: Module input clock.
     - ***trst***: Module reset signal (active LOW).
-    - ***clear***: Clears the operand pipeline registers (a_out, b_out).
-    - ***accumulator_clear***: Clears the accumulator register (c).
+    - ***clear***: Clears values from all registers in the MAC.
 - **Data Signals:** The Multiply_Accumulate_Unit module has two data inputs
 *a_in* and *b_in* and three data outputs *a_out*, *b_out* and *c*.
 - **Operation:** The Multiply_Accumulate_Unit module implements a single
@@ -689,10 +680,8 @@ accumulate units in the correct order.
   - **Inputs:**
     - ***clk***: Module input clock.
     - ***trst***: Module reset signal (active LOW).
-    - ***clear***: Flushes all input buffers and clears the MAC operand
-    pipeline registers when asserted HIGH.
-    - ***accumulator_clear***: Clears the *c* accumulator of every MAC when
-    asserted HIGH.
+    - ***clear***: Clears all values from the MACs and flushes all systolic
+    input buffers when asserted HIGH.
     - ***systolic_array_start***: Indicates that the systolic array should begin
     operations when asserted HIGH for one clock cycle.
   - **Outputs:**
@@ -714,11 +703,12 @@ systolic array. Likewise, the left side buffers are connected to the *b_in*
 inputs of the MACs on the left edge of the systolic array. The buffers on the
 left side are numbered from 0 to N-1, starting from the top and the buffers on
 the top side are numbered from 0 to N-1 starting from the left.
-- **Clear Behavior:** The module passes clear and accumulator_clear to the
-respective inputs of every MAC. It combines clear and inverted trst via a
-logical OR and passes the result to the sclr of every input buffer, so that
-either trst going LOW or clear going HIGH flushes the buffers. trst continues to
-reset all MAC registers, including the accumulator.
+- **Clear Behavior:** The module passes the *clear* and *trst* input signals
+directly to the *clear* and *trst* input signals of every MAC. The module
+combines *clear* and inverted *trst* via a logical OR operation and passes it to
+the *sclr* input of every systolic array input buffer so that either *trst*
+going LOW or *clear* going
+HIGH will flush the buffers of their contents.
 - **State Machine Flow:**
   - Wait for *systolic_array_start* to be asserted HIGH.
   - Assert *systolic_array_idle* LOW.
