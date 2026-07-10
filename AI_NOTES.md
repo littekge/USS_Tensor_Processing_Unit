@@ -7,18 +7,29 @@
 > CLAUDE.md files, not here — this file holds decision history (with reasons),
 > in-flight state, and machine notes.
 
-## Current State (2026-07-07)
+## Current State (2026-07-10)
 
-- 3-layer agent workflow built on branch `AI-workflows-test`: root
-  `CLAUDE.md` (60aa7f9), five agents in `.claude/agents/` (4762e1e),
-  `/fan-out` workflow + skill (a5763b8, portability fix ee76fde).
-- `/fan-out` plan step smoke-tested PASS. **Execute step untested** — agent
-  types register at session start; first end-to-end run pending a restart.
-- Spec-proofreader pilot ran over the v0.3 specs; fixes deferred (below).
-- This journal added (af2b5b6) as the cross-machine context source; root
-  CLAUDE.md points to it. Consistency pass done 2026-07-07: stale
-  `Specifications/CLAUDE.md` reference removed from the section map and the
-  user's deletion of that file committed.
+- **v0.4 shipped.** Tagged `v0.4.0` and `v0.4.1` on 2026-07-09; both merged to
+  `main` (the `AI-workflows-test` branch is retired). v0.4 = memory expansion:
+  unified `Data_Memory` wrapper, 24-bit flat address space, 3-byte MEM
+  addressing (Message Protocol v0.3), 13-bit PC / 8192-word program memory.
+  Both TPU and Assembler `main.md` build plans are fully complete.
+- **Verified:** full Questa regression PASS on the Questa PC, then confirmed on
+  real FPGA (0b46dab). Assembler v0.4 = 41 tests pass.
+- **v0.4.1** added `System/run.sh` (synth-flow automation) and an `Assemble.py`
+  helper to make running easier.
+- **`/fan-out` now proven end-to-end.** The v0.4 RTL and assembler work ran in
+  isolated per-agent worktrees and merged per-section into `main`
+  (`Merge TPU v0.4…`, `Merge assembler v0.4`) — resolves the earlier
+  "execute step untested" gap.
+
+## Next Focus — v0.5 "Partitioning Update"
+
+- **Goal:** compute matrix multiplications larger than the hardware systolic
+  array by unrolling a large matmul into a series of small matmul ops that fit
+  the array. Enables matmuls beyond the physical array size.
+- Status: kickoff. Build plan(s) not yet drafted — new `main.md` steps require
+  user approval before being written (approval gate).
 
 ## Standing Decisions (dated, with reasons)
 
