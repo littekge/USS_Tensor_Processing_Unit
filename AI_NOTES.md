@@ -23,13 +23,42 @@
   (`Merge TPU v0.4…`, `Merge assembler v0.4`) — resolves the earlier
   "execute step untested" gap.
 
-## Next Focus — v0.5 "Partitioning Update"
+## Next Focus — v0.5 "Partitioning Update" (redo)
 
-- **Goal:** compute matrix multiplications larger than the hardware systolic
-  array by unrolling a large matmul into a series of small matmul ops that fit
-  the array. Enables matmuls beyond the physical array size.
-- Status: kickoff. Build plan(s) not yet drafted — new `main.md` steps require
-  user approval before being written (approval gate).
+Run matmuls larger than the 8x8 array by tiling. A first implementation
+(`multip` + single-row M-tiling + a partition MLIR pass) was built and merged on
+a `v0.5-workspace` branch, then **discarded 2026-07-10** and the repo reverted to
+`main`. Reason: tiling makes each operand/output a strided sub-block of a
+row-major tensor, but `mult` only addresses contiguous regions; single-row
+M-tiling still left the weight (rhs) tile strided whenever K and N are both tiled
+(wrong results) and forced ~1/8 array utilization.
+
+- **Committed on main (kept):** v0.5.0 ISA/HW specs — `multip` (opcode 1000 /
+  funct3 0x1) and funct3-gated accumulator-clear-after-writeback.
+- **Redo direction (Design B — decided):** GEMM-style strided addressing. A new
+  **`SHAPE` instruction** (the ISA's reserved SHAPE format) sets leading-dimension
+  registers `lda`=K, `ldb`=N once per matmul (dest `ldc`=`ldb`); `mult`/`multip`
+  walk sub-blocks with the active strides. Default = contiguous (v0.4-compatible,
+  MUL format unchanged). Enables row-parallel tiling (full utilization) and any
+  M/N/K. Chosen over packing strides into MUL (which caps matrix dims ~1023).
+- **Transpose:** handled offline — physically transpose constant weights in
+  `Process_Weights`, drop the op at legalize. **No hardware transpose op** (LeNet
+  is pure CNN; verified the array uses stored rs2 verbatim so it isn't free). A
+  live-tensor transpose (transformers) would be a future `SHAPE` flag.
+- **Assembler gains two stages:** transpose analysis (manifest of transposed
+  weight args) + a partitioning pass (emit `SHAPE` + strided tiled `mult`/`multip`).
+  No blocked weight layout needed — strides handle tiling.
+- **Next action:** revise specs to add `SHAPE` + leading-dimension semantics
+  (user writes; read-only for agents), then `/fan-out` RTL (`tpu-rtl`) + assembler.
+  Non-Questa machines → RTL `Verification: PENDING`.
+- Full plan + rationale in Claude memory (`v0-5-partitioning-redo`).
+
+## Roadmap — end goal LeNet-5
+
+- v0.5 partitioning reaches the FC/GEMM path. v0.6 = on-device `im2col` for conv
+  (feature maps are runtime, not compile-time reshapes). Pooling later. Shared
+  future gap: a gather/scatter data-movement primitive (im2col, pooling,
+  row-parallel reassembly). Detail in memory (`lenet5-end-goal-roadmap`).
 
 ## Standing Decisions (dated, with reasons)
 
