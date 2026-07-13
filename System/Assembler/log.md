@@ -2,6 +2,128 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-13 — v0.5 review fixes: stale-stride reset + real Bigger_NN e2e
+
+- **FIX 1 — pass-through matmul stride reset (user-approved rule).** `ld1`/`ld2`
+  persist across instructions until the next `stride`, so an in-array
+  (pass-through) matmul — emitted as a bare `mult` with no `stride` — could inherit
+  stale leading dimensions from a preceding partitioned matmul. Per the approved
+  rule ("an in-array matmul following a partitioned matmul should always reset
+  stride to (0,0)"), the partition pass now emits a `stride(0,0)` (contiguous)
+  reset immediately before every pass-through `mult`, guaranteeing it never runs
+  with stale strides regardless of what precedes it.
+  - `nn_assembler/MLIR/partition.py`: `partition_program` prepends `StrideOp(0,0)`
+    to each in-array `MultOp`; module + function docstrings document the guarantee.
+  - `main.md` Step 5: added the reset behavior (user-approved edit).
+  - Tests: `test_partition.py` — renamed the pass-through case to assert the
+    `stride(0,0)` reset immediately precedes the `mult`; added
+    `test_pass_through_matmul_after_partitioned_resets_stride` (partitioned matmul
+    then in-array matmul → strides `(K,N)` then `(0,0)`, reset directly before the
+    small mult). `test_assembler.py` — pass-through case now asserts the reset
+    assembles to a `stride` instruction with `ld1=ld2=0`. `test_serializer_and_e2e.py`
+    Tiny_NN case updated for the two extra stride resets (5 instrs: 2 stride + 2
+    mult + end), opcode-filtered.
+- **FIX 2 — regenerated real Bigger_NN artifact + real e2e (new artifact-regen
+  rule).** The checked-in `Bigger_NN_Recent.weights.npz` predated the v0.3 export
+  (only `__order__`), forcing a synthesized-metadata workaround. Re-ran the
+  torchax export (`Start.py Bigger_NN Recent -e`, loading the existing trained
+  `.pth`) to regenerate `Bigger_NN_Recent.{weights.npz,mlir,pt2}`; the npz now
+  carries real `__M__`/`__scales__` per weight. No `Neural_Networks` code modified
+  (artifacts only).
+  - `test/test_serializer_and_e2e.py`: replaced the synthetic `_BIGGER` graph +
+    synthesized-metadata test with `test_full_pipeline_bigger_nn_real`, which drives
+    the real artifact through `NN_import → transpose analysis → Process_Weights →
+    Process_MLIR → Assemble → Serialize`. Asserts the npz carries `__M__`/`__scales__`,
+    a framed transmission, one `stride` per matmul `[(1,1000),(1000,100),(100,1)]`,
+    the middle (both-tiled) matmul's 1625 tiles (13 N × 125 K) with in-order
+    `multip`-runs terminated by `mult`, sub-block bases (`lhs=ki`, `rhs=ki*N+ni`,
+    `dst=ni`), ragged N edge (remainder 4), `M0`/`n` = (172,19) on every tile, the
+    last matmul's ragged K edge (remainder 4), and the final output pinned to 0x1.
+  - `main.md` Step 6: updated to describe the real (no-longer-synthesized) run
+    (1767 instructions, real strides, ragged edges).
+  - Verified the CLI too: `python -m nn_assembler Bigger_NN Recent` writes a
+    132254-byte framed `out/TRANSMISSION.bin`.
+- Files modified: `nn_assembler/MLIR/partition.py`, `main.md`, `log.md`,
+  `test/test_partition.py`, `test/test_assembler.py`,
+  `test/test_serializer_and_e2e.py`. Artifact regenerated:
+  `System/Neural_Networks/Bigger_NN/Bigger_NN_Recent.{weights.npz,mlir,pt2}`.
+- Tests: 64 pytest pass (was 63; +1 net from the new mixed pass-through test). Run
+  with `PYTHONPATH` pointed at this worktree so `nn_assembler` resolves here rather
+  than the shared editable install.
+
+## 2026-07-13 — v0.5: Matmul partitioning (leading-dimension tiling)
+
+- Implemented the full v0.5 build plan (assembler side). Decomposes any matmul
+  exceeding the systolic array into array-sized tiles addressed in place via
+  leading dimensions, resolves weight transposes offline, and emits a new
+  inspectable dialect artifact. Verified against `Functional_TPU_ISA.md` v0.5
+  (read-only): MUL 128-bit layout with `mult`/`multip` sharing it (funct3 MULT=0x0,
+  MULTIP=0x1), CONFIG `stride` opcode 1111 with im1/im2 = ld1/ld2.
+- **Step 1 — `Assembler.py` + `MLIR/dialect.py`:** added `MAX_MATMUL_SIZE = 8`
+  (coupled to TPU Build Parameter N=8) and changed the MUL dim assert from the
+  4-bit field max (15) to the tiling bound (`MAX_MATMUL_SIZE`). Dialect gained
+  `MultipOp` and `StrideOp`; `Operand` gained an `offset`, and `MultOp`/`MultipOp`
+  gained `dst_offset` + `parent_out_shape` for sub-block addressing. Serialize/parse
+  round-trip the new ops and tiling attributes (`lo`/`ro`/`do`/`cap`), keeping the
+  legacy `{M0 = .., n = ..}` form for un-tiled ops.
+- **Step 2 — `Assembler.py`:** `encode_mult` now takes a `funct3`;
+  `encode_mult_in_place` (funct3 0x1) and `encode_stride` (opcode 1111, im1/im2 =
+  ld1/ld2, 24-bit) added; `assemble_program` dispatches `MultipOp`/`StrideOp` and
+  adds each operand's element offset to its resolved base address. A tiled result
+  is allocated once (by parent capacity) and shared across its tiles.
+- **Step 3 — `MLIR/transpose_analysis.py` (new):** `analyze_transposes_file()`
+  scans `initial.mlir`, classifies each `stablehlo.transpose` (operand is a
+  `states[...]` parameter → weight transpose, resolved offline; the input or an
+  intermediate → runtime transpose, flagged out of scope), and writes
+  `/tmp/transpose_manifest.json`. Wired into `Convert` right after import.
+- **Step 4 — `Process_Weights.py` + `MLIR/legalize.py`:** `Process_Weights`
+  physically transposes manifest-flagged weights before quantization (per-tensor
+  symmetric int8 scale is transpose-invariant), stores `Wᵀ` row-major, and records
+  the transposed shape. `legalize` folds a resolved weight/constant transpose like
+  a reshape and raises on a runtime (live) transpose instead of silently dropping.
+- **Step 5 — `MLIR/partition.py` (new):** `partition_program()` tiles each
+  oversized `MultOp` into one `stride(ld1=K, ld2=N)` then row-parallel output tiles
+  (M-tile × N-tile), each walking K in array steps as `multip × (k-1)` then a
+  terminating `mult`. Sub-block corners use `offset = row_off*ld + col_off`; ragged
+  edges use real sizes; `M0`/`n` carried on every tile. Ops within the array pass
+  through unchanged. Wired into `Process_MLIR` as the final dialect pass, emitting
+  `/tmp/optimized.partitioned.tpu.mlir`; `Assemble` now consumes that artifact.
+- **Step 6 — Verification:** ran the pipeline on the real `Bigger_NN` graph
+  (1→1000→100→1, middle weight a genuine 2-D transpose) with synthesized requant
+  metadata — 1767 instructions, one `stride` per matmul (ld1=K/ld2=N), 139 `mult` +
+  1624 `multip`, correct sub-block bases (`%1` intermediate at 0x18F3B, final output
+  0x1), ragged K/N edges, and `M0`/`n` on every tile. `Convert Tiny_NN Recent` still
+  frames a 72-byte `out/TRANSMISSION.bin` (small matmuls pass through, no stride).
+- Files created: `nn_assembler/MLIR/partition.py`,
+  `nn_assembler/MLIR/transpose_analysis.py`, `test/test_partition.py`,
+  `test/test_transpose_analysis.py`. Files modified: `nn_assembler/Assembler.py`,
+  `nn_assembler/Convert.py`, `nn_assembler/Process_MLIR.py`,
+  `nn_assembler/Process_Weights.py`, `nn_assembler/MLIR/dialect.py`,
+  `nn_assembler/MLIR/legalize.py`, `nn_assembler/MLIR/README.md`, `main.md`, `log.md`,
+  and `test/test_assembler.py`, `test/test_dialect_and_legalize.py`,
+  `test/test_serializer_and_e2e.py`.
+- Tests: 63 pytest tests pass (was 41). Added: `multip`/`stride` serialize/parse
+  round-trip and un-tiled legacy form; transpose fold + runtime-transpose rejection;
+  `multip`/`stride` encoding and MAX-dim rejection; tiled emission (stride count,
+  tile count, sub-block bases, ragged edges) + small-matmul pass-through; partition
+  K-accumulation order, row-parallel M/N offsets, ragged edges, `MAX_MATMUL_SIZE`
+  boundary; transpose classification + manifest + transposed-weight layout numeric
+  check; and a full both-tiled Bigger_NN E2E (framing + tiling structure + output
+  pinned to 0x1). Run pytest with `PYTHONPATH` pointed at this worktree — the shared
+  venv's editable install resolves `nn_assembler` to the main working copy.
+- Open items surfaced for the user (not decided):
+  1. The checked-in `Bigger_NN_Recent.weights.npz` predates the v0.3 export and
+     carries only `__order__` (no `__M__*`/`__scales__*`), so the *real* file cannot
+     be assembled (weights fall back to `kind: bias`, no `M0`/`n`). The E2E test and
+     the manual Step 6 run synthesize the metadata to exercise tiling; regenerating
+     the real npz is a `Neural_Networks`/`nn-trainer` (propose-only) task.
+  2. Per the approved plan, an in-array matmul passes through as a single `mult`
+     with **no** `stride`. The `ld` registers persist across instructions, so a
+     small matmul following a partitioned one would inherit stale leading
+     dimensions. Every `Bigger_NN` matmul is partitioned (each emits its own
+     stride), so this is latent, not hit today — but a mixed network could need a
+     `stride(0,0)` reset before pass-through matmuls. Flagged for a plan decision.
+
 ## 2026-07-09 — v0.4: Expanded memory & address widening
 
 - Aligned the assembler with the system-wide v0.4 memory overhaul: 24-bit

@@ -34,22 +34,33 @@ class Operand:
 
     `name` is the SSA name (e.g. `%arg0` for a weight/input, or `%3` for a prior
     result). `shape` is the shape as seen by the consuming instruction, which may
-    differ from the value's original shape because reshapes were folded in.
+    differ from the value's original shape because reshapes were folded in. When
+    the op addresses a sub-block of a larger (parent) matrix -- as produced by the
+    matmul-partitioning pass -- `offset` is the row-major element offset of the
+    sub-block corner within the parent tensor; the assembler adds it to the
+    parent's base address. `shape` then holds the tile's logical dimensions.
     """
 
     name: str
     shape: list[int]
+    offset: int = 0
 
 
 @dataclass
 class MultOp:
-    """Matrix multiply -> ISA `mult` (MUL format).
+    """Matrix multiply -> ISA `mult` (MUL format), funct3 = MULT (0x0).
 
     `M0`/`n` are the dyadic requantization pair (`M ~= M0 * 2^-n`) that the
     legalization pass attaches from the weight operand's `weight_map` entry; they
-    become the MUL instruction's `M0` (bits 59-52) and `n` (bits 51-44) fields.
+    become the MUL instruction's `M0` (bits 35-28) and `n` (bits 27-20) fields.
     They are optional only so an unannotated op can round-trip; the assembler
     requires them.
+
+    Tiling (v0.5): a `mult` may write a sub-block of a larger result. `dst_offset`
+    is the row-major element offset of that sub-block within the parent result,
+    and `parent_out_shape` is the parent result's full dimensions (used by the
+    assembler to size its allocation once). For an un-tiled op both default to the
+    whole tensor (`dst_offset = 0`, `parent_out_shape == out_shape`).
     """
 
     result: str
@@ -58,6 +69,43 @@ class MultOp:
     out_shape: list[int]
     M0: int | None = None
     n: int | None = None
+    dst_offset: int = 0
+    parent_out_shape: list[int] | None = None
+
+
+@dataclass
+class MultipOp:
+    """Accumulating matrix multiply -> ISA `multip` (MUL format), funct3 = MULTIP.
+
+    Identical fields to `MultOp`; the only difference is that `multip` does not
+    clear the internal accumulator after writeback, so a run of `multip`s
+    terminated by a `mult` computes a contraction that exceeds one instruction.
+    The matmul-partitioning pass emits the leading K-tiles as `multip` and the
+    final K-tile as `mult`.
+    """
+
+    result: str
+    lhs: Operand
+    rhs: Operand
+    out_shape: list[int]
+    M0: int | None = None
+    n: int | None = None
+    dst_offset: int = 0
+    parent_out_shape: list[int] | None = None
+
+
+@dataclass
+class StrideOp:
+    """Set the leading-dimension registers -> ISA `stride` (CONFIG format).
+
+    `ld1`/`ld2` are the physical row strides of `rs1`/`rs2` (and of the
+    writeback `rd`, whose stride equals `ld2`). They persist for every subsequent
+    MUL-type instruction until the next `stride`. The partitioning pass emits one
+    `stride(ld1=K, ld2=N)` before the tiles of each partitioned matmul.
+    """
+
+    ld1: int
+    ld2: int
 
 
 @dataclass
@@ -115,15 +163,50 @@ def serialize(program: Program) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _prod(shape: list[int]) -> int:
+    count = 1
+    for dim in shape:
+        count *= dim
+    return count
+
+
+def _mult_attrs(op) -> str:
+    """Render the trailing `{...}` attribute dict for a mult/multip op.
+
+    Emits `M0`/`n` when present, and the tiling attributes (`lo`/`ro`/`do` operand
+    offsets, `cap` parent capacity in words) only when the op addresses a
+    sub-block -- i.e. any offset is non-zero or the parent result is larger than
+    this tile. Un-tiled ops keep the legacy `{M0 = .., n = ..}` form.
+    """
+    pairs: list[str] = []
+    if op.M0 is not None and op.n is not None:
+        pairs.append(f"M0 = {op.M0}")
+        pairs.append(f"n = {op.n}")
+    parent = op.parent_out_shape if op.parent_out_shape is not None else op.out_shape
+    tiled = (
+        op.lhs.offset != 0
+        or op.rhs.offset != 0
+        or op.dst_offset != 0
+        or _prod(parent) != _prod(op.out_shape)
+    )
+    if tiled:
+        pairs.append(f"lo = {op.lhs.offset}")
+        pairs.append(f"ro = {op.rhs.offset}")
+        pairs.append(f"do = {op.dst_offset}")
+        pairs.append(f"cap = {_prod(parent)}")
+    return f" {{{', '.join(pairs)}}}" if pairs else ""
+
+
 def _serialize_op(op) -> str:
-    if isinstance(op, MultOp):
-        text = (
-            f"{op.result} = tpu.mult {op.lhs.name} : {shape_to_str(op.lhs.shape)}, "
+    if isinstance(op, (MultOp, MultipOp)):
+        mnemonic = "multip" if isinstance(op, MultipOp) else "mult"
+        return (
+            f"{op.result} = tpu.{mnemonic} {op.lhs.name} : {shape_to_str(op.lhs.shape)}, "
             f"{op.rhs.name} : {shape_to_str(op.rhs.shape)} -> {shape_to_str(op.out_shape)}"
+            f"{_mult_attrs(op)}"
         )
-        if op.M0 is not None and op.n is not None:
-            text += f" {{M0 = {op.M0}, n = {op.n}}}"
-        return text
+    if isinstance(op, StrideOp):
+        return f"tpu.stride ld1 = {op.ld1}, ld2 = {op.ld2}"
     if isinstance(op, AddOp):
         return (
             f"{op.result} = tpu.add {op.lhs.name} : {shape_to_str(op.lhs.shape)}, "
@@ -142,10 +225,12 @@ _SSA = r"%[\w\.]+"
 _SHAPE = r"[\dx]+"
 
 _MULT_RE = re.compile(
-    rf"({_SSA})\s*=\s*tpu\.mult\s+({_SSA})\s*:\s*({_SHAPE})\s*,\s*"
+    rf"({_SSA})\s*=\s*tpu\.(mult|multip)\s+({_SSA})\s*:\s*({_SHAPE})\s*,\s*"
     rf"({_SSA})\s*:\s*({_SHAPE})\s*->\s*({_SHAPE})"
-    rf"(?:\s*\{{\s*M0\s*=\s*(\d+)\s*,\s*n\s*=\s*(\d+)\s*\}})?"
+    rf"(?:\s*\{{([^}}]*)\}})?"
 )
+_STRIDE_RE = re.compile(r"tpu\.stride\s+ld1\s*=\s*(\d+)\s*,\s*ld2\s*=\s*(\d+)")
+_ATTR_RE = re.compile(r"(\w+)\s*=\s*(-?\d+)")
 _ADD_RE = re.compile(
     rf"({_SSA})\s*=\s*tpu\.add\s+({_SSA})\s*:\s*({_SHAPE})\s*,\s*"
     rf"({_SSA})\s*:\s*({_SHAPE})\s*->\s*({_SHAPE})"
@@ -186,15 +271,27 @@ def parse_program(text: str) -> Program:
 def _parse_op(line: str):
     m = _MULT_RE.match(line)
     if m:
-        res, a, a_sh, b, b_sh, out, m0, n = m.groups()
-        return MultOp(
+        res, mnemonic, a, a_sh, b, b_sh, out, attr_blob = m.groups()
+        attrs = dict(_ATTR_RE.findall(attr_blob)) if attr_blob else {}
+        out_shape = parse_shape(out)
+        cap = int(attrs["cap"]) if "cap" in attrs else None
+        parent_out_shape = [cap] if cap is not None else None
+        cls = MultipOp if mnemonic == "multip" else MultOp
+        return cls(
             res,
-            Operand(a, parse_shape(a_sh)),
-            Operand(b, parse_shape(b_sh)),
-            parse_shape(out),
-            M0=int(m0) if m0 is not None else None,
-            n=int(n) if n is not None else None,
+            Operand(a, parse_shape(a_sh), offset=int(attrs.get("lo", 0))),
+            Operand(b, parse_shape(b_sh), offset=int(attrs.get("ro", 0))),
+            out_shape,
+            M0=int(attrs["M0"]) if "M0" in attrs else None,
+            n=int(attrs["n"]) if "n" in attrs else None,
+            dst_offset=int(attrs.get("do", 0)),
+            parent_out_shape=parent_out_shape,
         )
+
+    m = _STRIDE_RE.match(line)
+    if m:
+        ld1, ld2 = m.groups()
+        return StrideOp(int(ld1), int(ld2))
 
     m = _ADD_RE.match(line)
     if m:

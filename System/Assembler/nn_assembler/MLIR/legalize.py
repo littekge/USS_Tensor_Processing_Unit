@@ -40,6 +40,10 @@ _RESHAPE_RE = re.compile(
     r"(%[\w]+)\s*=\s*stablehlo\.reshape\s+(%[\w]+)\s*:\s*"
     r"\(tensor<([^>]*)>\)\s*->\s*tensor<([^>]*)>"
 )
+_TRANSPOSE_RE = re.compile(
+    r"(%[\w]+)\s*=\s*stablehlo\.transpose\s+(%[\w]+)\s*,\s*dims\s*=\s*\[[\d,\s]*\]\s*:\s*"
+    r"\(tensor<([^>]*)>\)\s*->\s*tensor<([^>]*)>"
+)
 _DOT_RE = re.compile(
     r"(%[\w]+)\s*=\s*stablehlo\.dot_general\s+(%[\w]+)\s*,\s*(%[\w]+).*?:\s*"
     r"\(tensor<([^>]*)>\s*,\s*tensor<([^>]*)>\)\s*->\s*tensor<([^>]*)>"
@@ -96,6 +100,22 @@ def legalize_text(stablehlo_text: str, weight_map: dict | None = None) -> Progra
         if m:
             result, src, _src_ty, dst_ty = m.groups()
             reshape_map[result] = (resolve(src), _tensor_shape(dst_ty))
+            continue
+
+        m = _TRANSPOSE_RE.match(line)
+        if m:
+            result, src, _src_ty, dst_ty = m.groups()
+            src_name = resolve(src)
+            entry = weight_map.get(src_name) if weight_map else None
+            assert entry is not None and entry.get("kind") in ("weight", "bias"), (
+                f"stablehlo.transpose of {src_name} is not a weight/constant "
+                "(it is a runtime/live value); on-device transpose is out of scope "
+                "for v0.5. It should have been flagged by the transpose-analysis stage."
+            )
+            # The weight was physically transposed offline (Process_Weights), so
+            # the transpose op is now a pure reinterpretation of that memory: fold
+            # it like a reshape (rebind consumers to the already-transposed data).
+            reshape_map[result] = (src_name, _tensor_shape(dst_ty))
             continue
 
         m = _DOT_RE.match(line)

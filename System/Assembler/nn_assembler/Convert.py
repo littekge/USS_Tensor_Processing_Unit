@@ -1,7 +1,9 @@
 """Top-level entry point for the Neural Network Assembler.
 
-Binds the four lowering stages together:
+Binds the lowering stages together:
   1. Neural Network Import   (NN_import)
+  1.5 Transpose Analysis     (analyze_transposes_file) -- classify weight vs
+      runtime transposes and flag them for offline resolution (v0.5)
   2. Weight Processing       (Process_Weights)
   3. MLIR Lowering           (Process_MLIR) + Assembler (Assemble)
   4. Final Conversion        (Serialize)
@@ -28,6 +30,7 @@ import shutil
 from pathlib import Path
 
 from .Assembler import Assemble
+from .MLIR.transpose_analysis import analyze_transposes_file
 from .Process_MLIR import Process_MLIR
 from .Process_Weights import Process_Weights
 from .Serializer import Serialize
@@ -87,6 +90,7 @@ def NN_import(
 def Convert(model_name: str, run_name: str) -> Path:
     """Run the full pipeline for one network, returning the transmission path."""
     NN_import(model_name, run_name)
+    analyze_transposes_file()
     Process_Weights()
     Process_MLIR()
     Assemble()

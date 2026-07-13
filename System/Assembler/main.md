@@ -492,7 +492,7 @@ leading dimensions handle tiling. Weight transposes are resolved offline.
 Partitioning is a standalone dialect-to-dialect MLIR pass emitting its own
 inspectable artifact (per `Functional_TPU_ISA.md` v0.5).
 
-#### Step 1 — `MAX_MATMUL_SIZE` + Dialect Ops
+#### Step 1 — `MAX_MATMUL_SIZE` + Dialect Ops — ✅ Complete (2026-07-13)
 
 - `Assembler.py`: add `MAX_MATMUL_SIZE = 8` (coupled to the TPU `Build Parameters`
   `N=8` — the two must match); replace the `dim <= 15` hard-assert with
@@ -500,26 +500,26 @@ inspectable artifact (per `Functional_TPU_ISA.md` v0.5).
 - `nn_assembler/MLIR/dialect.py`: add a `multip` op and a `stride` (CONFIG) op with
   serialize/parse round-trip.
 
-#### Step 2 — Encoders
+#### Step 2 — Encoders — ✅ Complete (2026-07-13)
 
 - `Assembler.py`: `encode_mult_in_place` (funct3 0x1, reusing the MUL layout);
   `encode_stride` (CONFIG opcode 1111, `im1`/`im2` = `ld1`/`ld2`); add dispatch
   branches in `assemble_program`.
 
-#### Step 3 — Transpose Analysis (new pipeline stage)
+#### Step 3 — Transpose Analysis (new pipeline stage) — ✅ Complete (2026-07-13)
 
 - Post-import graph analysis: scan `initial.mlir`, classify each
   `stablehlo.transpose` (weight/constant → resolve offline; live → out of scope,
   flag rather than drop); emit a `tmp/` manifest listing the transposed weight
   args.
 
-#### Step 4 — Offline Weight Transpose
+#### Step 4 — Offline Weight Transpose — ✅ Complete (2026-07-13)
 
 - `Process_Weights.py`: physically transpose the weights flagged in the manifest
   (store `Wᵀ` Row-Major; transpose-before-quantize is safe since per-tensor scale
   is transpose-invariant); `legalize` drops the resolved transpose op.
 
-#### Step 5 — Partitioning Pass (new dialect-to-dialect pass)
+#### Step 5 — Partitioning Pass (new dialect-to-dialect pass) — ✅ Complete (2026-07-13)
 
 - Add `nn_assembler/MLIR/partition.py`, wired into `Process_MLIR.py` as the final
   dialect pass (after `legalize` and bias removal), emitting
@@ -528,13 +528,22 @@ inspectable artifact (per `Functional_TPU_ISA.md` v0.5).
   × N-tile) walk K-tiles emitting `multip` for all but the last and `mult` for the
   last, each addressing the sub-block corner
   (`base = parent_base + row_off*ld + col_off`) with tile dims ≤ `MAX_MATMUL_SIZE`.
-  Ops already within the array pass through as a single `mult`.
+  Ops already within the array pass through as a single `mult`, preceded by a
+  `stride(0,0)` (contiguous) reset. Because `ld1`/`ld2` persist across instructions
+  until the next `stride`, an in-array matmul following a partitioned one would
+  otherwise inherit stale leading dimensions; the reset guarantees a pass-through
+  `mult` always runs contiguous (approved rule: an in-array matmul following a
+  partitioned matmul always resets stride to `(0,0)`).
 
-#### Step 6 — End-to-End Verification
+#### Step 6 — End-to-End Verification — ✅ Complete (2026-07-13)
 
-- Run the pipeline on `Bigger_NN`; confirm a framed `/out/TRANSMISSION.bin`. Verify
-  one `stride` per matmul, `multip`-runs terminated by `mult`, correct sub-block
-  bases and leading dimensions, ragged edges, and `M0`/`n` carried on every tile.
+- Run the pipeline on the real, torchax-exported `Bigger_NN` artifact
+  (`Bigger_NN_Recent.{mlir,weights.npz}`, 1→1000→100→1), regenerated so its npz
+  carries the v0.3 requant metadata (`__M__`/`__scales__`) — no synthesized
+  metadata. Confirm a framed `/out/TRANSMISSION.bin` (1767 instructions). Verify one
+  `stride` per matmul (`(1,1000)`, `(1000,100)`, `(100,1)` = `(K,N)`), `multip`-runs
+  terminated by `mult`, correct sub-block bases and leading dimensions, ragged edges
+  (N=100 and K=100 both leave a remainder of 4), and `M0`/`n` carried on every tile.
 
 #### Tests
 
