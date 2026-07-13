@@ -25,7 +25,7 @@
  * PASS / FAIL CRITERIA:
  *   Each test prints "PASS" or "FAIL" to the transcript.
  *   A final summary prints total pass/fail counts.
- *   All 14 tests should show PASS for a correct implementation.
+ *   All 16 tests should show PASS for a correct implementation.
  *
  * TEST CASES:
  *   Test 1:  After reset — o_vector_idle is HIGH immediately
@@ -42,6 +42,13 @@
  *   Test 12: VSRC_SA_OUT → VDST_MEM — negative requantization saturates to 0x80
  *   Test 13: VSRC_SA_OUT → VDST_MEM — round-to-nearest bias (M0=1,n=2: 62→16)
  *   Test 14: VSRC_SA_OUT → VDST_MEM — M0 scale multiply (M0=25,n=3: 10→31)
+ *   Test 15 (v0.5): VSRC_MEM → VDST_SA_A with leading_dimension=4 — reads a 2x2
+ *            top-left sub-block of a 4-wide parent in place (rows spaced by the
+ *            leading dimension, not the sub-block width).
+ *   Test 16 (v0.5): VSRC_SA_OUT → VDST_MEM with leading_dimension=4 — writes a
+ *            2x2 result into a 4-wide parent in place (row 1 lands at base+4,
+ *            not base+2); leading_dimension=0 (Tests 3/4) is the contiguous
+ *            v0.4 behavior.
  * -------------------------------------------------------------------------
  */
 
@@ -95,6 +102,7 @@ reg  [3:0] vp_dim0;
 reg  [3:0] vp_dim1;
 reg  [7:0] vp_scale;   // M0: dyadic requant multiplier (VSRC_SA_OUT tests)
 reg  [7:0] vp_shift;   // n:  dyadic requant right-shift
+reg [23:0] vp_leading_dimension;  // physical row stride (0 = contiguous)
 
 wire        vp_vector_idle;
 wire        vp_element_valid;
@@ -205,12 +213,19 @@ reg neg_mode;
 reg               force_mode;
 reg signed [31:0] sa_c_force;
 
+// stride_mode (Test 16): drives each MAC to a distinct small value so strided
+// writeback placement can be verified. The VP reads MAC(sa_row=col,sa_col=row)
+// for output[row][col], so value = 10 + 2*sa_col + sa_row maps output[row][col]
+// to 10,11,12,13 for (0,0),(0,1),(1,0),(1,1) respectively.
+reg stride_mode;
+
 // Selects specific values used in Test 6:
 //   MAC(row=0,col=0) → 256  → requantized to 0x01
 //   MAC(row=1,col=0) → 40000 → saturates to  0x7F
 // and in Test 12 (neg_mode): MAC(0,0) → -40000 → saturates to 0x80.
 always @(*) begin
-    if      (force_mode && vp_sa_row == 4'd0 && vp_sa_col == 4'd0) sa_c_stub = sa_c_force;
+    if      (stride_mode) sa_c_stub = 32'd10 + (2 * {28'd0, vp_sa_col}) + {28'd0, vp_sa_row};
+    else if (force_mode && vp_sa_row == 4'd0 && vp_sa_col == 4'd0) sa_c_stub = sa_c_force;
     else if (neg_mode && vp_sa_row == 4'd0 && vp_sa_col == 4'd0) sa_c_stub = -32'sd40000;
     else if (vp_sa_row == 4'd0 && vp_sa_col == 4'd0) sa_c_stub = 32'd256;
     else if (vp_sa_row == 4'd1 && vp_sa_col == 4'd0) sa_c_stub = 32'd40000;
@@ -231,6 +246,7 @@ Vector_Processor dut (
     .i_length             (vp_length),
     .i_dim0               (vp_dim0),
     .i_dim1               (vp_dim1),
+    .i_leading_dimension  (vp_leading_dimension),
     .i_scale              (vp_scale),
     .i_shift              (vp_shift),
     .o_vector_idle        (vp_vector_idle),
@@ -339,6 +355,8 @@ initial begin
     vp_dim1          = 4'd0;
     vp_scale         = 8'd1;   // identity requant multiplier by default
     vp_shift         = 8'd0;   // no shift by default (non-SA-out tests ignore)
+    vp_leading_dimension = 24'd0;  // contiguous by default (v0.4 behavior)
+    stride_mode      = 0;
     ev_count         = 0;
     ev_ok            = 1;
     sa_cnt           = 0;
@@ -599,6 +617,60 @@ initial begin
 
     check(main_mem[2] === 8'h1F, 14);
     force_mode = 1'b0;
+
+    // -----------------------------------------------------------------------
+    // TEST 15 (v0.5): VSRC_MEM → VDST_SA_A with leading_dimension=4.
+    //   A 4x4 parent matrix is stored contiguously from flat address 0x2. A 2x2
+    //   top-left sub-block is read in place, so row 1 begins at base+4 (not
+    //   base+2 as contiguous width-2 addressing would give).
+    //     parent row 0: mem[2..5] = 0x11,0x12,0x13,0x14
+    //     parent row 1: mem[6..9] = 0x21,0x22,0x23,0x24
+    //   Expected push sequence (top buffers): 0x11,0x12 (row0), 0x21,0x22 (row1).
+    // -----------------------------------------------------------------------
+    do_reset;
+    main_mem[2] = 8'h11; main_mem[3] = 8'h12; main_mem[4] = 8'h13; main_mem[5] = 8'h14;
+    main_mem[6] = 8'h21; main_mem[7] = 8'h22; main_mem[8] = 8'h23; main_mem[9] = 8'h24;
+    sa_cnt = 0; sa_ok = 1;
+    capture_sa_top = 1; capture_active = 1;
+    vp_leading_dimension = 24'd4;
+
+    vp_start_and_wait(VSRC_MEM, VDST_SA_A, 24'h000002, 24'h000002, 16'd0, 4'd2, 4'd2);
+    capture_active = 0;
+    vp_leading_dimension = 24'd0;
+
+    if (sa_cnt !== 4)                                          sa_ok = 0;
+    if (sa_wrreq_log[0] !== 8'h01 || sa_data_log[0] !== 8'h11) sa_ok = 0;
+    if (sa_wrreq_log[1] !== 8'h01 || sa_data_log[1] !== 8'h12) sa_ok = 0;
+    if (sa_wrreq_log[2] !== 8'h02 || sa_data_log[2] !== 8'h21) sa_ok = 0;
+    if (sa_wrreq_log[3] !== 8'h02 || sa_data_log[3] !== 8'h22) sa_ok = 0;
+
+    check(sa_ok === 1, 15);
+
+    // -----------------------------------------------------------------------
+    // TEST 16 (v0.5): VSRC_SA_OUT → VDST_MEM with leading_dimension=4.
+    //   A 2x2 result is written into a 4-wide parent starting at flat 0x2, so
+    //   result row 1 lands at base+4 (mem[6..7]) not base+2 (mem[4..5]). With
+    //   M0=1,n=0 the requant is the identity, and stride_mode drives distinct
+    //   values so placement is unambiguous:
+    //     out[0][0]=10→mem[2]  out[0][1]=11→mem[3]
+    //     out[1][0]=12→mem[6]  out[1][1]=13→mem[7]
+    //   mem[4],mem[5] (parent row-0 cols 2,3) stay at the sentinel 0xFF.
+    // -----------------------------------------------------------------------
+    do_reset;
+    stride_mode = 1'b1;
+    vp_scale = 8'd1; vp_shift = 8'd0;
+    vp_leading_dimension = 24'd4;
+    main_mem[2] = 8'hFF; main_mem[3] = 8'hFF; main_mem[4] = 8'hFF; main_mem[5] = 8'hFF;
+    main_mem[6] = 8'hFF; main_mem[7] = 8'hFF;
+
+    vp_start_and_wait(VSRC_SA_OUT, VDST_MEM, 24'd0, 24'h000002, 16'd0, 4'd2, 4'd2);
+    @(posedge clk); #1;
+
+    check((main_mem[2] === 8'd10) && (main_mem[3] === 8'd11) &&
+          (main_mem[6] === 8'd12) && (main_mem[7] === 8'd13) &&
+          (main_mem[4] === 8'hFF) && (main_mem[5] === 8'hFF), 16);
+    stride_mode = 1'b0;
+    vp_leading_dimension = 24'd0;
 
     // -----------------------------------------------------------------------
     // Summary

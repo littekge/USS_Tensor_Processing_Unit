@@ -25,7 +25,7 @@
  * PASS / FAIL CRITERIA:
  *   Each test prints "PASS" or "FAIL" to the transcript.
  *   A final summary prints total pass/fail counts.
- *   All 9 tests should show PASS for a correct implementation.
+ *   All 10 tests should show PASS for a correct implementation.
  *
  * TEST CASES:
  *   Test 1: Reset state — idle HIGH, ramp counter and rdreq cleared.
@@ -38,10 +38,20 @@
  *   Test 7: A loaded MAC tile accumulates a non-zero product and the o_c
  *           output mux selects MAC(col=i_col, row=i_row); untouched tiles
  *           read back zero.
- *   Test 8: clear zeroes a MAC accumulator (residual data flushed between ops).
+ *   Test 8 (v0.5): clear/accumulator_clear split — the MAC accumulator SURVIVES
+ *           an inter-operation clear (operands are flushed but c is preserved)
+ *           and is zeroed only by accumulator_clear (or trst).
  *   Test 9: signed multiply — a negative operand streamed through MAC(0,0)
  *           accumulates a NEGATIVE product (fails on the old unsigned multiply,
  *           which would treat 0xFE as +254 and accumulate a large positive).
+ *   Test 10 (v0.5): multip carry-path — the persistent accumulator gains
+ *           EXACTLY the intended per-tile products across an inter-operation
+ *           clear + long idle gap, and NOTHING from stale operands held after
+ *           the input buffers drain. Two identical tiles into MAC(0,0) with a
+ *           clear + 20-cycle idle gap between them must leave c == 2*(one tile):
+ *           the gap preserves the first tile unchanged (no stale leak) and the
+ *           second tile adds only its own product. FAILS if the array
+ *           over-accumulates residual products during the gap.
  * -------------------------------------------------------------------------
  */
 
@@ -96,6 +106,7 @@ endtask
 // DUT signals
 // ---------------------------------------------------------------------------
 reg          clear;
+reg          acc_clear;
 reg          sa_start;
 reg  [7:0]   top_data;
 reg  [N-1:0] top_wrreq;
@@ -113,6 +124,7 @@ Systolic_Array #(.N(N)) dut (
     .i_clk                  (clk),
     .i_trst                 (trst),
     .i_clear                (clear),
+    .i_accumulator_clear    (acc_clear),
     .i_systolic_array_start (sa_start),
     .o_systolic_array_idle  (sa_idle),
     .i_top_data             (top_data),
@@ -193,6 +205,7 @@ begin
     clk        = 1'b0;
     trst       = 1'b1;
     clear      = 1'b0;
+    acc_clear  = 1'b0;
     sa_start   = 1'b0;
     top_data   = 8'd0;
     top_wrreq  = {N{1'b0}};
@@ -333,9 +346,10 @@ begin
     end
 
     // -----------------------------------------------------------------------
-    // Test 8: clear zeroes a MAC accumulator. Accumulate a non-zero product
-    //         into MAC(0,0), then assert clear and confirm the accumulator is
-    //         flushed to zero (residual data does not survive between ops).
+    // Test 8 (v0.5): clear/accumulator_clear split. Accumulate a non-zero
+    //         product into MAC(0,0), pulse clear (must PRESERVE the accumulator
+    //         while flushing operands), then pulse accumulator_clear (must ZERO
+    //         the accumulator).
     // -----------------------------------------------------------------------
     do_reset;
     push_top(0, 8'd2);
@@ -353,9 +367,13 @@ begin
     sel_row = 4'd0;
     #1;
     begin : clear_check
-        reg nonzero_before;
+        reg [31:0] val_before;
+        reg        nonzero_before;
+        reg        survived_clear;
+        val_before     = c_out;
         nonzero_before = (c_out != 32'd0);
-        // Assert clear for one cycle to flush the MAC accumulators.
+        // Pulse clear: the accumulator must survive unchanged (only operand
+        // pipeline registers are flushed).
         clear = 1'b1;
         @(posedge clk); #1;
         clear = 1'b0;
@@ -363,7 +381,17 @@ begin
         sel_col = 4'd0;
         sel_row = 4'd0;
         #1;
-        check((nonzero_before === 1'b1) && (c_out === 32'd0), 8);
+        survived_clear = (c_out === val_before);
+        // Pulse accumulator_clear: the accumulator must now be zeroed.
+        acc_clear = 1'b1;
+        @(posedge clk); #1;
+        acc_clear = 1'b0;
+        @(posedge clk); #1;
+        sel_col = 4'd0;
+        sel_row = 4'd0;
+        #1;
+        check((nonzero_before === 1'b1) && (survived_clear === 1'b1) &&
+              (c_out === 32'd0), 8);
     end
 
     // -----------------------------------------------------------------------
@@ -390,6 +418,78 @@ begin
     sel_row = 4'd0;
     #1;
     check(($signed(c_out) < 0) && (($signed(c_out) % 32'sd6) == 32'sd0), 9);
+
+    // -----------------------------------------------------------------------
+    // Test 10 (v0.5): multip carry-path — no stale-product leak across the
+    //         inter-operation gap. This directly exercises the persistent
+    //         accumulator that multip relies on: the accumulator must gain
+    //         ONLY the intended per-tile products and nothing from residual
+    //         operands after the buffers drain.
+    //
+    //         Tile 1 (top_buf[0]=2 x2, left_buf[0]=3 x2) accumulates P1 into
+    //         MAC(0,0). Then a one-cycle clear (operand-pipeline flush, mimics
+    //         the Controller's per-op CLEAR) plus a long idle gap follow: during
+    //         the gap S==IDLE so no reads occur and both array edges are fed 0,
+    //         and clear zeroed the MAC operand registers — so every MAC computes
+    //         o_c <= o_c + 0. The accumulator must therefore still read P1 after
+    //         the gap. Tile 2 uses identical operands, so its intended
+    //         contribution equals P1; the final accumulator must be exactly
+    //         2*P1. If stale products leaked during the gap, after_gap would
+    //         exceed P1 and the final would exceed 2*P1 — both caught here.
+    // -----------------------------------------------------------------------
+    do_reset;
+    // --- Tile 1 ---
+    push_top(0, 8'd2);
+    push_top(0, 8'd2);
+    push_left(0, 8'd3);
+    push_left(0, 8'd3);
+    pulse_start;
+    guard = 0;
+    while ((sa_idle === 1'b0) && (guard < 128))
+    begin
+        @(posedge clk); #1;
+        guard = guard + 1;
+    end
+    sel_col = 4'd0;
+    sel_row = 4'd0;
+    #1;
+    begin : multip_carry_check
+        reg [31:0] p1;
+        reg [31:0] after_gap;
+        reg [31:0] final_val;
+        p1 = c_out;
+        // Inter-operation clear: flush the operand pipeline, PRESERVE the
+        // accumulator (accumulator_clear stays LOW, as it does for multip).
+        clear = 1'b1;
+        @(posedge clk); #1;
+        clear = 1'b0;
+        // Long idle gap with no start and no writes — the window in which a
+        // stale-product leak would show up as accumulator drift.
+        repeat (20) @(posedge clk);
+        #1;
+        sel_col = 4'd0;
+        sel_row = 4'd0;
+        #1;
+        after_gap = c_out;
+        // --- Tile 2: identical operands -> intended contribution == p1 ---
+        push_top(0, 8'd2);
+        push_top(0, 8'd2);
+        push_left(0, 8'd3);
+        push_left(0, 8'd3);
+        pulse_start;
+        guard = 0;
+        while ((sa_idle === 1'b0) && (guard < 128))
+        begin
+            @(posedge clk); #1;
+            guard = guard + 1;
+        end
+        sel_col = 4'd0;
+        sel_row = 4'd0;
+        #1;
+        final_val = c_out;
+        check((p1 != 32'd0) && (after_gap === p1) &&
+              (final_val === (p1 << 1)), 10);
+    end
 
     // -----------------------------------------------------------------------
     // Summary

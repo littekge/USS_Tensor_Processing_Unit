@@ -129,6 +129,14 @@ wire [2:0]   ctrl_alu_funct;
 // Controller output — Systolic_Array start pulse
 wire         ctrl_systolic_array_start;
 
+// Controller output — one-cycle accumulator clear (after a mult writeback),
+// independent of the shared inter-operation clear (ctrl_clear).
+wire         ctrl_accumulator_clear;
+
+// Controller outputs — active leading dimension (physical row stride) per VP.
+wire [23:0]  ctrl_leading_dimension_a;
+wire [23:0]  ctrl_leading_dimension_b;
+
 // Vector buffer sclr: asserted when trst is LOW or controller clear is HIGH
 wire vb_sclr;
 assign vb_sclr = ctrl_clear | ~trst;
@@ -292,9 +300,12 @@ Controller ctrl (
     .o_length_b             (ctrl_length_b),
     .o_dim0_b               (ctrl_dim0_b),
     .o_dim1_b               (ctrl_dim1_b),
+    .o_leading_dimension_a  (ctrl_leading_dimension_a),
+    .o_leading_dimension_b  (ctrl_leading_dimension_b),
     .o_activator_funct      (ctrl_activator_funct),
     .o_alu_funct            (ctrl_alu_funct),
-    .o_systolic_array_start (ctrl_systolic_array_start)
+    .o_systolic_array_start (ctrl_systolic_array_start),
+    .o_accumulator_clear    (ctrl_accumulator_clear)
 );
 
 Vector_Processor vp_a (
@@ -308,6 +319,7 @@ Vector_Processor vp_a (
     .i_length              (ctrl_length_a),
     .i_dim0                (ctrl_dim0_a),
     .i_dim1                (ctrl_dim1_a),
+    .i_leading_dimension   (ctrl_leading_dimension_a),
     .i_scale               (ctrl_scale_a),
     .i_shift               (ctrl_shift_a),
     .o_vector_idle         (vpa_vector_idle),
@@ -340,6 +352,7 @@ Vector_Processor vp_b (
     .i_length              (ctrl_length_b),
     .i_dim0                (ctrl_dim0_b),
     .i_dim1                (ctrl_dim1_b),
+    .i_leading_dimension   (ctrl_leading_dimension_b),
     .i_scale               (8'd0),      // VP_B never requantizes SA outputs
     .i_shift               (8'd0),
     .o_vector_idle         (vpb_vector_idle),
@@ -399,6 +412,7 @@ Systolic_Array #(.N(8)) sa (
 	.i_clk                  (i_clk),
 	.i_trst                 (trst),
 	.i_clear                (ctrl_clear),
+	.i_accumulator_clear    (ctrl_accumulator_clear),
 	.i_systolic_array_start (ctrl_systolic_array_start),
 	.o_systolic_array_idle  (sa_systolic_array_idle),
 	.i_top_data             (vpa_sa_top_data),

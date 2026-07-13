@@ -55,7 +55,7 @@
  * -------------------------------------------------------------------------
  * PASS / FAIL CRITERIA:
  *   Each test prints "PASS" or "FAIL". A final summary prints pass/fail counts.
- *   All 12 tests should show PASS for a correct implementation.
+ *   All 13 tests should show PASS for a correct implementation.
  *
  * TEST CASES:
  *   Test 1: Device-mode FLASH completes — program/tpu_rst return HIGH after STOP.
@@ -84,6 +84,13 @@
  *   Test 12: Per-layer dyadic requant (v0.3) — a mult carrying M0=3, n=4
  *           requantizes C = [[100,50],[25,10]] to [[19,9],[5,2]] via
  *           clamp((3x + 8) >> 4), exercising the runtime M0/n datapath.
+ *   Test 13 (v0.5): Tiled matmul with leading-dimension addressing. C(2x2) =
+ *           A(2x16) * B(16x2) with contraction K=16 tiled into two K=8 passes
+ *           (a multip accumulating the first tile, terminated by a mult that
+ *           adds the second tile, requantizes, and clears). A stride sets
+ *           ld1=16 so each 2x8 sub-block of A is read in place (row 1 at
+ *           base+16, not base+8); ld2=2 addresses B/dest. A=[row0=1s,row1=2s],
+ *           B[k]=[1,2] -> C=[[16,32],[32,64]], requant (M0=1,n=4) = [[1,2],[2,4]].
  * -------------------------------------------------------------------------
  */
 
@@ -101,13 +108,13 @@ module TB_Step8_FullSystem;
     reg  spi_mosi;
     reg  spi_ss;
     wire spi_miso;
-    wire [31:0] debug_val;
 
     reg         mode_select;
     reg         input_data_valid;
     reg  [7:0]  input_data;
     wire [7:0]  output_data;
     wire        output_data_valid;
+    // NOTE: o_debug_val was removed from TPU.v; no debug port is connected here.
 
     // -----------------------------------------------------------------------
     // Timing / constants
@@ -149,8 +156,7 @@ module TB_Step8_FullSystem;
         .i_input_data        (input_data),
         .o_output_data       (output_data),
         .o_output_data_valid (output_data_valid),
-        .o_end_reached       (),                // exposed at TPU boundary; unused here
-        .o_debug_val         (debug_val)
+        .o_end_reached       ()                 // exposed at TPU boundary; unused here
     );
 
     // v0.3: requantization is per-layer and supplied at runtime via each MUL
@@ -284,6 +290,45 @@ module TB_Step8_FullSystem;
         end
     endfunction
 
+    // MUL builder with an explicit funct3 (ISA v0.5): mk_mul_rq embeds funct3=0
+    // (mult); mk_multip embeds funct3=1 (multip — does not clear the
+    // accumulator after writeback, so a following MUL accumulates into it).
+    function [127:0] mk_mul_f3;
+        input [23:0] rs1;
+        input [3:0]  sz11, sz12;
+        input [23:0] rs2;
+        input [3:0]  sz21, sz22;
+        input [23:0] rd;
+        input [7:0]  scale, shift;
+        input [2:0]  f3;
+        begin
+            mk_mul_f3 = {4'b1000, rs1, sz11, sz12, rs2, sz21, sz22, rd,
+                         scale, shift, 17'd0, f3};
+        end
+    endfunction
+
+    function [127:0] mk_multip;
+        input [23:0] rs1;
+        input [3:0]  sz11, sz12;
+        input [23:0] rs2;
+        input [3:0]  sz21, sz22;
+        input [23:0] rd;
+        input [7:0]  scale, shift;
+        begin
+            mk_multip = mk_mul_f3(rs1, sz11, sz12, rs2, sz21, sz22, rd,
+                                  scale, shift, 3'h1);
+        end
+    endfunction
+
+    // stride builder (ISA v0.5 CONFIG format): opcode 1111 | im1[123:100] |
+    // im2[99:76] | reserved[75:3] | funct3[2:0]=0. im1 -> ld1, im2 -> ld2.
+    function [127:0] mk_stride;
+        input [23:0] im1, im2;
+        begin
+            mk_stride = {4'b1111, im1, im2, 76'd0};
+        end
+    endfunction
+
     // Send a 4-byte MEM command block to a 24-bit flat ISA address (Message
     // Protocol v0.3: 3-byte little-endian address LADD/MADD/UADD, then length).
     task send_mem4;
@@ -300,6 +345,26 @@ module TB_Step8_FullSystem;
             send_spi_byte(b1);
             send_spi_byte(b2);
             send_spi_byte(b3);
+        end
+    endtask
+
+    // Send a MEM command block of `count` bytes (count <= 255) from send_buf,
+    // to a 24-bit flat ISA address (LLEN=count, ULEN=0). Used by Test 13 to
+    // flash the parent matrices for the tiled matmul.
+    reg [7:0] send_buf [0:255];
+    task send_mem_block;
+        input [23:0] addr;
+        input integer count;
+        integer i;
+        begin
+            send_spi_byte(MEM_CODE);
+            send_spi_byte(addr[7:0]);    // LADD
+            send_spi_byte(addr[15:8]);   // MADD
+            send_spi_byte(addr[23:16]);  // UADD
+            send_spi_byte(count[7:0]);   // LLEN
+            send_spi_byte(8'd0);         // ULEN
+            for (i = 0; i < count; i = i + 1)
+                send_spi_byte(send_buf[i]);
         end
     endtask
 
@@ -634,6 +699,58 @@ module TB_Step8_FullSystem;
         check((shadow_main[10] === 8'd19) && (shadow_main[11] === 8'd9) &&
               (shadow_main[12] === 8'd5)  && (shadow_main[13] === 8'd2),
               "per-layer requant (M0=3,n=4) = [19,9,5,2]");
+
+        // ===================================================================
+        // Test 13 (v0.5): tiled matmul with leading-dimension addressing.
+        //   C(2x2) = A(2x16) * B(16x2), K=16 tiled into two K=8 passes:
+        //     multip:  C  = A[:,0:8]  * B[0:8,:]
+        //     mult:    C += A[:,8:16] * B[8:16,:]   (then requant + clear)
+        //   Parents (flat, contiguous): A @0x02 (2x16, ld1=16), B @0x40 (16x2,
+        //   ld2=2), C @0x80. A row0 = all 1s, A row1 = all 2s; B[k] = [1,2].
+        //     C[i][j] = sum_{k=0..15} A[i][k]*B[k][j]
+        //     C = [[16,32],[32,64]]; requant (M0=1,n=4) = (x+8)>>4 = [[1,2],[2,4]]
+        //   The stride ld1=16 forces each 2x8 A sub-block to be read in place
+        //   (row 1 begins at base+16, not base+8), and the accumulator persists
+        //   from the multip into the mult (in-array tiled contraction).
+        // ===================================================================
+        $display("Test 13: tiled matmul (stride + multip run terminated by mult)");
+        rst = 0; repeat (4) @(posedge clk); rst = 1; repeat (4) @(posedge clk);
+        mode_select = 1'b0;
+        for (si = 0; si < 1024; si = si + 1) shadow_main[si] = 8'hEE;
+
+        // Single FLASH session: MEM(A), MEM(B), then the tiled-matmul program.
+        spi_ss = 0;
+        send_spi_byte(FLASH_CODE);
+
+        // A parent (row-major 2x16): row0 = 1s, row1 = 2s.
+        for (m = 0;  m < 16; m = m + 1) send_buf[m] = 8'd1;
+        for (m = 16; m < 32; m = m + 1) send_buf[m] = 8'd2;
+        send_mem_block(24'h000002, 32);   // A @ flat 2..33
+
+        // B parent (row-major 16x2): B[k] = [1,2].
+        for (m = 0; m < 16; m = m + 1) begin
+            send_buf[2*m]     = 8'd1;
+            send_buf[2*m + 1] = 8'd2;
+        end
+        send_mem_block(24'h000040, 32);   // B @ flat 64..95
+
+        // Program: stride, multip (tile 0), mult (tile 1, requant M0=1 n=4), end.
+        send_program(mk_stride(24'd16, 24'd2));
+        send_program(mk_multip(24'h000002, 4'd2, 4'd8, 24'h000040, 4'd8, 4'd2,
+                               24'h000080, 8'd1, 8'd0));
+        send_program(mk_mul_rq(24'h00000A, 4'd2, 4'd8, 24'h000050, 4'd8, 4'd2,
+                               24'h000080, 8'd1, 8'd4));
+        send_program(128'd0); // end
+        send_spi_byte(STOP_CODE);
+        spi_ss = 1;
+        wait_feeder_done(400000);
+        repeat (120) @(posedge clk);
+        $display("  tiled C mem[128..131] = %0d %0d %0d %0d  (expect 1 2 2 4)",
+                 $signed(shadow_main[128]), $signed(shadow_main[129]),
+                 $signed(shadow_main[130]), $signed(shadow_main[131]));
+        check((shadow_main[128] === 8'd1) && (shadow_main[129] === 8'd2) &&
+              (shadow_main[130] === 8'd2) && (shadow_main[131] === 8'd4),
+              "tiled matmul (multip+mult, ld1=16) = [[1,2],[2,4]]");
 
         // ===================================================================
         // Summary

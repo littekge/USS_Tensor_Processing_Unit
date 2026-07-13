@@ -11,10 +11,13 @@ module Multiply_Accumulate_Unit (
 
    input i_clk,
 	input i_trst,
-	
+
 	//control
+	//clear resets only the operand pipeline registers (o_a, o_b);
+	//accumulator_clear zeroes only the accumulator (o_c). trst resets all.
 	input i_clear,
-	
+	input i_accumulator_clear,
+
 	//data
 	input [7:0] i_a,
 	input [7:0] i_b,
@@ -45,16 +48,27 @@ begin
 	end
 	else
 	begin
+		//operand pipeline registers: flushed by clear, otherwise forwarded.
 		if (i_clear == 1'b1)
 		begin
 			o_a <= 8'd0;
 			o_b <= 8'd0;
-			o_c <= 32'd0;
 		end
 		else
 		begin
 			o_a <= i_a;
 			o_b <= i_b;
+		end
+
+		//accumulator: zeroed only by accumulator_clear so it survives the
+		//inter-operation clear and can accumulate tiled partial products
+		//across a multip run until a terminating mult clears it.
+		if (i_accumulator_clear == 1'b1)
+		begin
+			o_c <= 32'd0;
+		end
+		else
+		begin
 			//operands are 8-bit signed (two's complement) per the ISA datatype;
 			//$signed forces a signed multiply so negative operands accumulate
 			//their true signed value rather than a large unsigned product.

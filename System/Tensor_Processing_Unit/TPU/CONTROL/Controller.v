@@ -57,12 +57,20 @@ module Controller (
     output reg  [3:0]  o_dim0_b,
     output reg  [3:0]  o_dim1_b,
 
+    // Active leading dimension (physical row stride) supplied to each vector
+    // processor: ld1 when loading src1, ld2 when loading src2, ld2 at writeback.
+    output reg  [23:0] o_leading_dimension_a,
+    output reg  [23:0] o_leading_dimension_b,
+
     // Activator and ALU function selects
     output wire [2:0]  o_activator_funct,
     output wire [2:0]  o_alu_funct,
 
-    // Systolic_Array control output
-    output wire        o_systolic_array_start
+    // Systolic_Array control outputs
+    output wire        o_systolic_array_start,
+    // Pulsed HIGH for one cycle after writeback to zero the SA accumulators.
+    // Asserted only when funct3 selects clearing (mult, not multip).
+    output wire        o_accumulator_clear
 
     // ---------- DEBUG ---------- //
     // ---------- END DEBUG ---------- //
@@ -82,13 +90,20 @@ parameter [3:0]
     SA_WAIT       = 4'd7,
     WB_VP_START   = 4'd8,
     WB_VP_WAIT    = 4'd9,
-    DECODE_ERROR  = 4'd10;
+    DECODE_ERROR  = 4'd10,
+    ACC_CLEAR     = 4'd11;   // one-cycle accumulator-clear phase after writeback
 
 // ISA instruction opcodes
 parameter [3:0]
-    OP_MULT = 4'b1000,
-    OP_RELU = 4'b1001,
-    OP_ADD  = 4'b1010;
+    OP_MULT   = 4'b1000,   // shared by mult / multip, distinguished by funct3
+    OP_RELU   = 4'b1001,
+    OP_ADD    = 4'b1010,
+    OP_STRIDE = 4'b1111;
+
+// funct3 sub-codes for the MUL opcode (per ISA Instruction Set Listing)
+parameter [2:0]
+    FUNCT3_MULT   = 3'h0,   // clears the accumulator after writeback
+    FUNCT3_MULTIP = 3'h1;   // leaves the accumulator to keep accumulating
 
 // Vector source encoding passed to Vector_Processor
 parameter [2:0]
@@ -121,10 +136,20 @@ reg [127:0] instr_latch;
 // State machine registers
 reg [3:0] S, NS;
 
-// Combinational field aliases decoded from instr_latch per ISA v0.4 (all
+// Combinational field aliases decoded from instr_latch per ISA v0.5 (all
 // formats share the 24-bit rs1 field at bits 123-100).
 wire [3:0]  instr_opcode = instr_latch[127:124];
+wire [2:0]  instr_funct3 = instr_latch[2:0];
 wire [23:0] instr_rs1    = instr_latch[123:100];
+
+// Leading-dimension registers (ISA v0.5). Loaded by the stride instruction,
+// held until the next stride or trst, and cleared to 0 (contiguous) on trst.
+reg [23:0] ld1;
+reg [23:0] ld2;
+
+// CONFIG-format field aliases (stride): im1 -> ld1, im2 -> ld2.
+wire [23:0] cfg_im1 = i_instruction[123:100];
+wire [23:0] cfg_im2 = i_instruction[99:76];
 
 // MUL-format field aliases (v0.4)
 wire [3:0]  mul_sz11 = instr_latch[99:96];   // rows of matrix 1
@@ -178,10 +203,16 @@ begin
             // posedge that exits CLEAR, so it holds the previous instruction
             // here. The Feeder holds i_instruction stable during controller
             // processing.
-            NS = ((i_instruction[127:124] == OP_MULT) ||
-                  (i_instruction[127:124] == OP_RELU) ||
-                  (i_instruction[127:124] == OP_ADD))
-                 ? EXEC_VP_START : DECODE_ERROR;
+            // A stride instruction only latches ld1/ld2 (done in the execution
+            // block) and has no Execute or Writeback phase, so return to IDLE.
+            if (i_instruction[127:124] == OP_STRIDE)
+                NS = IDLE;
+            else if ((i_instruction[127:124] == OP_MULT) ||
+                     (i_instruction[127:124] == OP_RELU) ||
+                     (i_instruction[127:124] == OP_ADD))
+                NS = EXEC_VP_START;
+            else
+                NS = DECODE_ERROR;
         EXEC_VP_START:
             NS = EXEC_VP_WAIT;
         EXEC_VP_WAIT:
@@ -198,7 +229,11 @@ begin
             NS = WB_VP_WAIT;
         WB_VP_WAIT:
             // Writeback always uses VP_A only
-            NS = i_vector_idle_a ? IDLE : WB_VP_WAIT;
+            NS = i_vector_idle_a ? ACC_CLEAR : WB_VP_WAIT;
+        ACC_CLEAR:
+            // One cycle after writeback; accumulator_clear is asserted here
+            // only when funct3 selects clearing (mult, not multip).
+            NS = IDLE;
         STATE_ERROR:
             NS = STATE_ERROR;
         DECODE_ERROR:
@@ -216,12 +251,23 @@ begin
     if (i_trst == 1'b0)
     begin
         instr_latch <= 128'd0;
+        ld1         <= 24'd0;
+        ld2         <= 24'd0;
     end
     else
     begin
         case (S)
             CLEAR:
+            begin
                 instr_latch <= i_instruction;
+                // Latch the leading dimensions for a stride instruction. Uses
+                // i_instruction (same timing as the instr_latch load).
+                if (i_instruction[127:124] == OP_STRIDE)
+                begin
+                    ld1 <= cfg_im1;
+                    ld2 <= cfg_im2;
+                end
+            end
             default:;
         endcase
     end
@@ -244,6 +290,14 @@ assign o_vector_start_b = (S == EXEC_VP_START) &&
 
 // systolic_array_start: pulsed HIGH for one cycle during SA_START
 assign o_systolic_array_start = (S == SA_START);
+
+// accumulator_clear: pulsed HIGH for one cycle in ACC_CLEAR (after writeback)
+// only when the decoded MUL instruction's funct3 selects clearing (mult, not
+// multip). This lets a multip run keep accumulating in-array while a
+// terminating mult zeroes the accumulator once its result is written back.
+assign o_accumulator_clear = (S == ACC_CLEAR) &&
+                             (instr_opcode == OP_MULT) &&
+                             (instr_funct3 == FUNCT3_MULT);
 
 // Activator function: relu during relu instruction, no-op otherwise
 assign o_activator_funct = (instr_opcode == OP_RELU) ? FUNCT_RELU : FUNCT_NOOP;
@@ -274,6 +328,10 @@ begin
     o_dim0_b               = 4'd0;
     o_dim1_b               = 4'd0;
 
+    // Default contiguous (0) unless a MUL supplies a leading dimension below.
+    o_leading_dimension_a  = 24'd0;
+    o_leading_dimension_b  = 24'd0;
+
     case (instr_opcode)
         OP_MULT:
         begin
@@ -291,6 +349,9 @@ begin
                 o_mem_source_address_b = mul_rs2;
                 o_dim0_b               = mul_sz21;
                 o_dim1_b               = mul_sz22;
+                // src1 is walked with ld1, src2 with ld2 (0 = contiguous).
+                o_leading_dimension_a  = ld1;
+                o_leading_dimension_b  = ld2;
             end
             else
             begin
@@ -303,6 +364,8 @@ begin
                 o_dim1_a             = mul_sz22;
                 o_scale_a            = mul_scale;
                 o_shift_a            = mul_shift;
+                // dest is written with ld2 (0 = contiguous).
+                o_leading_dimension_a = ld2;
             end
         end
 
