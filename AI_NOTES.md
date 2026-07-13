@@ -33,14 +33,17 @@ row-major tensor, but `mult` only addresses contiguous regions; single-row
 M-tiling still left the weight (rhs) tile strided whenever K and N are both tiled
 (wrong results) and forced ~1/8 array utilization.
 
-- **Committed on main (kept):** v0.5.0 ISA/HW specs — `multip` (opcode 1000 /
-  funct3 0x1) and funct3-gated accumulator-clear-after-writeback.
-- **Redo direction (Design B — decided):** GEMM-style strided addressing. A new
-  **`CONFIG` instruction** sets leading-dimension registers `lda`=K, `ldb`=N once
-  per matmul (dest `ldc`=`ldb`); `mult`/`multip` walk sub-blocks with the active
-  strides. Default = contiguous (v0.4-compatible, MUL format unchanged). Enables
-  row-parallel tiling (full utilization) and any M/N/K. Chosen over packing
-  strides into MUL (which caps matrix dims ~1023).
+- **Specs (Phase 0) — COMPLETE 2026-07-13:** ISA + HW spec (both v0.5.0,
+  proofread clean) cover the full v0.5 feature set — `multip` (opcode 1000 /
+  funct3 0x1) with funct3-gated accumulator-clear-after-writeback, plus
+  leading-dimension addressing (below). ISA committed + pushed; HW-spec commit
+  and both changelog entries pending user.
+- **Design B — GEMM-style strided addressing:** a `stride` instruction (CONFIG
+  format) sets leading-dimension registers `ld1`=K, `ld2`=N once per matmul (dest
+  uses `ld2`); `mult`/`multip` walk sub-blocks with the active strides. Default 0
+  = contiguous (v0.4-compatible, MUL format unchanged). Enables row-parallel
+  tiling (full utilization) and any M/N/K. Chosen over packing strides into MUL
+  (which caps matrix dims ~1023).
 - **Instruction taxonomy — CONFIG vs SHAPE:** two formats. `CONFIG` = config
   format (funct-selected banks: leading-dims now, conv/im2col params for v0.6),
   no memory operands, read by MUL and later im2col. `SHAPE` = the reserved
@@ -55,9 +58,10 @@ M-tiling still left the weight (rhs) tile strided whenever K and N are both tile
 - **Assembler gains two stages:** transpose analysis (manifest of transposed
   weight args) + a partitioning pass (emit `CONFIG` + strided tiled `mult`/`multip`).
   No blocked weight layout needed — strides handle tiling.
-- **Next action:** revise specs to add `CONFIG` + leading-dimension semantics
-  (user writes; read-only for agents), then `/fan-out` RTL (`tpu-rtl`) + assembler.
-  Non-Questa machines → RTL `Verification: PENDING`.
+- **Next action — implementation (Phase 1/2):** `/fan-out` `tpu-rtl` (ld1/ld2
+  context + `stride` decode + VP strided address-gen) and `assembler` (CONFIG/
+  `stride` op + partition pass + offline weight transpose). Non-Questa machines →
+  RTL `Verification: PENDING`.
 - Full plan + rationale in Claude memory (`v0-5-partitioning-redo`).
 
 ## Roadmap — end goal LeNet-5
