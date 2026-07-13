@@ -27,6 +27,18 @@ each machine; the journal travels with the repo).
 | `Tests/` | User's personal scratchpad | none | none | **EXCLUDED — agents never read from or write to this directory** |
 | `Resources/` | Saved reference material | none | none | Read-only reference |
 
+## Build Artifacts
+
+Any agent or subagent may **regenerate build artifacts** — re-run export/build
+scripts that produce generated outputs (`*.npz`, MLIR, binaries, and the like) —
+even for a section it does not own, **provided it modifies no _code_ in a
+restricted or non-owned location** (nothing under `Specifications/`, no
+`CLAUDE.md`, no `Tests/`, and no source in another agent's section).
+Regenerating an artifact by running a script is distinct from editing code:
+e.g. the `assembler` agent may run the `System/Neural_Networks` export to
+regenerate a model's `weights.npz` for an end-to-end test, without touching any
+Neural_Networks source (which stays `nn-trainer` propose-only).
+
 ## Routing Rules
 
 Route work to the section (and agent) that owns the subject matter:
