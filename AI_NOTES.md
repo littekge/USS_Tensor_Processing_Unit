@@ -36,19 +36,26 @@ M-tiling still left the weight (rhs) tile strided whenever K and N are both tile
 - **Committed on main (kept):** v0.5.0 ISA/HW specs — `multip` (opcode 1000 /
   funct3 0x1) and funct3-gated accumulator-clear-after-writeback.
 - **Redo direction (Design B — decided):** GEMM-style strided addressing. A new
-  **`SHAPE` instruction** (the ISA's reserved SHAPE format) sets leading-dimension
-  registers `lda`=K, `ldb`=N once per matmul (dest `ldc`=`ldb`); `mult`/`multip`
-  walk sub-blocks with the active strides. Default = contiguous (v0.4-compatible,
-  MUL format unchanged). Enables row-parallel tiling (full utilization) and any
-  M/N/K. Chosen over packing strides into MUL (which caps matrix dims ~1023).
+  **`CONFIG` instruction** sets leading-dimension registers `lda`=K, `ldb`=N once
+  per matmul (dest `ldc`=`ldb`); `mult`/`multip` walk sub-blocks with the active
+  strides. Default = contiguous (v0.4-compatible, MUL format unchanged). Enables
+  row-parallel tiling (full utilization) and any M/N/K. Chosen over packing
+  strides into MUL (which caps matrix dims ~1023).
+- **Instruction taxonomy — CONFIG vs SHAPE:** two formats. `CONFIG` = config
+  format (funct-selected banks: leading-dims now, conv/im2col params for v0.6),
+  no memory operands, read by MUL and later im2col. `SHAPE` = the reserved
+  data-movement *execute* format (transpose, im2col), kept light because CONFIG
+  holds the heavy params. The v0.5 leading-dim instruction is a CONFIG bank;
+  SHAPE stays reserved for transpose/im2col executes (v0.6+).
 - **Transpose:** handled offline — physically transpose constant weights in
   `Process_Weights`, drop the op at legalize. **No hardware transpose op** (LeNet
   is pure CNN; verified the array uses stored rs2 verbatim so it isn't free). A
-  live-tensor transpose (transformers) would be a future `SHAPE` flag.
+  live-tensor transpose (transformers) would be a future SHAPE-format transpose
+  execute (or transB flag).
 - **Assembler gains two stages:** transpose analysis (manifest of transposed
-  weight args) + a partitioning pass (emit `SHAPE` + strided tiled `mult`/`multip`).
+  weight args) + a partitioning pass (emit `CONFIG` + strided tiled `mult`/`multip`).
   No blocked weight layout needed — strides handle tiling.
-- **Next action:** revise specs to add `SHAPE` + leading-dimension semantics
+- **Next action:** revise specs to add `CONFIG` + leading-dimension semantics
   (user writes; read-only for agents), then `/fan-out` RTL (`tpu-rtl`) + assembler.
   Non-Questa machines → RTL `Verification: PENDING`.
 - Full plan + rationale in Claude memory (`v0-5-partitioning-redo`).
