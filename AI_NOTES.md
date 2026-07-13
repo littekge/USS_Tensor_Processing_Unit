@@ -58,10 +58,18 @@ M-tiling still left the weight (rhs) tile strided whenever K and N are both tile
 - **Assembler gains two stages:** transpose analysis (manifest of transposed
   weight args) + a partitioning pass (emit `CONFIG` + strided tiled `mult`/`multip`).
   No blocked weight layout needed — strides handle tiling.
-- **Next action — implementation (Phase 1/2):** `/fan-out` `tpu-rtl` (ld1/ld2
-  context + `stride` decode + VP strided address-gen) and `assembler` (CONFIG/
-  `stride` op + partition pass + offline weight transpose). Non-Questa machines →
-  RTL `Verification: PENDING`.
+- **Implementation (Phase 1/2) — DONE & merged to `v0.5-workspace` 2026-07-13**
+  via `/fan-out` (`tpu-rtl` + `assembler`) plus a review-fix round (all 5 items).
+  TPU RTL: `ld1`/`ld2` context + `stride` decode + VP strided addressing +
+  multip/accumulator-clear split, + testbenches. Assembler: CONFIG/`stride`
+  ops+encoders, transpose-analysis stage, offline weight transpose, partition
+  pass — 64/64 pytest and a REAL Bigger_NN e2e (3 strides, one per matmul).
+  Assembler `main.md` steps marked complete; TPU steps left unmarked (Questa).
+- **Remaining:** TPU `Verification: PENDING` — run the regression on the Questa
+  PC (expect TB_Step3 13/13, TB_Step4 16/16, TB_Step7 10/10, TB_Step8 13/13) and
+  confirm `TPU.v` has no `o_debug_val`, then mark the TPU `main.md` steps
+  complete. Optional: re-export Bigger_NN from the main tree for portable debug
+  `loc` paths. `v0.5-workspace` pushed to origin; not yet merged to `main`.
 - Full plan + rationale in Claude memory (`v0-5-partitioning-redo`).
 
 ## Roadmap — end goal LeNet-5
