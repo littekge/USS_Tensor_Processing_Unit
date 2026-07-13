@@ -1,15 +1,33 @@
 """Serializer tests and a full end-to-end pipeline test (build step 8)."""
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
-from nn_assembler.Assembler import MAX_MATMUL_SIZE, OPCODE_ADD, Assemble
+from nn_assembler.Assembler import (
+    MAX_MATMUL_SIZE,
+    OPCODE_ADD,
+    OPCODE_MULT,
+    OPCODE_STRIDE,
+    Assemble,
+)
+from nn_assembler.Convert import NN_import
 from nn_assembler.MLIR.dialect import MultipOp, MultOp, StrideOp, parse_program
 from nn_assembler.MLIR.transpose_analysis import analyze_transposes_file
 from nn_assembler.Process_MLIR import Process_MLIR
 from nn_assembler.Process_Weights import Process_Weights
 from nn_assembler.Protocol import FLASH, MEM, PROGRAM, STOP
 from nn_assembler.Serializer import Serialize
+
+# The real, exported Bigger_NN artifacts (three Linear layers, 1->1000->100->1).
+# Its middle matmul (1x1000 @ 1000x100) tiles in both K and N, exercising the full
+# partitioning path against a genuine torchax export rather than a synthetic graph.
+_NETWORKS_DIR = Path(__file__).resolve().parents[2] / "Neural_Networks"
+_BIGGER_NN_DIR = _NETWORKS_DIR / "Bigger_NN"
+_have_bigger_nn = (_BIGGER_NN_DIR / "Bigger_NN_Recent.mlir").is_file() and (
+    _BIGGER_NN_DIR / "Bigger_NN_Recent.weights.npz"
+).is_file()
 
 
 def test_serialize_wraps_mem_then_program(tmp_path):
@@ -81,70 +99,29 @@ def test_full_pipeline(tmp_path):
     instructions = Assemble(tmp_path)
     out_path = Serialize(tmp_path, tmp_path / "out")
 
-    # Bias adds are dropped: two mults + end remain.
-    assert len(instructions) == 3
-
     def _bits(value, hi, lo):
         return (value >> lo) & ((1 << (hi - lo + 1)) - 1)
+
+    # Bias adds are dropped. Both matmuls are in-array (pass-through), so each is
+    # preceded by a stride(0,0) contiguous reset: 2 strides + 2 mults + end.
+    assert len(instructions) == 5
+    mults = [i for i in instructions if _bits(i, 127, 124) == OPCODE_MULT]
+    strides = [i for i in instructions if _bits(i, 127, 124) == OPCODE_STRIDE]
+    assert len(mults) == 2 and len(strides) == 2
+    # Every pass-through stride reset is contiguous (ld1 = ld2 = 0).
+    assert all(_bits(s, 123, 100) == 0 and _bits(s, 99, 76) == 0 for s in strides)
 
     # No ADD opcodes survive, and each mult carries its layer's M0/n (v0.4: M0 at
     # bits 35-28, n at bits 27-20).
     assert all(_bits(instr, 127, 124) != OPCODE_ADD for instr in instructions)
-    assert (_bits(instructions[0], 35, 28), _bits(instructions[0], 27, 20)) == (192, 8)  # M=0.75
-    assert (_bits(instructions[1], 35, 28), _bits(instructions[1], 27, 20)) == (128, 8)  # M=0.5
+    assert (_bits(mults[0], 35, 28), _bits(mults[0], 27, 20)) == (192, 8)  # M=0.75
+    assert (_bits(mults[1], 35, 28), _bits(mults[1], 27, 20)) == (128, 8)  # M=0.5
 
     # The final output (second mult's result) is pinned to the I/O address 0x1.
-    assert _bits(instructions[1], 59, 36) == 1
+    assert _bits(mults[1], 59, 36) == 1
 
     data = out_path.read_bytes()
     assert data[0] == FLASH and data[-1] == STOP
-
-
-# A Bigger_NN-shaped network (three Linear layers) with a genuinely 2-D transposed
-# middle weight and a matmul (1x12 @ 12x10) that tiles in BOTH K and N. Mirrors the
-# torchax addmm export pattern so stablehlo-opt reproduces the real transpose fold.
-_BIGGER = (
-    "module @jit_func {\n"
-    "  func.func public @main("
-    '%arg0: tensor<12x1xf32> loc("states[0]"), '
-    '%arg1: tensor<12xf32> loc("states[1]"), '
-    '%arg2: tensor<10x12xf32> loc("states[2]"), '
-    '%arg3: tensor<10xf32> loc("states[3]"), '
-    '%arg4: tensor<1x10xf32> loc("states[4]"), '
-    '%arg5: tensor<1xf32> loc("states[5]"), '
-    '%arg6: tensor<1x1xf32> loc("inputs[0][0]")) -> (tensor<1x1xf32>) {\n'
-    "    %cst = stablehlo.constant dense<1.000000e+00> : tensor<f32>\n"
-    "    %0 = stablehlo.transpose %arg0, dims = [1, 0] : (tensor<12x1xf32>) -> tensor<1x12xf32>\n"
-    "    %1 = stablehlo.broadcast_in_dim %cst, dims = [] : (tensor<f32>) -> tensor<12xf32>\n"
-    "    %2 = stablehlo.multiply %arg1, %1 : tensor<12xf32>\n"
-    "    %3 = stablehlo.dot_general %arg6, %0, contracting_dims = [1] x [0] : "
-    "(tensor<1x1xf32>, tensor<1x12xf32>) -> tensor<1x12xf32>\n"
-    "    %4 = stablehlo.broadcast_in_dim %cst, dims = [] : (tensor<f32>) -> tensor<1x12xf32>\n"
-    "    %5 = stablehlo.multiply %4, %3 : tensor<1x12xf32>\n"
-    "    %6 = stablehlo.broadcast_in_dim %2, dims = [1] : (tensor<12xf32>) -> tensor<1x12xf32>\n"
-    "    %7 = stablehlo.add %6, %5 : tensor<1x12xf32>\n"
-    "    %8 = stablehlo.transpose %arg2, dims = [1, 0] : (tensor<10x12xf32>) -> tensor<12x10xf32>\n"
-    "    %9 = stablehlo.broadcast_in_dim %cst, dims = [] : (tensor<f32>) -> tensor<10xf32>\n"
-    "    %10 = stablehlo.multiply %arg3, %9 : tensor<10xf32>\n"
-    "    %11 = stablehlo.dot_general %7, %8, contracting_dims = [1] x [0] : "
-    "(tensor<1x12xf32>, tensor<12x10xf32>) -> tensor<1x10xf32>\n"
-    "    %12 = stablehlo.broadcast_in_dim %cst, dims = [] : (tensor<f32>) -> tensor<1x10xf32>\n"
-    "    %13 = stablehlo.multiply %12, %11 : tensor<1x10xf32>\n"
-    "    %14 = stablehlo.broadcast_in_dim %10, dims = [1] : (tensor<10xf32>) -> tensor<1x10xf32>\n"
-    "    %15 = stablehlo.add %14, %13 : tensor<1x10xf32>\n"
-    "    %16 = stablehlo.transpose %arg4, dims = [1, 0] : (tensor<1x10xf32>) -> tensor<10x1xf32>\n"
-    "    %17 = stablehlo.broadcast_in_dim %cst, dims = [] : (tensor<f32>) -> tensor<1xf32>\n"
-    "    %18 = stablehlo.multiply %arg5, %17 : tensor<1xf32>\n"
-    "    %19 = stablehlo.dot_general %15, %16, contracting_dims = [1] x [0] : "
-    "(tensor<1x10xf32>, tensor<10x1xf32>) -> tensor<1x1xf32>\n"
-    "    %20 = stablehlo.broadcast_in_dim %cst, dims = [] : (tensor<f32>) -> tensor<1x1xf32>\n"
-    "    %21 = stablehlo.multiply %20, %19 : tensor<1x1xf32>\n"
-    "    %22 = stablehlo.broadcast_in_dim %18, dims = [1] : (tensor<1xf32>) -> tensor<1x1xf32>\n"
-    "    %23 = stablehlo.add %22, %21 : tensor<1x1xf32>\n"
-    "    return %23 : tensor<1x1xf32>\n"
-    "  }\n"
-    "}\n"
-)
 
 
 def _k_run_covers_contraction(tiles, K, S):
@@ -157,32 +134,34 @@ def _k_run_covers_contraction(tiles, K, S):
         assert isinstance(run[-1], MultOp)  # terminating mult
 
 
+def _tiles_between_strides(program, stride):
+    """All mult/multip tiles emitted for a matmul: from its stride to the next."""
+    idx = program.ops.index(stride)
+    tiles = []
+    for op in program.ops[idx + 1 :]:
+        if isinstance(op, StrideOp):
+            break
+        if isinstance(op, (MultOp, MultipOp)):
+            tiles.append(op)
+    return tiles
+
+
 @pytest.mark.skipif(not _have_stablehlo_opt(), reason="stablehlo-opt not on PATH")
-def test_full_pipeline_bigger_nn_tiled(tmp_path):
-    (tmp_path / "initial.mlir").write_text(_BIGGER)
-    S_w = 1.0 / 127
-    rng = np.random.default_rng(0)
-    np.savez(
-        tmp_path / "weights.npz",
-        **{
-            "hidden1.weight": rng.standard_normal((12, 1)).astype(np.float32),
-            "hidden1.bias": np.zeros((12,), dtype=np.float32),
-            "hidden2.weight": rng.standard_normal((10, 12)).astype(np.float32),
-            "hidden2.bias": np.zeros((10,), dtype=np.float32),
-            "output.weight": rng.standard_normal((1, 10)).astype(np.float32),
-            "output.bias": np.zeros((1,), dtype=np.float32),
-            "__order__": np.array(
-                ["hidden1.weight", "hidden1.bias", "hidden2.weight",
-                 "hidden2.bias", "output.weight", "output.bias"]
-            ),
-            "__M__hidden1.weight": np.float64(0.75),
-            "__scales__hidden1.weight": np.array([1.0, S_w, 1.0]),
-            "__M__hidden2.weight": np.float64(0.5),
-            "__scales__hidden2.weight": np.array([1.0, S_w, 1.0]),
-            "__M__output.weight": np.float64(0.375),
-            "__scales__output.weight": np.array([1.0, S_w, 1.0]),
-        },
-    )
+@pytest.mark.skipif(not _have_bigger_nn, reason="Bigger_NN_Recent artifacts not present")
+def test_full_pipeline_bigger_nn_real(tmp_path):
+    """Full pipeline on the REAL exported Bigger_NN (1->1000->100->1) artifact.
+
+    Uses the checked-in, torchax-exported `Bigger_NN_Recent.{mlir,weights.npz}`
+    directly -- no synthesized requant metadata. Exercises all three matmuls,
+    with the middle one (1x1000 @ 1000x100) tiling in both K and N.
+    """
+    NN_import("Bigger_NN", "Recent", tmp_dir=tmp_path, nn_dir=_NETWORKS_DIR)
+
+    # The regenerated npz carries the v0.3 requant metadata (__M__/__scales__ per
+    # weight); the pre-v0.3 file did not, forcing the earlier synthesized workaround.
+    weights = np.load(tmp_path / "weights.npz", allow_pickle=True)
+    assert any(k.startswith("__M__") for k in weights.files)
+    assert any(k.startswith("__scales__") for k in weights.files)
 
     manifest = analyze_transposes_file(tmp_path)
     assert len(manifest["weight_transposes"]) == 3  # all three weights transposed
@@ -199,37 +178,37 @@ def test_full_pipeline_bigger_nn_tiled(tmp_path):
 
     program = parse_program((tmp_path / "optimized.partitioned.tpu.mlir").read_text())
     strides = [op for op in program.ops if isinstance(op, StrideOp)]
-    assert len(strides) == 3  # exactly one stride per matmul
-
-    # The middle matmul (1x12 @ 12x10) tiles in both K and N; its stride is (12, 10).
-    both_tiled = [s for s in strides if s.ld1 == 12 and s.ld2 == 10]
-    assert len(both_tiled) == 1
-
-    # Collect that matmul's tiles: everything between its stride and the next stride.
-    idx = program.ops.index(both_tiled[0])
-    tiles = []
-    for op in program.ops[idx + 1 :]:
-        if isinstance(op, StrideOp):
-            break
-        if isinstance(op, (MultOp, MultipOp)):
-            tiles.append(op)
+    # One stride per matmul, each (ld1 = K, ld2 = N) for the three layers.
+    assert [(s.ld1, s.ld2) for s in strides] == [(1, 1000), (1000, 100), (100, 1)]
 
     S = MAX_MATMUL_SIZE
-    K, N = 12, 10
-    n_tiles = len(range(0, N, S))  # 2
-    k_tiles = len(range(0, K, S))  # 2
-    assert len(tiles) == n_tiles * k_tiles  # 4 tiles for the both-tiled matmul
 
-    # Every K-run is a multip-run terminated by a mult, covering the full contraction.
+    # --- Middle matmul (1x1000 @ 1000x100): tiles in BOTH K and N. ---
+    both_tiled = next(s for s in strides if (s.ld1, s.ld2) == (1000, 100))
+    tiles = _tiles_between_strides(program, both_tiled)
+    K, N = 1000, 100
+    n_tiles = len(range(0, N, S))  # 13 (100 -> 12 full + ragged 4)
+    k_tiles = len(range(0, K, S))  # 125 (1000 = 125*8 exactly)
+    assert len(tiles) == n_tiles * k_tiles  # 1625 tiles
+
+    # Each output tile's K-run accumulates via multip and terminates with a mult.
     _k_run_covers_contraction(tiles, K, S)
-    # N-tiles cover the full output width via their destination offsets.
-    assert sorted({t.dst_offset for t in tiles}) == [0, S]
-    # Ragged edges: K remainder 4, N remainder 2 appear as real tile sizes.
-    assert {t.lhs.shape[1] for t in tiles} == {S, K - S}
-    assert {t.rhs.shape[1] for t in tiles} == {S, N - S}
+    # N-tiles cover the full 100-wide output via their destination offsets.
+    assert sorted({t.dst_offset for t in tiles}) == list(range(0, N, S))
+    # Sub-block corners: lhs offset = ki (M=1); rhs offset = ki*N + ni.
+    assert {t.lhs.offset for t in tiles} == set(range(0, K, S))
+    assert {t.rhs.offset for t in tiles} == {ki * N + ni for ki in range(0, K, S) for ni in range(0, N, S)}
+    # Ragged edge: N remainder 4 (100 - 12*8) appears; K divides evenly so no K remainder.
+    assert {t.rhs.shape[1] for t in tiles} == {S, N - 12 * S}
+    assert {t.lhs.shape[1] for t in tiles} == {S}
+    # Every tile carries the layer's requant pair (hidden2.weight: M0=172, n=19).
+    assert all((t.M0, t.n) == (172, 19) for t in tiles)
 
-    # Every tile carries the layer's requant pair, and the final output targets 0x1.
-    assert all(t.M0 == 128 and t.n == 8 for t in tiles)  # M=0.5 -> (128, 8)
+    # --- Last matmul (1x100 @ 100x1): ragged K remainder 4 (100 - 12*8). ---
+    last_stride = next(s for s in strides if (s.ld1, s.ld2) == (100, 1))
+    last_tiles = _tiles_between_strides(program, last_stride)
+    _k_run_covers_contraction(last_tiles, 100, S)
+    assert {t.lhs.shape[1] for t in last_tiles} == {S, 100 - 12 * S}
 
     def _bits(value, hi, lo):
         return (value >> lo) & ((1 << (hi - lo + 1)) - 1)

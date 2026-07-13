@@ -2,6 +2,55 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-13 — v0.5 review fixes: stale-stride reset + real Bigger_NN e2e
+
+- **FIX 1 — pass-through matmul stride reset (user-approved rule).** `ld1`/`ld2`
+  persist across instructions until the next `stride`, so an in-array
+  (pass-through) matmul — emitted as a bare `mult` with no `stride` — could inherit
+  stale leading dimensions from a preceding partitioned matmul. Per the approved
+  rule ("an in-array matmul following a partitioned matmul should always reset
+  stride to (0,0)"), the partition pass now emits a `stride(0,0)` (contiguous)
+  reset immediately before every pass-through `mult`, guaranteeing it never runs
+  with stale strides regardless of what precedes it.
+  - `nn_assembler/MLIR/partition.py`: `partition_program` prepends `StrideOp(0,0)`
+    to each in-array `MultOp`; module + function docstrings document the guarantee.
+  - `main.md` Step 5: added the reset behavior (user-approved edit).
+  - Tests: `test_partition.py` — renamed the pass-through case to assert the
+    `stride(0,0)` reset immediately precedes the `mult`; added
+    `test_pass_through_matmul_after_partitioned_resets_stride` (partitioned matmul
+    then in-array matmul → strides `(K,N)` then `(0,0)`, reset directly before the
+    small mult). `test_assembler.py` — pass-through case now asserts the reset
+    assembles to a `stride` instruction with `ld1=ld2=0`. `test_serializer_and_e2e.py`
+    Tiny_NN case updated for the two extra stride resets (5 instrs: 2 stride + 2
+    mult + end), opcode-filtered.
+- **FIX 2 — regenerated real Bigger_NN artifact + real e2e (new artifact-regen
+  rule).** The checked-in `Bigger_NN_Recent.weights.npz` predated the v0.3 export
+  (only `__order__`), forcing a synthesized-metadata workaround. Re-ran the
+  torchax export (`Start.py Bigger_NN Recent -e`, loading the existing trained
+  `.pth`) to regenerate `Bigger_NN_Recent.{weights.npz,mlir,pt2}`; the npz now
+  carries real `__M__`/`__scales__` per weight. No `Neural_Networks` code modified
+  (artifacts only).
+  - `test/test_serializer_and_e2e.py`: replaced the synthetic `_BIGGER` graph +
+    synthesized-metadata test with `test_full_pipeline_bigger_nn_real`, which drives
+    the real artifact through `NN_import → transpose analysis → Process_Weights →
+    Process_MLIR → Assemble → Serialize`. Asserts the npz carries `__M__`/`__scales__`,
+    a framed transmission, one `stride` per matmul `[(1,1000),(1000,100),(100,1)]`,
+    the middle (both-tiled) matmul's 1625 tiles (13 N × 125 K) with in-order
+    `multip`-runs terminated by `mult`, sub-block bases (`lhs=ki`, `rhs=ki*N+ni`,
+    `dst=ni`), ragged N edge (remainder 4), `M0`/`n` = (172,19) on every tile, the
+    last matmul's ragged K edge (remainder 4), and the final output pinned to 0x1.
+  - `main.md` Step 6: updated to describe the real (no-longer-synthesized) run
+    (1767 instructions, real strides, ragged edges).
+  - Verified the CLI too: `python -m nn_assembler Bigger_NN Recent` writes a
+    132254-byte framed `out/TRANSMISSION.bin`.
+- Files modified: `nn_assembler/MLIR/partition.py`, `main.md`, `log.md`,
+  `test/test_partition.py`, `test/test_assembler.py`,
+  `test/test_serializer_and_e2e.py`. Artifact regenerated:
+  `System/Neural_Networks/Bigger_NN/Bigger_NN_Recent.{weights.npz,mlir,pt2}`.
+- Tests: 64 pytest pass (was 63; +1 net from the new mixed pass-through test). Run
+  with `PYTHONPATH` pointed at this worktree so `nn_assembler` resolves here rather
+  than the shared editable install.
+
 ## 2026-07-13 — v0.5: Matmul partitioning (leading-dimension tiling)
 
 - Implemented the full v0.5 build plan (assembler side). Decomposes any matmul

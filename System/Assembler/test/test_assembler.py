@@ -243,14 +243,33 @@ def test_tiled_emission_ragged_edges():
     assert cols == {8, 2}
 
 
-def test_small_matmul_passes_through_without_stride():
+def test_small_matmul_passes_through_with_contiguous_stride_reset():
     program = _tiled_matmul_program(1, 4, 4)  # all dims <= 8
     from nn_assembler.MLIR.dialect import StrideOp, MultipOp
 
-    assert not any(isinstance(op, (StrideOp, MultipOp)) for op in program.ops)
+    # Pass-through matmul: no multip run, but a stride(0,0) reset precedes the mult
+    # so it can never inherit a stale leading dimension from a prior partitioned
+    # matmul.
+    assert not any(isinstance(op, MultipOp) for op in program.ops)
+    strides = [op for op in program.ops if isinstance(op, StrideOp)]
+    assert len(strides) == 1
+    assert (strides[0].ld1, strides[0].ld2) == (0, 0)
     mults = [op for op in program.ops if isinstance(op, MultOp)]
     assert len(mults) == 1
     assert mults[0].lhs.offset == 0 and mults[0].dst_offset == 0
+
+    # The reset assembles to a stride instruction with contiguous (ld=0) fields.
+    weight_map = {
+        "%in": {"kind": "weight", "address": 2, "num_words": 4, "M0": 128, "n": 8},
+        "%w": {"kind": "weight", "address": 50, "num_words": 16, "M0": 128, "n": 8},
+    }
+    from nn_assembler.MLIR.dialect import serialize
+
+    instructions = assemble_program(serialize(program), weight_map)
+    stride_instrs = [i for i in instructions if _bits(i, 127, 124) == OPCODE_STRIDE]
+    assert len(stride_instrs) == 1
+    assert _bits(stride_instrs[0], 123, 100) == 0  # ld1 = 0 (contiguous)
+    assert _bits(stride_instrs[0], 99, 76) == 0  # ld2 = 0 (contiguous)
 
 
 def test_assembled_program_has_no_add_opcodes():

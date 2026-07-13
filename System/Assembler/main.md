@@ -528,13 +528,22 @@ inspectable artifact (per `Functional_TPU_ISA.md` v0.5).
   × N-tile) walk K-tiles emitting `multip` for all but the last and `mult` for the
   last, each addressing the sub-block corner
   (`base = parent_base + row_off*ld + col_off`) with tile dims ≤ `MAX_MATMUL_SIZE`.
-  Ops already within the array pass through as a single `mult`.
+  Ops already within the array pass through as a single `mult`, preceded by a
+  `stride(0,0)` (contiguous) reset. Because `ld1`/`ld2` persist across instructions
+  until the next `stride`, an in-array matmul following a partitioned one would
+  otherwise inherit stale leading dimensions; the reset guarantees a pass-through
+  `mult` always runs contiguous (approved rule: an in-array matmul following a
+  partitioned matmul always resets stride to `(0,0)`).
 
 #### Step 6 — End-to-End Verification — ✅ Complete (2026-07-13)
 
-- Run the pipeline on `Bigger_NN`; confirm a framed `/out/TRANSMISSION.bin`. Verify
-  one `stride` per matmul, `multip`-runs terminated by `mult`, correct sub-block
-  bases and leading dimensions, ragged edges, and `M0`/`n` carried on every tile.
+- Run the pipeline on the real, torchax-exported `Bigger_NN` artifact
+  (`Bigger_NN_Recent.{mlir,weights.npz}`, 1→1000→100→1), regenerated so its npz
+  carries the v0.3 requant metadata (`__M__`/`__scales__`) — no synthesized
+  metadata. Confirm a framed `/out/TRANSMISSION.bin` (1767 instructions). Verify one
+  `stride` per matmul (`(1,1000)`, `(1000,100)`, `(100,1)` = `(K,N)`), `multip`-runs
+  terminated by `mult`, correct sub-block bases and leading dimensions, ragged edges
+  (N=100 and K=100 both leave a remainder of 4), and `M0`/`n` carried on every tile.
 
 #### Tests
 

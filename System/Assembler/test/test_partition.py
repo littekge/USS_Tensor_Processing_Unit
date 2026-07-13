@@ -1,7 +1,15 @@
 """Tests for the matmul-partitioning pass (v0.5, leading-dimension tiling)."""
 
 from nn_assembler.Assembler import MAX_MATMUL_SIZE
-from nn_assembler.MLIR.dialect import EndOp, MultipOp, MultOp, Operand, Program, ReturnOp
+from nn_assembler.MLIR.dialect import (
+    EndOp,
+    MultipOp,
+    MultOp,
+    Operand,
+    Program,
+    ReturnOp,
+    StrideOp,
+)
 from nn_assembler.MLIR.partition import partition_program
 
 S = MAX_MATMUL_SIZE  # 8
@@ -21,13 +29,44 @@ def _tiles(program):
     return [op for op in program.ops if isinstance(op, (MultOp, MultipOp))]
 
 
-def test_small_matmul_passes_through_unchanged():
+def test_small_matmul_passes_through_with_contiguous_stride_reset():
     program = _program(1, S, S)  # every dim exactly the array size -> fits
     partition_program(program, S)
     tiles = _tiles(program)
     assert len(tiles) == 1
     assert isinstance(tiles[0], MultOp)
-    assert not any(type(op).__name__ == "StrideOp" for op in program.ops)
+    # A pass-through matmul emits a stride(0,0) reset immediately before it so it
+    # can never inherit a stale leading dimension from a prior partitioned matmul.
+    strides = [op for op in program.ops if isinstance(op, StrideOp)]
+    assert len(strides) == 1
+    assert (strides[0].ld1, strides[0].ld2) == (0, 0)
+    idx_stride = program.ops.index(strides[0])
+    idx_mult = program.ops.index(tiles[0])
+    assert idx_stride == idx_mult - 1  # reset immediately precedes the mult
+
+
+def test_pass_through_matmul_after_partitioned_resets_stride():
+    # A partitioned matmul (emits stride(K,N)) followed by an in-array matmul.
+    program = Program(name="mixed")
+    program.ops.append(
+        MultOp("%big", Operand("%a", [1, 20]), Operand("%b", [20, 30]), [1, 30], M0=128, n=8)
+    )
+    program.ops.append(
+        MultOp("%small", Operand("%big", [1, 4]), Operand("%c", [4, 4]), [1, 4], M0=128, n=8)
+    )
+    program.ops.append(ReturnOp("%small", [1, 4]))
+    program.ops.append(EndOp())
+    partition_program(program, S)
+
+    strides = [op for op in program.ops if isinstance(op, StrideOp)]
+    assert len(strides) == 2  # one per matmul
+    assert (strides[0].ld1, strides[0].ld2) == (20, 30)  # partitioned: ld1=K, ld2=N
+    assert (strides[1].ld1, strides[1].ld2) == (0, 0)  # pass-through: contiguous reset
+
+    # The (0,0) reset immediately precedes the pass-through mult, and no partition
+    # tile sits between the reset and the small matmul.
+    small = next(op for op in program.ops if isinstance(op, MultOp) and op.result == "%small")
+    assert program.ops[program.ops.index(small) - 1] is strides[1]
 
 
 def test_boundary_one_over_array_tiles():

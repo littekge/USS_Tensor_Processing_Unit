@@ -20,7 +20,13 @@ offset into the parent matrix (`offset = row_off * ld + col_off`); the assembler
 adds that to the parent's base address. Ragged edge tiles carry their real
 (smaller) dimensions. Each tile carries the parent matmul's `M0`/`n`.
 
-A matmul already within the array passes through unchanged as a single `mult`.
+A matmul already within the array passes through as a single `mult`, but it is
+preceded by a `tpu.stride ld1 = 0, ld2 = 0` (contiguous) reset. The `ld1`/`ld2`
+registers persist across instructions until the next `stride`, so a pass-through
+matmul following a partitioned one would otherwise inherit stale leading
+dimensions; the reset guarantees an in-array `mult` never runs with strides left
+over from an earlier partitioned matmul (approved rule: "an in-array matmul
+following a partitioned matmul should always reset stride to (0,0)").
 """
 
 from __future__ import annotations
@@ -83,6 +89,12 @@ def partition_program(program: Program, max_size: int) -> Program:
     for op in program.ops:
         if isinstance(op, MultOp) and not _fits(op, max_size):
             new_ops.extend(_tile_matmul(op, max_size))
+        elif isinstance(op, MultOp):
+            # Pass-through (in-array) matmul: reset the leading dimensions to
+            # contiguous first so it never inherits a stale stride from a
+            # preceding partitioned matmul (ld1/ld2 persist until the next stride).
+            new_ops.append(StrideOp(ld1=0, ld2=0))
+            new_ops.append(op)
         else:
             new_ops.append(op)
     program.ops = new_ops
