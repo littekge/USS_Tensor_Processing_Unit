@@ -1,6 +1,23 @@
 # Functional TPU Hardware Specification — Change Log
 
 > Append a new entry every time a change is made. Newest entries at the top.
+>
+## 2026-07-13 — Functional TPU Hardware Specification v0.5 — Leading Dimension Update
+
+- **Implemented strided (leading-dimension) matrix addressing** in tandem with
+ISA v0.5.
+- **Controller:**
+- Added two 24-bit leading-dimension registers *ld1* and *ld2*, set by the
+*stride* instruction and cleared to 0 (contiguous) on *trst*.
+- Added a decode-and-latch path for the *stride* instruction (loads *im1*/*im2*
+into *ld1*/*ld2*; no Execute or Writeback phase).
+- Supplies the active leading dimension to the vector processors: *ld1* when
+loading *src1*, *ld2* when loading *src2*, and *ld2* during writeback to *dest*.
+- **Vector_Processor:**
+- Added a *leading_dimension* combinational input.
+- Reads and writes matrices with successive rows spaced *leading_dimension*
+elements apart, allowing in-place access to a sub-block of a larger Row-Major
+matrix; a value of 0 selects contiguous access (rows spaced by *dim1*).
 
 ## 2026-07-08 — Functional TPU Hardware Specification v0.5 — *multip* Update
 

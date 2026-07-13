@@ -460,6 +460,14 @@ operations whenever possible (e.g. simultaneous loading of systolic array input
 buffers or simultaneous streaming of data to the two inputs of the ALU). When a
 simultaneous operation is performed, the controller starts both vector
 processors at the same clock cycle to ensure synchronization.
+- **Leading Dimension Registers:** The Controller maintains two 24-bit
+leading-dimension registers *ld1* and *ld2* (defined in *Functional TPU ISA*).
+They are loaded by the *stride* instruction, retain their value until the next
+stride, and are cleared to 0 (contiguous) on *trst*. For MUL-type instructions
+the Controller supplies the active leading dimension to each vector processor as
+part of its control signals: *ld1* when loading *src1*, *ld2* when loading
+*src2*, and *ld2* during writeback to *dest*. A value of 0 selects contiguous
+access.
 - **State Machine Flow:**
   - Wait for the Feeder to assert *controller_start* HIGH.
   - When the Feeder asserts *controller_start* HIGH, assert *controller_idle*
@@ -470,6 +478,10 @@ processors at the same clock cycle to ensure synchronization.
   clear the systolic array accumulators).
   - Combinationally decode instruction from the Feeder and send control signals
   to other modules. (Decode)
+    - If the decoded instruction is a *stride* instruction, latch *im1* and
+    *im2* into *ld1* and *ld2*, assert *controller_idle* HIGH, and return to the
+    start of the control loop (a *stride* instruction has no Execute or
+    Writeback phase).
   - Assert the vector processors' *vector_start* signals HIGH for one clock
   cycle. (Execute)
   - Wait for vector processors to finish execute operations. (Execute)
@@ -505,7 +517,7 @@ Array, and proper formatting of data.
   - **Outputs:**
     - ***vector_idle***: Asserted HIGH when the vector processor has finished an
     operation.
-    - ***element_valid***: Asserted HIGH for one clock cycle when the modules
+    - ***element_valid***: Asserted HIGH for one clock cycle when the module's
     data route from source to destination is valid and the resultant data
     transfer will be successful.
 - **ISA compliance:** The Vector_Processor module formats data written to the
@@ -528,9 +540,17 @@ output that it uses to interpret data.
   elements should be processed.
   - **Memory Addressing:** The Vector_Processor module defines a
   *mem_source_address* and *mem_dest_address* input for reading from or writing
-  to memory respectively. Combined with the *length*, *dim0*, and *dim1*
-  signals, the vector processor determines the exact number of elements to read
-  or write as well as their order.
+  to memory respectively. Combined with the *length*, *dim0*, *dim1*, and
+  *leading_dimension* signals, the vector processor determines the exact number
+  of elements to read or write as well as their order.
+  - **Leading Dimension:** The Vector_Processor module defines a
+  *leading_dimension* input giving the physical row stride of the matrix
+  currently being read from or written to memory. When *leading_dimension* is
+  non-zero, successive rows of the matrix are spaced *leading_dimension*
+  elements apart rather than *dim1* (the matrix's own width), letting the
+  vector processor read or write a sub-block of a larger Row-Major matrix
+  in place. A *leading_dimension* of 0 selects contiguous access (rows spaced
+  by *dim1*). See *Functional TPU ISA*, Leading Dimension Registers.
   - **Source/Destination Address:** The Vector_Processor module defines a
   *vect_source_address* and *vect_dest_address* input that specify where the
   vector processor should source data from and where it should send it to. Valid
