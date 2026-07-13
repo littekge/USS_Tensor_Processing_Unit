@@ -80,6 +80,12 @@ M-tiling still left the weight (rhs) tile strided whenever K and N are both tile
   personal scratchpad, barely used; not a real test suite.
 - **2026-07-07 — nn-trainer may execute training/export scripts** (which
   regenerate `*_Recent.*` artifacts) but proposes code edits as diffs only.
+- **2026-07-13 — Any subagent may regenerate build artifacts** (re-run
+  export/build scripts to regenerate `*.npz`, MLIR, binaries, etc.) as long as it
+  does NOT modify code in restricted files/sections. Extends the 2026-07-07
+  nn-trainer rule beyond that agent — e.g. the assembler agent regenerating a
+  model's `weights.npz` to finish an e2e test. Candidate to graduate into
+  CLAUDE.md (agent-edit-policy) via the approval gate.
 - **2026-07-07 — Agents inherit the session model** (no per-agent pinning).
 - **2026-07-07 — /fan-out is route → user approval → execute.** Single-
   section tasks still execute through the pipeline. Main session recommends
