@@ -10,7 +10,10 @@ portable decision history, in-flight state, and machine notes across the
 user's computers. Binding rules live here and in section `CLAUDE.md` files;
 the journal only adds context. The main session keeps it updated and pruned
 (~3k-token cap); entries that harden into rules graduate into a `CLAUDE.md`
-via the user's approval gate.
+via the user's approval gate. Keep `AI_NOTES.md` in sync with Claude's
+persistent memory: when a memory entry records or revises a cross-session
+decision, reflect it in `AI_NOTES.md` so the two agree (memory is local to
+each machine; the journal travels with the repo).
 
 ## Section Map
 
