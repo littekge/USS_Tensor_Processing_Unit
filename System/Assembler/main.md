@@ -479,3 +479,73 @@ Update weight/address mapping (`Process_Weights.py`) and the assembler
 - `test_process_weights.py`: intermediates allocated in main memory with reuse,
   `0x1` reserved for I/O, and the final output mapped to `0x1`.
 - `test_serializer_and_e2e.py`: the full Tiny_NN pipeline still frames correctly.
+
+### v0.5 — Matmul Partitioning (Leading-Dimension Tiling)
+
+Implements the assembler side of v0.5. Decomposes any matmul exceeding the
+systolic-array size into array-sized tiles addressed in place via leading
+dimensions: emit one `stride(ld1=K, ld2=N)` per matmul, then row-parallel tiled
+`mult`/`multip` whose operands and dest are sub-blocks of the parent matrices
+(contraction K accumulated in-array via a `multip` run terminated by a `mult`).
+Ragged edge tiles use real sizes; no blocked weight layout is needed — the
+leading dimensions handle tiling. Weight transposes are resolved offline.
+Partitioning is a standalone dialect-to-dialect MLIR pass emitting its own
+inspectable artifact (per `Functional_TPU_ISA.md` v0.5).
+
+#### Step 1 — `MAX_MATMUL_SIZE` + Dialect Ops
+
+- `Assembler.py`: add `MAX_MATMUL_SIZE = 8` (coupled to the TPU `Build Parameters`
+  `N=8` — the two must match); replace the `dim <= 15` hard-assert with
+  tiling-aware bounds.
+- `nn_assembler/MLIR/dialect.py`: add a `multip` op and a `stride` (CONFIG) op with
+  serialize/parse round-trip.
+
+#### Step 2 — Encoders
+
+- `Assembler.py`: `encode_mult_in_place` (funct3 0x1, reusing the MUL layout);
+  `encode_stride` (CONFIG opcode 1111, `im1`/`im2` = `ld1`/`ld2`); add dispatch
+  branches in `assemble_program`.
+
+#### Step 3 — Transpose Analysis (new pipeline stage)
+
+- Post-import graph analysis: scan `initial.mlir`, classify each
+  `stablehlo.transpose` (weight/constant → resolve offline; live → out of scope,
+  flag rather than drop); emit a `tmp/` manifest listing the transposed weight
+  args.
+
+#### Step 4 — Offline Weight Transpose
+
+- `Process_Weights.py`: physically transpose the weights flagged in the manifest
+  (store `Wᵀ` Row-Major; transpose-before-quantize is safe since per-tensor scale
+  is transpose-invariant); `legalize` drops the resolved transpose op.
+
+#### Step 5 — Partitioning Pass (new dialect-to-dialect pass)
+
+- Add `nn_assembler/MLIR/partition.py`, wired into `Process_MLIR.py` as the final
+  dialect pass (after `legalize` and bias removal), emitting
+  `tmp/optimized.partitioned.tpu.mlir`. For each `MultOp` exceeding the array:
+  emit one `stride(ld1=K, ld2=N)`, then for each output tile (row-parallel M-tile
+  × N-tile) walk K-tiles emitting `multip` for all but the last and `mult` for the
+  last, each addressing the sub-block corner
+  (`base = parent_base + row_off*ld + col_off`) with tile dims ≤ `MAX_MATMUL_SIZE`.
+  Ops already within the array pass through as a single `mult`.
+
+#### Step 6 — End-to-End Verification
+
+- Run the pipeline on `Bigger_NN`; confirm a framed `/out/TRANSMISSION.bin`. Verify
+  one `stride` per matmul, `multip`-runs terminated by `mult`, correct sub-block
+  bases and leading dimensions, ragged edges, and `M0`/`n` carried on every tile.
+
+#### Tests
+
+- `test_dialect_and_legalize.py`: `multip` and `stride` serialize/parse round-trip.
+- `test_assembler.py`: `multip`/`stride` encoding; tiled emission for a matmul
+  larger than the array (stride, tile count, sub-block bases, ragged edges);
+  small-matmul pass-through.
+- `test_partition.py` (new): one `stride` per matmul, K-accumulation order
+  (`multip` × (k-1) then `mult`), row-parallel M/N tiling offsets, ragged edges,
+  `MAX_MATMUL_SIZE` boundary.
+- `test_transpose_analysis.py` (new): weight-transpose classification + manifest;
+  transposed-weight layout numeric check.
+- `test_serializer_and_e2e.py`: full `Bigger_NN` pipeline frames correctly
+  (numeric reference on a both-tiled matmul).

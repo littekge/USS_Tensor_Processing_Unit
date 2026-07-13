@@ -456,3 +456,68 @@ Update `Feeder.v`:
 - Run the full regression on the Questa PC and record results in `log.md`.
 - On non-Questa machines record `Verification: PENDING` and leave the v0.4 steps
   unmarked until the regression passes on the Questa PC.
+
+### v0.5 — Partitioning Update (Leading-Dimension Addressing)
+
+Enables matmuls larger than the 8x8 systolic array by tiling, with sub-block
+operands addressed in place via leading dimensions. Implements the full v0.5
+ISA/HW spec set: the `multip` instruction (opcode 1000, funct3 0x1) with
+accumulator-clear-after-writeback; the `stride` instruction (CONFIG format,
+opcode 1111) that loads the `ld1`/`ld2` leading-dimension registers; and strided
+operand addressing in the Vector_Processor. A `stride` sets the parent row
+strides once per matmul; `mult`/`multip` then read/write sub-blocks; a `multip`
+run terminated by a `mult` accumulates tiled products in-array (per
+`Functional_TPU_ISA.md` v0.5 and `Functional_TPU_Hardware_Specification.md` v0.5).
+
+**Scope note.** Control-path and addressing change to the compute datapath; the
+v0.4 memory subsystem is untouched. No new `.v` files; debug sections untouched.
+
+#### Step 1 — MAC & Systolic_Array Clear Split
+
+- `Multiply_Accumulate_Unit.v`: `clear` resets only the operand pipeline registers
+  (`o_a`, `o_b`); add an `accumulator_clear` input that zeroes the accumulator
+  `o_c`. `trst` still resets all registers.
+- `Systolic_Array.v`: add an `accumulator_clear` input routed to every MAC; `clear`
+  still flushes input buffers, the rdreq pipeline, and MAC operand registers.
+- Update `tests/TB_Step7_SystolicArray.v`: accumulator survives `clear`, zeroed
+  only by `accumulator_clear`/`trst`.
+
+#### Step 2 — Controller: funct3 Decode, Clear Retiming, and stride/ld Registers
+
+- `Controller.v`: decode funct3 on opcode 1000 (`mult` 0x0 / `multip` 0x1); move
+  the accumulator clear to after writeback, asserted for one cycle only when
+  funct3 selects clearing (`mult`, not `multip`).
+- Decode the `stride` instruction (opcode 1111): latch `im1`/`im2` into new
+  `ld1`/`ld2` registers; no execute or writeback phase; reset `ld1`=`ld2`=0 on
+  `trst`.
+- Supply the active leading dimension to the vector processors: `ld1` when loading
+  `src1`, `ld2` when loading `src2`, and `ld2` during writeback to `dest`.
+- Update `tests/TB_Step3_Controller.v`: both variants decode; `accumulator_clear`
+  asserted after writeback for `mult` and suppressed for `multip`; `stride` latches
+  `ld1`/`ld2`.
+
+#### Step 3 — Vector_Processor: Strided Sub-Block Addressing
+
+- `Vector_Processor.v`: add a `leading_dimension` input; generalize operand-load
+  and writeback address generation to step rows by the active leading dimension
+  instead of the matrix width, defaulting to tile width when 0 (contiguous).
+  Applies to `src1`→top buffers, `src2`→left buffers, and `dest` writeback.
+- Update `tests/TB_Step4_VectorProcessor.v`: strided sub-block read and writeback;
+  contiguous (leading dimension 0) matches v0.4 behavior.
+
+#### Step 4 — TPU Top-Level Routing
+
+- `TPU.v`: route the Controller's `accumulator_clear` to the Systolic_Array
+  (independent of the shared `ctrl_clear`); route the `leading_dimension` control
+  net from the Controller to the Vector_Processors.
+- Update `tests/TB_Step8_FullSystem.v`: an end-to-end program issuing a `stride`
+  and a tiled matmul larger than 8x8 (a `multip` run terminated by a `mult`, with
+  strided sub-block operands), checked against the requantized reference.
+
+#### Step 5 — Regression
+
+- Update `tests/run_regression.sh` for changed testbench dependencies
+  (TB_Step3/4/7/8).
+- Run the full regression on the Questa PC and record results in `log.md`.
+- On non-Questa machines record `Verification: PENDING` (naming TB_Step3/4/7/8)
+  and leave the v0.5 steps unmarked until the regression passes on the Questa PC.
