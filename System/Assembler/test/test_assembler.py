@@ -6,13 +6,20 @@ results are allocated in main data memory and the final output is pinned to 0x1.
 """
 
 from nn_assembler.Assembler import (
+    MAX_MATMUL_SIZE,
     OPCODE_ADD,
+    OPCODE_MULT,
+    OPCODE_STRIDE,
     assemble_program,
     encode_add,
     encode_end,
     encode_mult,
+    encode_mult_in_place,
     encode_relu,
+    encode_stride,
 )
+from nn_assembler.MLIR.dialect import MultOp, Operand, Program, ReturnOp, EndOp
+from nn_assembler.MLIR.partition import partition_program
 
 
 def _bits(value, hi, lo):
@@ -141,6 +148,109 @@ def test_assemble_reuses_freed_intermediate_regions():
     assert _bits(instructions[1], 59, 36) == base + 4  # %2
     assert _bits(instructions[2], 59, 36) == base  # %3 reuses %1's freed region
     assert _bits(instructions[3], 59, 36) == 1  # %4 final output -> 0x1
+
+
+def test_encode_multip_shares_mult_layout_differs_in_funct3():
+    m = encode_mult(rs1=5, lhs=(8, 8), rs2=9, rhs=(8, 8), rd=7, M0=128, n=8)
+    mp = encode_mult_in_place(rs1=5, lhs=(8, 8), rs2=9, rhs=(8, 8), rd=7, M0=128, n=8)
+    # Identical everywhere except funct3 (bits 2-0): MULT=0x0, MULTIP=0x1.
+    assert _bits(m, 2, 0) == 0x0
+    assert _bits(mp, 2, 0) == 0x1
+    assert (m >> 3) == (mp >> 3)  # all higher fields identical
+    assert _bits(mp, 127, 124) == 0b1000  # still MUL opcode
+
+
+def test_encode_stride_fields():
+    instr = encode_stride(ld1=1000, ld2=100)
+    assert _is_128_bit(instr)
+    assert _bits(instr, 127, 124) == 0b1111  # CONFIG opcode
+    assert _bits(instr, 123, 100) == 1000  # im1 = ld1
+    assert _bits(instr, 99, 76) == 100  # im2 = ld2
+    assert _bits(instr, 75, 3) == 0  # reserved
+    assert _bits(instr, 2, 0) == 0x0  # funct3 STRIDE
+
+
+def test_encode_mult_tile_dim_over_array_rejected():
+    import pytest
+
+    with pytest.raises(AssertionError, match="MAX_MATMUL_SIZE"):
+        encode_mult(rs1=1, lhs=(MAX_MATMUL_SIZE + 1, 1), rs2=2, rhs=(1, 1), rd=3, M0=128, n=8)
+
+
+def _tiled_matmul_program(M, K, N):
+    program = Program(name="m")
+    program.ops.append(
+        MultOp(
+            "%r",
+            Operand("%in", [M, K]),
+            Operand("%w", [K, N]),
+            [M, N],
+            M0=128,
+            n=8,
+        )
+    )
+    program.ops.append(ReturnOp("%dummy", [1, 1]))  # keep %r an intermediate
+    program.ops.append(EndOp())
+    partition_program(program, MAX_MATMUL_SIZE)
+    return program
+
+
+def test_tiled_emission_stride_count_and_bases():
+    # 1x16 @ 16x16 -> 1x16: both K and N exceed the 8-wide array.
+    weight_map = {
+        "%in": {"kind": "weight", "address": 2, "num_words": 16, "M0": 128, "n": 8},
+        "%w": {"kind": "weight", "address": 100, "num_words": 256, "M0": 128, "n": 8},
+    }
+    program = _tiled_matmul_program(1, 16, 16)
+    from nn_assembler.MLIR.dialect import serialize
+
+    instructions = assemble_program(serialize(program), weight_map)
+
+    strides = [i for i in instructions if _bits(i, 127, 124) == OPCODE_STRIDE]
+    assert len(strides) == 1  # exactly one stride per matmul
+    assert _bits(strides[0], 123, 100) == 16  # ld1 = K
+    assert _bits(strides[0], 99, 76) == 16  # ld2 = N
+
+    muls = [i for i in instructions if _bits(i, 127, 124) == OPCODE_MULT]
+    # 2 N-tiles x 2 K-tiles = 4 tiles; K-run is (multip, mult) per output tile.
+    assert len(muls) == 4
+    multips = [i for i in muls if _bits(i, 2, 0) == 0x1]
+    mults = [i for i in muls if _bits(i, 2, 0) == 0x0]
+    assert len(multips) == 2 and len(mults) == 2  # one multip + one mult per N-tile
+
+    # First tile: N-tile 0, K-tile 0. rs1 = base(%in)+0, rs2 = base(%w)+0.
+    first = muls[0]
+    assert _bits(first, 123, 100) == 2  # %in corner offset 0
+    assert _bits(first, 91, 68) == 100  # %w corner offset 0
+    # Second-N-tile addressing: rhs corner col offset = 8, dst offset = 8.
+    # The mult terminating N-tile 0's K-run reads %w row 8 (offset 8*16=128).
+    second_k = muls[1]
+    assert _bits(second_k, 91, 68) == 100 + 8 * 16  # %w sub-block corner (ki=8, ni=0)
+
+
+def test_tiled_emission_ragged_edges():
+    # K=10, N=10 with array 8: last tile in each dim has real size 2.
+    weight_map = {
+        "%in": {"kind": "weight", "address": 2, "num_words": 10, "M0": 128, "n": 8},
+        "%w": {"kind": "weight", "address": 50, "num_words": 100, "M0": 128, "n": 8},
+    }
+    program = _tiled_matmul_program(1, 10, 10)
+    tiles = [op for op in program.ops if isinstance(op, MultOp) or type(op).__name__ == "MultipOp"]
+    # Ragged tile dims of 2 appear (10 - 8) for both K and N.
+    depths = {op.lhs.shape[1] for op in tiles}
+    cols = {op.rhs.shape[1] for op in tiles}
+    assert depths == {8, 2}
+    assert cols == {8, 2}
+
+
+def test_small_matmul_passes_through_without_stride():
+    program = _tiled_matmul_program(1, 4, 4)  # all dims <= 8
+    from nn_assembler.MLIR.dialect import StrideOp, MultipOp
+
+    assert not any(isinstance(op, (StrideOp, MultipOp)) for op in program.ops)
+    mults = [op for op in program.ops if isinstance(op, MultOp)]
+    assert len(mults) == 1
+    assert mults[0].lhs.offset == 0 and mults[0].dst_offset == 0
 
 
 def test_assembled_program_has_no_add_opcodes():

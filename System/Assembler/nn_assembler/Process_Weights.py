@@ -35,6 +35,7 @@ from pathlib import Path
 
 import numpy as np
 
+from .MLIR.transpose_analysis import MANIFEST_NAME
 from .Protocol import build_mem_blocks
 
 # Per-tensor symmetric int8: values map through S so that round(v/S) lands in
@@ -203,6 +204,20 @@ class IntermediateAllocator:
         self._free = merged
 
 
+def _load_transpose_manifest(tmp_dir: Path) -> dict[str, dict]:
+    """Map arg name -> transpose entry for weights resolved offline (v0.5).
+
+    Reads `/tmp/transpose_manifest.json` (written by the transpose-analysis
+    stage). Absent manifest means no transposes were flagged (e.g. networks with
+    only trivial transposes, which the StableHLO optimizer folds to reshapes).
+    """
+    manifest_path = tmp_dir / MANIFEST_NAME
+    if not manifest_path.is_file():
+        return {}
+    manifest = json.loads(manifest_path.read_text())
+    return {entry["operand"]: entry for entry in manifest.get("weight_transposes", [])}
+
+
 def _weight_scale(npz, weight_name: str) -> float:
     """Per-tensor symmetric int8 scale `S_w` for a requantized weight tensor.
 
@@ -241,6 +256,7 @@ def Process_Weights(tmp_dir: Path | None = None) -> dict:
     args = _parse_main_args(mlir_path.read_text())
     npz = np.load(weights_path, allow_pickle=False)
     order = [str(name) for name in npz["__order__"]]
+    transpose_by_arg = _load_transpose_manifest(tmp_dir)
 
     # State args carry a loc label like "states[i]"; the i indexes into __order__.
     # The remaining arg(s) (loc "inputs[...]" or unlabeled) are the network input.
@@ -262,7 +278,18 @@ def Process_Weights(tmp_dir: Path | None = None) -> dict:
             continue
 
         weight_name = order[int(state_match.group(1))]
-        values = npz[weight_name].reshape(-1)
+        array = npz[weight_name]
+
+        # A weight fed through a graph transpose is stored transposed offline
+        # (Wᵀ, row-major) so the device reads the correct layout without a runtime
+        # transpose. Per-tensor symmetric int8 scale is transpose-invariant, so
+        # transposing before quantization is numerically safe.
+        transpose = transpose_by_arg.get(name)
+        if transpose is not None:
+            array = np.transpose(array, transpose["perm"])
+            shape = transpose["out_shape"]
+
+        values = array.reshape(-1)
         words = _num_words(shape)
         assert len(values) == words, (
             f"{weight_name} has {len(values)} elements but arg shape {shape} expects {words}."
