@@ -26,7 +26,10 @@ module Systolic_Array #(parameter N = 8) (
 	input i_trst,
 
 	//synchronous control signals
+	//clear flushes the input buffers, the rdreq pipeline, and the MAC operand
+	//registers; accumulator_clear zeroes every MAC accumulator (o_c).
 	input i_clear,
+	input i_accumulator_clear,
 	input i_systolic_array_start,
 	output wire o_systolic_array_idle,
 
@@ -156,6 +159,7 @@ generate
 				.i_clk(i_clk),
 				.i_trst(i_trst),
 				.i_clear(i_clear),
+				.i_accumulator_clear(i_accumulator_clear),
 				.i_a(v_interconnect[i][j]),
 				.i_b(h_interconnect[i][j]),
 				.o_a(v_interconnect[i][j+1]),

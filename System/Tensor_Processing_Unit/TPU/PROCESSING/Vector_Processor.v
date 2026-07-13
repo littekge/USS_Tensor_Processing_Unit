@@ -47,6 +47,10 @@ module Vector_Processor (
     input  [3:0]       i_dim0,
     input  [3:0]       i_dim1,
 
+    // Physical row stride of the sub-block currently being read or written.
+    // 0 selects contiguous access (rows spaced by the matrix width, dim1).
+    input  [23:0]      i_leading_dimension,
+
     // Per-layer dyadic requantization parameters (MUL instruction M0/n).
     // Only consumed during systolic array output writeback (VSRC_SA_OUT).
     input  [7:0]       i_scale,   // M0: unsigned dyadic multiplier
@@ -142,25 +146,39 @@ reg [3:0]  dim0_lat;         // rows (SA ops) or outer dimension
 reg [3:0]  dim1_lat;         // cols (SA ops) or inner dimension
 reg [7:0]  scale_lat;        // M0: dyadic requantization multiplier
 reg [7:0]  shift_lat;        // n:  dyadic requantization right-shift
+reg [23:0] ld_lat;           // physical row stride (0 = contiguous)
 
 // Element counters
 reg [15:0] elem_cnt;   // flat element index (linear and VB operations)
 reg [3:0]  row_cnt;    // row index for SA operations
 reg [3:0]  col_cnt;    // column index for SA operations
 
-// ISA source address for the current element.
-// VDST_SA_B uses a stride: ISA_offset = row_cnt*dim1_lat + col_cnt.
-// All other VSRC_MEM operations use a flat sequential offset.
-wire [7:0]  sa_b_stride;   // zero-extended multiply to avoid 4-bit truncation
-wire [23:0] cur_rd_isa;
-assign sa_b_stride  = {4'd0, row_cnt} * {4'd0, dim1_lat};
-assign cur_rd_isa   = (vect_dest_lat == VDST_SA_B)
-                    ? (mem_source_lat + {16'd0, sa_b_stride} + {20'd0, col_cnt})
-                    : (mem_source_lat + {8'd0, elem_cnt});
+// Physical row stride for sub-block addressing: defaults to the matrix's own
+// width (dim1_lat) when the leading dimension is 0 (contiguous), otherwise the
+// supplied leading dimension. A row of a matrix (rs1, rs2, or the output) is
+// found at row_cnt*row_stride + col_cnt from its base address, letting the
+// vector processor walk a sub-block of a larger Row-Major matrix in place.
+wire [23:0] row_stride;
+wire [23:0] block_offset;   // element offset of the current (row_cnt,col_cnt)
+assign row_stride   = (ld_lat == 24'd0) ? {20'd0, dim1_lat} : ld_lat;
+assign block_offset = ({20'd0, row_cnt} * row_stride) + {20'd0, col_cnt};
 
-// ISA dest address for current write element (always sequential)
+// Matrix (systolic-array) operations index by (row_cnt,col_cnt) via the row
+// stride; linear operations (relu/add streaming and vector-buffer writeback)
+// walk contiguously via the flat element counter.
+wire use_block_rd = (vect_dest_lat   == VDST_SA_A) ||
+                    (vect_dest_lat   == VDST_SA_B);
+wire use_block_wr = (vect_source_lat == VSRC_SA_OUT);
+
+// ISA source address for the current read element.
+wire [23:0] cur_rd_isa;
+assign cur_rd_isa = use_block_rd ? (mem_source_lat + block_offset)
+                                 : (mem_source_lat + {8'd0, elem_cnt});
+
+// ISA dest address for the current write element.
 wire [23:0] cur_wr_isa;
-assign cur_wr_isa = mem_dest_lat + {8'd0, elem_cnt};
+assign cur_wr_isa = use_block_wr ? (mem_dest_lat + block_offset)
+                                 : (mem_dest_lat + {8'd0, elem_cnt});
 
 // Source / destination type decode. Two cases need special handling here: the
 // hardwired-zero register at 0x0 (the flat address is held at 0x0 for every
@@ -307,6 +325,7 @@ begin
         dim1_lat         <= 4'd0;
         scale_lat        <= 8'd0;
         shift_lat        <= 8'd0;
+        ld_lat           <= 24'd0;
         elem_cnt         <= 16'd0;
         row_cnt          <= 4'd0;
         col_cnt          <= 4'd0;
@@ -349,6 +368,7 @@ begin
                     dim1_lat        <= i_dim1;
                     scale_lat       <= i_scale;
                     shift_lat       <= i_shift;
+                    ld_lat          <= i_leading_dimension;
                     elem_cnt        <= 16'd0;
                     row_cnt         <= 4'd0;
                     col_cnt         <= 4'd0;

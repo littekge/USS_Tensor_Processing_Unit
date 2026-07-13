@@ -2,6 +2,94 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-13 — v0.5 Partitioning Update (Leading-Dimension Addressing): RTL + testbenches
+
+- **Context:** v0.5 enables matmuls larger than the 8x8 systolic array by tiling,
+  with sub-block operands addressed in place via leading dimensions. Implements
+  the `multip` instruction (opcode 1000, funct3 0x1) with
+  accumulator-clear-after-writeback, the `stride` instruction (CONFIG format,
+  opcode 1111) loading `ld1`/`ld2`, and strided operand addressing in the
+  Vector_Processor. Field positions per `Functional_TPU_ISA.md` v0.5 (MUL M0
+  [35:28] / n [27:20] / funct3 [2:0]; CONFIG im1 [123:100] / im2 [99:76] /
+  funct3 [2:0]). RTL for all four build steps done; testbenches updated. No new
+  `.v` files; no debug sections touched.
+
+- **`TPU/SYSTOLIC_ARRAY/Multiply_Accumulate_Unit.v`** (Step 1) — split the clear
+  semantics. `i_clear` now resets only the operand pipeline registers (`o_a`,
+  `o_b`); a new `i_accumulator_clear` input zeroes only the accumulator `o_c`;
+  `trst` still resets all three. The accumulate `o_c <= o_c + $signed(i_a)*
+  $signed(i_b)` runs whenever accumulator_clear is deasserted, so the
+  accumulator survives an inter-operation clear and can carry tiled partial
+  products across a `multip` run until a terminating `mult` clears it.
+- **`TPU/SYSTOLIC_ARRAY/Systolic_Array.v`** (Step 1) — added `i_accumulator_clear`,
+  routed to every MAC. `i_clear` still drives `buf_sclr` (input-buffer flush),
+  the `top_rdreq_d`/`left_rdreq_d` pipeline reset, and each MAC's operand-clear.
+- **`TPU/CONTROL/Controller.v`** (Step 2) — added `funct3` decode on opcode 1000
+  (`FUNCT3_MULT` 0x0 / `FUNCT3_MULTIP` 0x1). Added an `ACC_CLEAR` state after
+  `WB_VP_WAIT`; new output `o_accumulator_clear` pulses HIGH for one cycle in
+  `ACC_CLEAR` only when the MUL funct3 selects clearing (`mult`, not `multip`).
+  Added `ld1`/`ld2` 24-bit registers, reset to 0 on `trst`, latched from
+  `im1`/`im2` when a `stride` (opcode 1111) is decoded in `CLEAR`; `stride`
+  returns straight to `IDLE` (no execute/writeback). New outputs
+  `o_leading_dimension_a`/`_b` supply the active stride to the VPs: `ld1` for
+  src1 load, `ld2` for src2 load, `ld2` at writeback; 0 for non-MUL.
+- **`TPU/PROCESSING/Vector_Processor.v`** (Step 3) — added `i_leading_dimension`
+  (latched to `ld_lat`). Generalized operand-load and writeback addressing:
+  `row_stride = (ld_lat==0)? dim1_lat : ld_lat`, `block_offset = row_cnt*
+  row_stride + col_cnt`. SA-load reads (`VDST_SA_A`/`VDST_SA_B`) and SA-output
+  writeback (`VSRC_SA_OUT`) use `block_offset`; linear (relu/add, VB writeback)
+  ops still walk `elem_cnt` contiguously. With ld=0 the stride equals the matrix
+  width, reproducing v0.4 addressing exactly (replaces the old `sa_b_stride`).
+- **`TPU/TPU.v`** (Step 4) — routed `ctrl_accumulator_clear` to
+  `Systolic_Array.i_accumulator_clear` (independent of the shared `ctrl_clear`),
+  and `ctrl_leading_dimension_a`/`_b` to the two VPs' `i_leading_dimension`.
+
+- **Tests (written/updated; NOT simulated — see Verification):**
+  - `tests/TB_Step7_SystolicArray.v` (Test 8 reworked): drives new `i_accumulator_
+    clear`; verifies the MAC accumulator SURVIVES a `clear` pulse (value
+    unchanged) and is zeroed only by `accumulator_clear`. 9 tests.
+  - `tests/TB_Step3_Controller.v` (10 -> 13): added `make_mul_f3`/`make_multip`/
+    `make_stride` builders and connected `o_accumulator_clear`/
+    `o_leading_dimension_a`/`_b`. Test 11 = accumulator_clear pulses once for
+    `mult`, zero for `multip` (both decode/run). Test 12 = `stride` latches
+    ld1/ld2 with no vector_start. Test 13 = after a stride, a MUL presents ld1
+    on leading_dimension_a and ld2 on leading_dimension_b at load, ld2 at
+    writeback.
+  - `tests/TB_Step4_VectorProcessor.v` (14 -> 16): added `i_leading_dimension`
+    port and a `stride_mode` SA stub. Test 15 = strided 2x2 sub-block read from
+    a 4-wide parent (ld=4). Test 16 = strided 2x2 writeback into a 4-wide parent
+    (row 1 lands at base+4, mem[4]/mem[5] untouched). Tests 3/4 (ld=0) confirm
+    contiguous == v0.4.
+  - `tests/TB_Step8_FullSystem.v` (12 -> 13): added `mk_mul_f3`/`mk_multip`/
+    `mk_stride` and a burst `send_mem_block` helper. Test 13 = tiled matmul
+    C(2x2)=A(2x16)*B(16x2) with K=16 in two K=8 passes (a `multip` accumulating
+    the first tile terminated by a `mult`), `stride` ld1=16 so each 2x8 A
+    sub-block is read in place; requant (M0=1,n=4) reference [[1,2],[2,4]].
+  - `tests/run_regression.sh`: no change — no testbench's RTL dependency file
+    LIST changed (TB_Step3 -> Controller.v; TB_Step4 -> Vector_Processor.v;
+    TB_Step7 -> MAC + SAIB + Systolic_Array; TB_Step8 -> full hierarchy), only
+    the contents of already-listed files.
+
+- **Verification: PENDING.** This is not the Questa PC (no `vsim.exe` at
+  `C:\intelFPGA_lite\23.1std\questa_fse\win64\`), so nothing was simulated;
+  `run_regression.sh` self-gates. Expected on the Questa PC via
+  `./tests/run_regression.sh`: TB_Step7 9/9, TB_Step3 13/13, TB_Step4 16/16,
+  TB_Step8 13/13, plus the unchanged Step1/2/5/6 for regressions (pass = each
+  `Results:` line with 0 FAIL and no `Test N: FAIL`). The v0.5 `main.md` steps
+  are left UNMARKED until that run confirms.
+- **Notes / risks for the Questa run:**
+  - Test 13 (tiled accumulation) depends on the systolic array not
+    over-accumulating stale products across the inter-operation idle gap between
+    the `multip` and the terminating `mult` (the accumulator must hold exactly
+    the first tile's result). The v0.4 Test 10 (two consecutive mults, no
+    doubling) is evidence the array zeroes cleanly after drain, but the
+    multip->mult carry path is exercised for the first time here.
+  - Pre-existing: `TB_Step8_FullSystem.v` connects `.o_debug_val(debug_val)` on
+    the TPU, but the committed `TPU/TPU.v` has an empty DEBUG section with no
+    `o_debug_val` port. This is a debug-section (user-owned, machine-local)
+    discrepancy, not introduced by this change and not editable here; the
+    Questa-PC copy presumably defines it. Surfaced for the user.
+
 ## 2026-07-09 — v0.4 Memory Expansion: full Questa regression PASS
 
 - **Ran the pending v0.4 regression** on the Questa PC (`vsim.exe` confirmed at

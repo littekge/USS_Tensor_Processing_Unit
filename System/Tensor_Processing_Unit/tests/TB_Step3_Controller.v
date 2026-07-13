@@ -24,7 +24,7 @@
  * PASS / FAIL CRITERIA:
  *   Each test prints "PASS" or "FAIL" to the transcript.
  *   A final summary prints total pass/fail counts.
- *   All 10 tests should show PASS for a correct implementation.
+ *   All 13 tests should show PASS for a correct implementation.
  *
  * TEST CASES:
  *   Test 1: After reset — controller_idle HIGH, clear LOW
@@ -39,6 +39,14 @@
  *           mult→both NOOP
  *   Test 10: mult requant params (M0/n) decoded and asserted to VP_A during
  *            writeback (VSRC_SA_OUT), and held at 0 during the execute decode
+ *   Test 11 (v0.5): accumulator_clear pulses exactly once after a mult
+ *            writeback (funct3 0x0) and is suppressed for multip (funct3 0x1);
+ *            both variants decode and run to completion.
+ *   Test 12 (v0.5): stride (opcode 1111) latches im1/im2 into ld1/ld2 and has
+ *            no execute/writeback phase (no vector_start pulses).
+ *   Test 13 (v0.5): after a stride, a MUL presents ld1 on leading_dimension_a
+ *            and ld2 on leading_dimension_b during the src1/src2 load, and ld2
+ *            on leading_dimension_a during writeback.
  * -------------------------------------------------------------------------
  */
 
@@ -97,6 +105,9 @@ wire [3:0]  dim1_b;
 wire [2:0]  activator_funct;
 wire [2:0]  alu_funct;
 wire        systolic_array_start;
+wire        accumulator_clear;
+wire [23:0] leading_dimension_a;
+wire [23:0] leading_dimension_b;
 
 // ---------------------------------------------------------------------------
 // DUT instantiation
@@ -128,18 +139,26 @@ Controller dut (
     .o_length_b             (length_b),
     .o_dim0_b               (dim0_b),
     .o_dim1_b               (dim1_b),
+    .o_leading_dimension_a  (leading_dimension_a),
+    .o_leading_dimension_b  (leading_dimension_b),
     .o_activator_funct      (activator_funct),
     .o_alu_funct            (alu_funct),
-    .o_systolic_array_start (systolic_array_start)
+    .o_systolic_array_start (systolic_array_start),
+    .o_accumulator_clear    (accumulator_clear)
 );
 
 // ---------------------------------------------------------------------------
 // ISA constants
 // ---------------------------------------------------------------------------
-localparam [3:0] OP_MULT = 4'b1000;
-localparam [3:0] OP_RELU = 4'b1001;
-localparam [3:0] OP_ADD  = 4'b1010;
-localparam [3:0] OP_BAD  = 4'b0111; // invalid opcode
+localparam [3:0] OP_MULT   = 4'b1000;
+localparam [3:0] OP_RELU   = 4'b1001;
+localparam [3:0] OP_ADD    = 4'b1010;
+localparam [3:0] OP_STRIDE = 4'b1111;
+localparam [3:0] OP_BAD    = 4'b0111; // invalid opcode
+
+// MUL funct3 sub-codes (per ISA Instruction Set Listing)
+localparam [2:0] F3_MULT   = 3'h0;
+localparam [2:0] F3_MULTIP = 3'h1;
 
 // Controller source/dest encodings (must match Controller.v parameters)
 localparam [2:0] VSRC_MEM     = 3'd0;
@@ -161,24 +180,55 @@ always @(posedge clk)
     if (trst === 1'b1 && systolic_array_start === 1'b1)
         sa_start_count = sa_start_count + 1;
 
-// Build a mult instruction with explicit requant parameters (ISA v0.4 MUL
-// format): opcode[127:124] | rs1[123:100] | sz11[99:96] | sz12[95:92] |
-// rs2[91:68] | sz21[67:64] | sz22[63:60] | rd[59:36] | M0[35:28] | n[27:20] |
-// reserved[19:0] (funct3 in bits 2:0 = 0).
+// Count accumulator_clear pulses (used by Test 11)
+integer acc_clear_count;
+always @(posedge clk)
+    if (trst === 1'b1 && accumulator_clear === 1'b1)
+        acc_clear_count = acc_clear_count + 1;
+
+// Build a MUL instruction (ISA v0.5 MUL format): opcode[127:124] |
+// rs1[123:100] | sz11[99:96] | sz12[95:92] | rs2[91:68] | sz21[67:64] |
+// sz22[63:60] | rd[59:36] | M0[35:28] | n[27:20] | reserved[19:3] |
+// funct3[2:0]. funct3 selects mult (0x0) vs multip (0x1).
+function [127:0] make_mul_f3;
+    input [23:0] rs1, rs2, rd;
+    input [3:0]  sz11, sz12, sz21, sz22;
+    input [7:0]  scale, shift;
+    input [2:0]  f3;
+    make_mul_f3 = {OP_MULT, rs1, sz11, sz12, rs2, sz21, sz22, rd,
+                   scale, shift, 17'd0, f3};
+endfunction
+
+// mult with explicit requant params (funct3 = mult).
 function [127:0] make_mult_rq;
     input [23:0] rs1, rs2, rd;
     input [3:0]  sz11, sz12, sz21, sz22;
     input [7:0]  scale, shift;
-    make_mult_rq = {OP_MULT, rs1, sz11, sz12, rs2, sz21, sz22, rd,
-                    scale, shift, 20'd0};
+    make_mult_rq = make_mul_f3(rs1, rs2, rd, sz11, sz12, sz21, sz22,
+                               scale, shift, F3_MULT);
 endfunction
 
-// Build a mult instruction with zero requant parameters (existing tests do not
-// inspect scale/shift, so M0=n=0 keeps their behavior unchanged).
+// mult with zero requant params (existing tests do not inspect scale/shift).
 function [127:0] make_mult;
     input [23:0] rs1, rs2, rd;
     input [3:0]  sz11, sz12, sz21, sz22;
-    make_mult = make_mult_rq(rs1, rs2, rd, sz11, sz12, sz21, sz22, 8'd0, 8'd0);
+    make_mult = make_mul_f3(rs1, rs2, rd, sz11, sz12, sz21, sz22,
+                            8'd0, 8'd0, F3_MULT);
+endfunction
+
+// multip (funct3 = multip) — identical layout, does not clear the accumulator.
+function [127:0] make_multip;
+    input [23:0] rs1, rs2, rd;
+    input [3:0]  sz11, sz12, sz21, sz22;
+    make_multip = make_mul_f3(rs1, rs2, rd, sz11, sz12, sz21, sz22,
+                              8'd0, 8'd0, F3_MULTIP);
+endfunction
+
+// Build a stride instruction (ISA v0.5 CONFIG format): opcode[127:124] |
+// im1[123:100] | im2[99:76] | reserved[75:3] | funct3[2:0] = 0.
+function [127:0] make_stride;
+    input [23:0] im1, im2;
+    make_stride = {OP_STRIDE, im1, im2, 76'd0};
 endfunction
 
 // Build a relu instruction (ISA v0.4 ACT format):
@@ -257,6 +307,9 @@ reg mult_saw_sa, relu_saw_sa, add_saw_sa;
 reg [2:0] cap_relu_act, cap_add_alu, cap_mult_act, cap_mult_alu;
 reg [7:0] cap_scale_wb, cap_shift_wb;
 reg       wb_captured, exec_rq_zero;
+integer   mult_acc_clears, multip_acc_clears;
+integer   stride_vstart_seen;
+reg       ld_exec_a_ok, ld_exec_b_ok, ld_wb_a_ok;
 
 initial
 begin
@@ -620,6 +673,74 @@ begin
           (cap_scale_wb === 8'd7) &&
           (cap_shift_wb === 8'd5) &&
           (exec_rq_zero === 1'b1), 10);
+
+    // -----------------------------------------------------------------------
+    // Test 11 (v0.5): accumulator_clear pulses once after a mult writeback and
+    // is suppressed for multip. Both variants decode and run to completion.
+    // -----------------------------------------------------------------------
+    do_reset;
+    vector_idle_a = 1'b1; vector_idle_b = 1'b1; systolic_array_idle = 1'b1;
+
+    acc_clear_count = 0;
+    send_instruction(make_mult(24'h000010, 24'h000020, 24'h000030,
+                               4'd2, 4'd2, 4'd2, 4'd2));
+    mult_acc_clears = acc_clear_count;
+
+    acc_clear_count = 0;
+    send_instruction(make_multip(24'h000010, 24'h000020, 24'h000030,
+                                 4'd2, 4'd2, 4'd2, 4'd2));
+    multip_acc_clears = acc_clear_count;
+
+    check((mult_acc_clears === 1) && (multip_acc_clears === 0), 11);
+
+    // -----------------------------------------------------------------------
+    // Test 12 (v0.5): stride latches im1/im2 into ld1/ld2 and does not run an
+    // execute or writeback phase (no vector_start pulses).
+    // -----------------------------------------------------------------------
+    do_reset;
+    vector_idle_a = 1'b1; vector_idle_b = 1'b1; systolic_array_idle = 1'b1;
+
+    instruction        = make_stride(24'h000005, 24'h00000A);
+    stride_vstart_seen = 0;
+    @(posedge clk); #1; controller_start = 1'b1;
+    @(posedge clk); #1; controller_start = 1'b0;
+    while (!controller_idle)
+    begin
+        if (vector_start_a === 1'b1 || vector_start_b_out === 1'b1)
+            stride_vstart_seen = 1;
+        @(posedge clk); #1;
+    end
+    check((dut.ld1 === 24'h000005) && (dut.ld2 === 24'h00000A) &&
+          (stride_vstart_seen === 0), 12);
+
+    // -----------------------------------------------------------------------
+    // Test 13 (v0.5): after the Test 12 stride (ld1=5, ld2=10), a MUL presents
+    // ld1 on leading_dimension_a and ld2 on leading_dimension_b during the
+    // src1/src2 load, and ld2 on leading_dimension_a during writeback. The ld
+    // registers persist across instructions (no intervening stride/reset).
+    // -----------------------------------------------------------------------
+    ld_exec_a_ok = 1'b0;
+    ld_exec_b_ok = 1'b0;
+    ld_wb_a_ok   = 1'b0;
+    instruction  = make_mult(24'h000010, 24'h000020, 24'h000030,
+                             4'd2, 4'd2, 4'd2, 4'd2);
+    @(posedge clk); #1; controller_start = 1'b1;
+    @(posedge clk); #1; controller_start = 1'b0;
+    while (!controller_idle)
+    begin
+        @(posedge clk); #1;
+        if (vect_source_a === VSRC_MEM && vect_dest_a === VDST_SA_A)
+        begin
+            if (leading_dimension_a === 24'h000005) ld_exec_a_ok = 1'b1;
+            if (leading_dimension_b === 24'h00000A) ld_exec_b_ok = 1'b1;
+        end
+        if (vect_source_a === VSRC_SA_OUT)
+        begin
+            if (leading_dimension_a === 24'h00000A) ld_wb_a_ok = 1'b1;
+        end
+    end
+    check((ld_exec_a_ok === 1'b1) && (ld_exec_b_ok === 1'b1) &&
+          (ld_wb_a_ok === 1'b1), 13);
 
     // -----------------------------------------------------------------------
     // Summary

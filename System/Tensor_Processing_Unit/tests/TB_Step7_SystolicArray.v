@@ -38,7 +38,9 @@
  *   Test 7: A loaded MAC tile accumulates a non-zero product and the o_c
  *           output mux selects MAC(col=i_col, row=i_row); untouched tiles
  *           read back zero.
- *   Test 8: clear zeroes a MAC accumulator (residual data flushed between ops).
+ *   Test 8 (v0.5): clear/accumulator_clear split — the MAC accumulator SURVIVES
+ *           an inter-operation clear (operands are flushed but c is preserved)
+ *           and is zeroed only by accumulator_clear (or trst).
  *   Test 9: signed multiply — a negative operand streamed through MAC(0,0)
  *           accumulates a NEGATIVE product (fails on the old unsigned multiply,
  *           which would treat 0xFE as +254 and accumulate a large positive).
@@ -96,6 +98,7 @@ endtask
 // DUT signals
 // ---------------------------------------------------------------------------
 reg          clear;
+reg          acc_clear;
 reg          sa_start;
 reg  [7:0]   top_data;
 reg  [N-1:0] top_wrreq;
@@ -113,6 +116,7 @@ Systolic_Array #(.N(N)) dut (
     .i_clk                  (clk),
     .i_trst                 (trst),
     .i_clear                (clear),
+    .i_accumulator_clear    (acc_clear),
     .i_systolic_array_start (sa_start),
     .o_systolic_array_idle  (sa_idle),
     .i_top_data             (top_data),
@@ -193,6 +197,7 @@ begin
     clk        = 1'b0;
     trst       = 1'b1;
     clear      = 1'b0;
+    acc_clear  = 1'b0;
     sa_start   = 1'b0;
     top_data   = 8'd0;
     top_wrreq  = {N{1'b0}};
@@ -333,9 +338,10 @@ begin
     end
 
     // -----------------------------------------------------------------------
-    // Test 8: clear zeroes a MAC accumulator. Accumulate a non-zero product
-    //         into MAC(0,0), then assert clear and confirm the accumulator is
-    //         flushed to zero (residual data does not survive between ops).
+    // Test 8 (v0.5): clear/accumulator_clear split. Accumulate a non-zero
+    //         product into MAC(0,0), pulse clear (must PRESERVE the accumulator
+    //         while flushing operands), then pulse accumulator_clear (must ZERO
+    //         the accumulator).
     // -----------------------------------------------------------------------
     do_reset;
     push_top(0, 8'd2);
@@ -353,9 +359,13 @@ begin
     sel_row = 4'd0;
     #1;
     begin : clear_check
-        reg nonzero_before;
+        reg [31:0] val_before;
+        reg        nonzero_before;
+        reg        survived_clear;
+        val_before     = c_out;
         nonzero_before = (c_out != 32'd0);
-        // Assert clear for one cycle to flush the MAC accumulators.
+        // Pulse clear: the accumulator must survive unchanged (only operand
+        // pipeline registers are flushed).
         clear = 1'b1;
         @(posedge clk); #1;
         clear = 1'b0;
@@ -363,7 +373,17 @@ begin
         sel_col = 4'd0;
         sel_row = 4'd0;
         #1;
-        check((nonzero_before === 1'b1) && (c_out === 32'd0), 8);
+        survived_clear = (c_out === val_before);
+        // Pulse accumulator_clear: the accumulator must now be zeroed.
+        acc_clear = 1'b1;
+        @(posedge clk); #1;
+        acc_clear = 1'b0;
+        @(posedge clk); #1;
+        sel_col = 4'd0;
+        sel_row = 4'd0;
+        #1;
+        check((nonzero_before === 1'b1) && (survived_clear === 1'b1) &&
+              (c_out === 32'd0), 8);
     end
 
     // -----------------------------------------------------------------------
