@@ -70,6 +70,21 @@ M-tiling still left the weight (rhs) tile strided whenever K and N are both tile
   confirm `TPU.v` has no `o_debug_val`, then mark the TPU `main.md` steps
   complete. Optional: re-export Bigger_NN from the main tree for portable debug
   `loc` paths. `v0.5-workspace` pushed to origin; not yet merged to `main`.
+- **Hardware bring-up / flashing (2026-07-13):** PC↔Arduino serial link rewritten
+  to a lock-step CRC-framed ACK/NAK handshake (128-B chunks; commit 1b392ed),
+  hardware-validated (ACKs correct) — fixes the UART-overrun that dropped bytes on
+  large transfers. Remaining blocker: Bigger_NN flash fails on **breadboard SPI
+  signal integrity** (probabilistic, scale-dependent — ~1M SPI bits; the single
+  9600 pass was luck; ~800-B / 7-chunk model flashes clean). RTL audit found NO
+  deterministic FPGA logic bug (multi-CS-window == continuous), but (A) a latent
+  last-byte-vs-CS-deassert race in `SPI_Slave.v` (r_RX_Done async-cleared by CS
+  before the i_Clk 2-FF captures it → a window's last byte can silently drop;
+  re-rolled ~1000x), (B/C) CS/SCK SI sensitivities, and missing SDC constraints.
+  Fix plan: solder a proto board (short leads, common ground, series R, wire
+  MISO) = primary SI fix; firmware µs CS-hold before CS-high closes (A) from the
+  master; RTL harden (stop CS async-clearing r_RX_Done + add SDC constraints) on
+  the next Questa session. 125 kHz = AVR SPI floor. Detail in memory
+  `comms-flashing-known-issues`.
 - Full plan + rationale in Claude memory (`v0-5-partitioning-redo`).
 
 ## Roadmap — end goal LeNet-5
