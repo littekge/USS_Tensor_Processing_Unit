@@ -42,19 +42,44 @@ targeting 0x1 inherently invalidates and completely overwrites all elements
 previously residing within it. The ISA does not currently support partial
 overwrites.
 
---------------------------------------------------
+## Registers
 
-## Instruction Format
+This section describes the registers defined by the *Functional TPU instruction
+set architecture*. **Note** that the ISA does not define any general purpose
+registers; each register has a reserved function and all generic data is stored
+in main memory. Reference the table below for a general description of each
+register:
+
+| Name | Description |
+| --- | --- |
+| ld1 | Leading dimension of *rs1* |
+| ld2 | Leading dimension of *rs2* |
+
+A detailed description of each register can be found below:
+
+### Leading Dimension Registers
+
+The ISA defines two *leading dimension registers*, *ld1* and *ld2*. A leading
+dimension is the physical row stride of a larger Row-Major matrix, may exceed
+the operand's logical width, and lets an instruction address a sub-block in
+place. Leading dimension registers are set by the *stride* instruction, persist
+until the next *stride* instruction or system reset, and default to contiguous
+(no stride, *ld1*=*ld2*=0). *ld1* and *ld2* define the leading dimensions of
+*rs1* and *rs2* for all MUL-type instructions. For writeback, the
+leading dimension of *rd* is always equal to *ld2*.
+
+## Instruction Formats
 
 This section describes the general format of *Functional TPU* instructions. In
 the *Functional TPU* ISA, there are a variety of instruction formats (MUL,
-SHAPE, ACT, ELEM, SYSTEM) which all have a fixed length of 128 bits.
+SHAPE, ACT, ELEM, CONFIG, SYSTEM) which all have a fixed length of 128 bits.
 Instructions are described with the most significant bit (127) on the left side
 of the instruction, and the least significant bit (0) on the right side. In
-common between all instruction sets are the following properties:
+common between all instruction formats are the following properties:
 
 - **Opcode:** Bits 127-124 are reserved for the OPCODE.
 - **Variable Instruction:** Bits 123-0 are variable based on instruction format.
+
 Each instruction format is described below:
 
 ### MUL Format
@@ -88,6 +113,15 @@ Each instruction format is described below:
 | 4 | 24 | 24 | 8 | 8 | 24 | 33 | 3 |
 | opcode | rs1 | rs2 | sz1 | sz2 | rd | reserved | funct3 |
 
+### CONFIG Format
+
+**Description by Bit:**
+
+| 127-124 | 123-100 | 99-76 | 75-3 | 2-0 |
+| --- | --- | --- | --- | --- |
+| 4 | 24 | 24 | 73 | 3 |
+| opcode | im1 | im2 | reserved | funct3 |
+
 ### SYSTEM Format
 
 **Description by Bit:**
@@ -97,14 +131,12 @@ Each instruction format is described below:
 | 4 | 117 | 7 |
 | opcode | reserved | funct7 |
 
---------------------------------------------------
-
 ## Instructions
 
 This section describes individual instructions available in the *Functional TPU*
 ISA.
 
-### Multiplication Instructions
+### MUL Instructions
 
 **Description by Bit:**
 
@@ -124,17 +156,30 @@ selected by *funct3*. The maximum dimensions of the accumulator are an
 implementation-defined hardware parameter, and a sequence of accumulating
 multiplies must target identical *dest* dimensions that do not exceed it.
 
+Each operand (src1, src2) and the destination (dest) addresses the top-left
+element of a matrix that may be a sub-block of a larger Row-Major matrix. The
+dim fields give each operand's logical dimensions, while the leading dimension
+registers give the physical row stride used to walk it: successive rows of src1
+are spaced ld1 elements apart, rows of src2 are spaced ld2 apart, and the result
+is written to dest with rows spaced ld2 apart. When ld1=ld2=0 (the default),
+rows are spaced by the operand's own width and every matrix is read and written
+contiguously. A non-zero leading dimension lets a single MUL instruction operate
+on a tile of a larger matrix in place, without rearranging memory (see Leading
+Dimension Registers).
+
 #### mult
 
 *mult* takes a matrix of dimensions *dim11* x *dim12* located at address *src1*
 and multiplies it by a matrix of dimensions *dim21* x *dim22* located at address
-*src2*, storing the result contiguously starting from address *dest* in
-Row-Major order. Before storage, each resultant value is requantized according
-to the following equation: result = clamp((*scale* * x + (1 << (*shift* - 1)))
-\>\> *shift*) (**Note:** clamp() denotes saturation to XLEN min/max). After
-writeback, the accumulator is cleared. *reserved* bits are set to 0. Note that
-the current revision of the ISA does not support matrix dimensions greater than
-15x15 for this instruction.
+*src2*, storing the result starting from address *dest* in Row-Major order
+(addressed per the leading dimensions described above). Before storage, each
+resultant value is requantized according to the following equation: result =
+clamp((scale * x + (1 << (*shift* - 1))) >> shift) (Note: clamp() denotes
+saturation to XLEN min/max). After writeback, the accumulator is cleared.
+Reserved bits are set to 0. Note that the dim fields limit each operand to at
+most 15x15 elements per instruction; larger matrices are computed by issuing
+MUL instructions over array-sized tiles addressed within their parent matrices
+via *ld1* and *ld2*.
 
 #### multip
 
@@ -145,9 +190,12 @@ subsequent multiplication accumulates into the same accumulator. A run of
 their individual products, enabling matrix multiplications whose contraction
 dimension exceeds a single instruction. Every instruction in such a run must
 reference identical *dest* dimensions; intermediate writebacks are overwritten
-by later ones, so only the final *mult* writeback is meaningful.
+by later ones, so only the final *mult* writeback is meaningful. The leading
+dimensions in effect (ld1, ld2) are shared by every instruction in the run,
+since they are set once by a preceding stride instruction and persist across the
+whole accumulation.
 
-### Activation Instructions
+### ACT Instructions
 
 **Description by Bit:**
 
@@ -163,7 +211,7 @@ by later ones, so only the final *mult* writeback is meaningful.
 f(x) = max(0, x)*) to *size* contiguous elements beginning at address *src1* and
 storing them contiguously at address *dest*.
 
-### Elementwise Instructions
+### ELEM Instructions
 
 **Description by Bit:**
 
@@ -181,7 +229,25 @@ contiguously starting at address *dest* in Row-Major order. *reserved* bits are
 set to 0. Note that the current revision of the ISA does not support matrix
 dimensions greater than 255x255 for this instruction.
 
-### System Instructions
+### CONFIG Instructions
+
+**Description by Bit:**
+
+| 127-124 | 123-100 | 99-76 | 75-3 | 2-0 |
+| --- | --- | --- | --- | --- |
+| 4 | 24 | 24 | 73 | 3 |
+| opcode | im1 | im2 | reserved | funct3 |
+| CONFIG | ld1 | ld2 | 0 | STRIDE |
+
+#### stride
+
+The *stride* instruction loads *im1* and *im2* into the *ld1* and *ld2*
+registers respectively. *ld1* and *ld2* are effective for all subsequent
+MUL-type instructions until the next *stride* instruction or system reset. A
+value of 0 for *ld1* and *ld2* indicates no stride; matrices will be read
+contiguously. *ld1* and *ld2* are set to 0 by default.
+
+### SYSTEM Instructions
 
 **Description by Bit:**
 
@@ -202,8 +268,6 @@ The *syscall* instruction is used to make a service request to the supporting
 system hardware. The system will define how parameters for the service request
 are passed.
 
---------------------------------------------------
-
 ## Instruction Set Listing
 
 This section defines the concrete binary layouts for all instructions in the
@@ -215,6 +279,7 @@ This section defines the concrete binary layouts for all instructions in the
 | MULTIP | 1000 | 0x1 |
 | RELU | 1001 | 0x0 |
 | ADD | 1010 | 0x0 |
+| STRIDE | 1111 | 0x0 |
 
 | Instruction | opcode | funct7 |
 | --- | --- | --- |

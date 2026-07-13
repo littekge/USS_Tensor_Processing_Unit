@@ -1,8 +1,27 @@
 # Functional TPU ISA — Change Log
 
 > Append a new entry every time a change is made. Newest entries at the top.
+>
+## 2026-07-13 — Functional TPU ISA v0.5 (leading-dimension addressing)
 
-## 2026-07-08 — Functional TPU ISA v0.5
+- **Added strided (leading-dimension) matrix addressing** so a single MUL
+instruction can operate on a sub-block of a larger Row-Major matrix in place —
+enabling matrix multiplications larger than the systolic array via tiling.
+- Added a **Registers** section defining two leading-dimension registers *ld1*
+and *ld2* (row strides of *rs1* and *rs2*; *rd* always uses *ld2*). The ISA
+otherwise defines no general-purpose registers.
+- Added the **CONFIG instruction format** (*opcode* | *im1* | *im2* | reserved
+| *funct3*).
+- Added the ***stride*** instruction (CONFIG format) that loads *im1*/*im2* into
+*ld1*/*ld2*; effective for all subsequent MUL-type instructions until the next
+*stride* or system reset. *ld1*=*ld2*=0 (the default) means contiguous.
+- Updated the *mult*/*multip* descriptions for sub-block addressing: rows of
+*src1*/*src2*/*dest* are spaced *ld1*/*ld2*/*ld2* apart, and the "15x15" limit is
+now a per-instruction tile bound (larger matrices reached by tiling).
+- Added CONFIG to the instruction-format list, and a STRIDE row (opcode 1111,
+funct3 0x0) to the Instruction Set Listing.
+
+## 2026-07-08 — Functional TPU ISA v0.5 (multiply-in-place)
 
 - **Added multiply-in-place functionality**
 - Explicitly defined the internal matrix accumulator.
