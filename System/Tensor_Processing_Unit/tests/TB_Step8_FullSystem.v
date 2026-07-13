@@ -108,13 +108,13 @@ module TB_Step8_FullSystem;
     reg  spi_mosi;
     reg  spi_ss;
     wire spi_miso;
-    wire [31:0] debug_val;
 
     reg         mode_select;
     reg         input_data_valid;
     reg  [7:0]  input_data;
     wire [7:0]  output_data;
     wire        output_data_valid;
+    // NOTE: o_debug_val was removed from TPU.v; no debug port is connected here.
 
     // -----------------------------------------------------------------------
     // Timing / constants
@@ -156,8 +156,7 @@ module TB_Step8_FullSystem;
         .i_input_data        (input_data),
         .o_output_data       (output_data),
         .o_output_data_valid (output_data_valid),
-        .o_end_reached       (),                // exposed at TPU boundary; unused here
-        .o_debug_val         (debug_val)
+        .o_end_reached       ()                 // exposed at TPU boundary; unused here
     );
 
     // v0.3: requantization is per-layer and supplied at runtime via each MUL

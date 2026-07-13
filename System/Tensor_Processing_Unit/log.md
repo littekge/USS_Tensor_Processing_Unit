@@ -2,6 +2,73 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-13 — v0.5 review fixes: TB_Step8 debug port removed; multip carry-path test added
+
+- **Context:** two review fixes on the v0.5 partitioning worktree (branch
+  `worktree-wf_7feca0ff-b9b-1`, RTL committed at fc4b325). Test-only changes;
+  no RTL edited, no debug sections touched, no new `.v` files.
+
+- **Fix 1 — `tests/TB_Step8_FullSystem.v` debug port (test-only):** the user
+  removed the `o_debug_val` output from `TPU/TPU.v` (its DEBUG section is now
+  empty), so the TB's `.o_debug_val(debug_val)` connection referenced a
+  nonexistent port and would fail elaboration. Removed the port connection from
+  the TPU instantiation, dropped the now-trailing comma on `.o_end_reached()`
+  so it is the last port, and removed the unused `wire [31:0] debug_val;`
+  declaration (a note replaces it). No other reference to `debug_val` existed.
+  This resolves the debug-section discrepancy flagged in the prior entry.
+
+- **Fix 2 — multip accumulation carry-path verification:**
+  - **Mechanism (why stale products are NOT accumulated across the
+    inter-operation gap), cited:**
+    - `Multiply_Accumulate_Unit.v:75` accumulates `o_c <= o_c +
+      $signed(i_a)*$signed(i_b)` every cycle whenever `i_accumulator_clear` is
+      LOW — so protection must come from the operands `i_a`/`i_b` being 0 during
+      the gap, making the addend `0*0 = 0`.
+    - `Systolic_Array.v:129` and `:148` gate the array edges:
+      `h_interconnect[0][j] = left_rdreq_d[j] ? left_q[j] : 8'd0` and
+      `v_interconnect[i][0] = top_rdreq_d[i] ? top_q[i] : 8'd0`. Genuine popped
+      data reaches an edge only while its delayed read-valid is HIGH; otherwise
+      the edge is fed 8'd0.
+    - `Systolic_Array.v:257-272` decode `top_rdreq`/`left_rdreq` = 0 unless
+      `S == LOAD`; during the idle gap (`S == IDLE`) no reads occur, so
+      `top_rdreq_d`/`left_rdreq_d` (`:234-251`) fall to 0 and both edges feed 0.
+      Those 0s propagate through the MAC operand registers, so within N cycles
+      every MAC sees a 0 operand and adds nothing.
+    - `Controller.v:281` (`o_clear = (S == CLEAR)`) pulses clear at the START of
+      EVERY operation (`IDLE -> CLEAR`, `:200`), including `multip`. Clear
+      drives `buf_sclr` (`Systolic_Array.v:71`, flushes input buffers), resets
+      `top_rdreq_d`/`left_rdreq_d` (`:241-245`), and zeroes each MAC's operand
+      registers `o_a`/`o_b` (`Multiply_Accumulate_Unit.v:52-56`) — immediately
+      forcing the whole datapath feeding the accumulator to 0.
+    - **Holds with the persistent (multip) accumulator:** v0.5 split clear from
+      accumulator-clear. `o_accumulator_clear` pulses only in `ACC_CLEAR` and
+      only for `mult`, not `multip` (`Controller.v:298`), so a `multip` keeps
+      `o_c`. But `o_clear` still flushes operands/buffers every op, so during the
+      gap `o_c <= o_c + 0`: the accumulator is preserved intact and no stale
+      product is added. Real tile operands streamed on the next op accumulate on
+      top — the intended tiled sum.
+  - **Test coverage added:** `tests/TB_Step7_SystolicArray.v` new Test 10
+    (9 -> 10 tests). Tile 1 (top_buf[0]=2 x2, left_buf[0]=3 x2) accumulates P1
+    into MAC(0,0); then a one-cycle `clear` (accumulator_clear held LOW, as for
+    multip) plus a 20-cycle idle gap; asserts the accumulator still reads P1
+    after the gap (no stale leak). Tile 2 uses identical operands, so the final
+    accumulator must be exactly `2*P1`. FAILS if residual products leaked during
+    the gap (after_gap would exceed P1 and final would exceed 2*P1). Existing
+    Test 8 only checks clear-preserves / accumulator_clear-zeroes over 2 cycles;
+    Test 10 is the directed multip run (persistent accumulator + long gap +
+    second tile) that Test 8 does not cover.
+
+- **`tests/run_regression.sh`:** no change — neither TB_Step7 nor TB_Step8
+  changed its RTL dependency file LIST (only testbench contents changed); no
+  pass-count is hardcoded in the runner.
+
+- **Verification: PENDING.** Not the Questa PC (no `vsim.exe` at
+  `C:\intelFPGA_lite\23.1std\questa_fse\win64\`); nothing simulated,
+  `run_regression.sh` self-gates. Affected testbenches to run on the Questa PC:
+  `TB_Step7_SystolicArray` (now 10/10 expected, Test 10 = multip carry-path) and
+  `TB_Step8_FullSystem` (13/13 expected; elaborates now that the dead debug port
+  is gone). v0.5 `main.md` steps left UNMARKED until that run confirms.
+
 ## 2026-07-13 — v0.5 Partitioning Update (Leading-Dimension Addressing): RTL + testbenches
 
 - **Context:** v0.5 enables matmuls larger than the 8x8 systolic array by tiling,
