@@ -65,25 +65,40 @@ M-tiling still left the weight (rhs) tile strided whenever K and N are both tile
   ops+encoders, transpose-analysis stage, offline weight transpose, partition
   pass — 64/64 pytest and a REAL Bigger_NN e2e (3 strides, one per matmul).
   Assembler `main.md` steps marked complete; TPU steps left unmarked (Questa).
-- **Remaining:** TPU `Verification: PENDING` — run the regression on the Questa
-  PC (expect TB_Step3 13/13, TB_Step4 16/16, TB_Step7 10/10, TB_Step8 13/13) and
-  confirm `TPU.v` has no `o_debug_val`, then mark the TPU `main.md` steps
-  complete. Optional: re-export Bigger_NN from the main tree for portable debug
-  `loc` paths. `v0.5-workspace` pushed to origin; not yet merged to `main`.
-- **Hardware bring-up / flashing (2026-07-13):** PC↔Arduino serial link rewritten
-  to a lock-step CRC-framed ACK/NAK handshake (128-B chunks; commit 1b392ed),
-  hardware-validated (ACKs correct) — fixes the UART-overrun that dropped bytes on
-  large transfers. Remaining blocker: Bigger_NN flash fails on **breadboard SPI
-  signal integrity** (probabilistic, scale-dependent — ~1M SPI bits; the single
-  9600 pass was luck; ~800-B / 7-chunk model flashes clean). RTL audit found NO
-  deterministic FPGA logic bug (multi-CS-window == continuous), but (A) a latent
-  last-byte-vs-CS-deassert race in `SPI_Slave.v` (r_RX_Done async-cleared by CS
-  before the i_Clk 2-FF captures it → a window's last byte can silently drop;
-  re-rolled ~1000x), (B/C) CS/SCK SI sensitivities, and missing SDC constraints.
-  Fix plan: solder a proto board (short leads, common ground, series R, wire
-  MISO) = primary SI fix; firmware µs CS-hold before CS-high closes (A) from the
-  master; RTL harden (stop CS async-clearing r_RX_Done + add SDC constraints) on
-  the next Questa session. 125 kHz = AVR SPI floor. Detail in memory
+- **v0.5 VERIFIED & RELEASING (2026-07-14).** User confirmed the full TPU
+  regression passes on the Questa PC (TB_Step3/4/7/8); TPU `main.md` Steps 1–5
+  marked ✅ Complete and `log.md` updated with the pass + known-issue note. RTL is
+  release-clean (no `o_debug_val`). Specs already committed at v0.5.0 (ISA
+  561fd69, HW spec 0506a04). On the flashes that completed, all NNs computed
+  correctly with the new partitioning. **User is handling the merge to `main`, the
+  `v0.5.0` tag, publish, and the Neural_Networks working-tree changes (incl. the
+  Tiny_NN 4→1000 resize for flashing tests) personally.** The flashing SI issue is
+  separate/open (see below + memory `comms-flashing-known-issues`) and does NOT
+  block the release.
+- **Hardware bring-up / flashing:** serial hop (PC↔Arduino) reliable via lock-step
+  CRC-framed ACK/NAK handshake (128-B chunks; commit 1b392ed, hardware-validated).
+  Remaining blocker is the **SPI hop (Arduino→FPGA)**.
+- **Flashing root cause reframed (2026-07-14 diagnostic session).** `COM_ERROR` is
+  an FPGA-side `Programmer.v` parse-desync (byte at a command boundary isn't
+  `M/P/S`), not a byte-volume/SI-accumulation limit. Both Tiny_NN (7310 B) and
+  Bigger_NN (132 KB) binaries parse 100% clean → **no assembler bug**. Failure
+  position tracks the **MEM→PROG stream boundary, not byte count**: MEM (weight)
+  writes absorb byte corruption silently (FSM counts `mem_len` regardless of
+  value); the PROG run is zero-tolerance (command-code checkpoint every 17 B,
+  instruction data never aliases `M/P/S`) → any dropped/misframed byte → COM_ERROR
+  within ~17 B. Tiny fails ~7000 (PROG starts @3008); Bigger fails ~100000 (PROG
+  starts @102214, after its 102 KB MEM). Bigger's weights are likely corrupted
+  too, silently. Real cause: 5V→3.3V level shift is a **2k/3.3k resistive divider**
+  (Thevenin ≈1.25 kΩ) feeding **~100 ns edges** into pins `SPI_Slave.v` uses as a
+  raw async clock (`w_SPI_Clk`) and async reset (`i_SPI_CS_n`) — ~20–50× too slow.
+  Scope (Siglent SDS1104X-HD): edges clean/monotonic but slow; **no runts/glitches
+  on SCK or CS** → fault is internal to the FPGA, invisible on the wire (on-die
+  double-clock/metastability + latent RTL last-byte/CS race). Wire-invisible RTL
+  hazards (A last-byte/CS race, SDC gaps) still on the fix list.
+- **Flashing next step:** user will **buy a proper logic-level converter** (74LVC
+  push-pull, 5V-tolerant, fast 3.3 V edges) before reinvestigating. Buffer-and-
+  retest is decisive: errors vanish → soft-edge-into-async-clock confirmed; persist
+  → apply the `SPI_Slave.v` deglitch (Questa-gated). Detail in memory
   `comms-flashing-known-issues`.
 - Full plan + rationale in Claude memory (`v0-5-partitioning-redo`).
 

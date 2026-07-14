@@ -472,7 +472,7 @@ run terminated by a `mult` accumulates tiled products in-array (per
 **Scope note.** Control-path and addressing change to the compute datapath; the
 v0.4 memory subsystem is untouched. No new `.v` files; debug sections untouched.
 
-#### Step 1 — MAC & Systolic_Array Clear Split
+#### Step 1 — MAC & Systolic_Array Clear Split — ✅ Complete (2026-07-14)
 
 - `Multiply_Accumulate_Unit.v`: `clear` resets only the operand pipeline registers
   (`o_a`, `o_b`); add an `accumulator_clear` input that zeroes the accumulator
@@ -482,7 +482,7 @@ v0.4 memory subsystem is untouched. No new `.v` files; debug sections untouched.
 - Update `tests/TB_Step7_SystolicArray.v`: accumulator survives `clear`, zeroed
   only by `accumulator_clear`/`trst`.
 
-#### Step 2 — Controller: funct3 Decode, Clear Retiming, and stride/ld Registers
+#### Step 2 — Controller: funct3 Decode, Clear Retiming, and stride/ld Registers — ✅ Complete (2026-07-14)
 
 - `Controller.v`: decode funct3 on opcode 1000 (`mult` 0x0 / `multip` 0x1); move
   the accumulator clear to after writeback, asserted for one cycle only when
@@ -496,7 +496,7 @@ v0.4 memory subsystem is untouched. No new `.v` files; debug sections untouched.
   asserted after writeback for `mult` and suppressed for `multip`; `stride` latches
   `ld1`/`ld2`.
 
-#### Step 3 — Vector_Processor: Strided Sub-Block Addressing
+#### Step 3 — Vector_Processor: Strided Sub-Block Addressing — ✅ Complete (2026-07-14)
 
 - `Vector_Processor.v`: add a `leading_dimension` input; generalize operand-load
   and writeback address generation to step rows by the active leading dimension
@@ -505,7 +505,7 @@ v0.4 memory subsystem is untouched. No new `.v` files; debug sections untouched.
 - Update `tests/TB_Step4_VectorProcessor.v`: strided sub-block read and writeback;
   contiguous (leading dimension 0) matches v0.4 behavior.
 
-#### Step 4 — TPU Top-Level Routing
+#### Step 4 — TPU Top-Level Routing — ✅ Complete (2026-07-14)
 
 - `TPU.v`: route the Controller's `accumulator_clear` to the Systolic_Array
   (independent of the shared `ctrl_clear`); route the `leading_dimension` control
@@ -514,7 +514,7 @@ v0.4 memory subsystem is untouched. No new `.v` files; debug sections untouched.
   and a tiled matmul larger than 8x8 (a `multip` run terminated by a `mult`, with
   strided sub-block operands), checked against the requantized reference.
 
-#### Step 5 — Regression
+#### Step 5 — Regression — ✅ Complete (2026-07-14)
 
 - Update `tests/run_regression.sh` for changed testbench dependencies
   (TB_Step3/4/7/8).

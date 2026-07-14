@@ -2,6 +2,27 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-14 — v0.5 verified on Questa; build steps marked complete (release-ready)
+
+- **Regression PASS (user-verified on the Questa PC, 2026-07-14):** the full v0.5
+  regression — `TB_Step3` (Controller), `TB_Step4` (Vector_Processor), `TB_Step7`
+  (Systolic_Array), `TB_Step8` (FullSystem) — all pass. Resolves the
+  `Verification: PENDING` state carried since the 2026-07-13 implementation.
+- **Release hygiene:** `TPU.v` DEBUG section is empty (no `o_debug_val`/debug
+  ports); no new `.v` files; debug sections untouched. `main.md` v0.5 Steps 1–5
+  marked ✅ Complete.
+- **Functional confirmation:** on the flash attempts that completed end-to-end,
+  every neural network computed correctly with the new leading-dimension
+  partitioning.
+- **Known issue (NOT a v0.5 defect — tracked separately):** large-model SPI
+  flashing is unreliable from a signal-integrity limitation on the 5V→3.3V path:
+  the passive 2k/3.3k resistive divider drives ~100 ns edges into the FPGA's
+  asynchronous SPI clock (SCK) / reset (CS) pins. Orthogonal to the v0.5
+  partitioning logic (verified by Questa and by successful flashes). Fix pending
+  a proper buffered level converter (+ optional `SPI_Slave.v` deglitch/CS
+  synchronize); see the comms flashing notes.
+- **Files modified:** `main.md` (Steps 1–5 marked complete), `log.md`.
+
 ## 2026-07-13 — v0.5 review fixes: TB_Step8 debug port removed; multip carry-path test added
 
 - **Context:** two review fixes on the v0.5 partitioning worktree (branch
