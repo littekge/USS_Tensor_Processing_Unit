@@ -2,6 +2,22 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-14 — v0.5.1 SPI_Slave rewrite verified (Questa PASS + hardware)
+
+- **Verification: PASS.** Full Questa regression passed on the Questa PC —
+  the new `TB_SPI_Slave` plus `TB_Step1_Programmer` and `TB_Step8_FullSystem`
+  (system-level functional equivalence of the rewritten module). Supersedes the
+  `Verification: PENDING` recorded in the rewrite entry below.
+- **Hardware-validated:** with the resynthesized bitstream, Bigger_NN flashed
+  successfully **3 times in a row with zero errors** over the real Arduino→FPGA
+  SPI link (previously unreliable at that size). The synchronous oversampling
+  receiver tolerates the marginal ~100 ns level-shifter edges; the planned
+  logic-level converter is now an optional backup rather than a requirement.
+- **Steps:** `main.md` v0.5.1 Steps 1–3 marked complete.
+- **Deferred (user):** the Hardware-Spec `SPI_Slave` description ("pulled from
+  nandland") is knowingly stale; the user will update it before the v0.5.1 tag
+  (`Specifications/` is user-managed / read-only for Claude).
+
 ## 2026-07-14 — v0.5.1 SPI_Slave synchronous-oversampling rewrite (Verification: PENDING)
 
 - **What was done:** rewrote the internals of

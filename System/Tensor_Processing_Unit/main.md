@@ -545,7 +545,7 @@ window; TX/MISO behavior (preload MSB on CS-assert, MSB-first shift, tri-state
 on CS-high, `i_TX_DV` latches `i_TX_Byte`); active-low reset; full `SPI_MODE`
 0–3 semantics.
 
-#### Step 1 — Synchronous Oversampling Rewrite
+#### Step 1 — Synchronous Oversampling Rewrite — ✅ Complete (2026-07-14)
 
 - Synchronize `i_SPI_Clk`, `i_SPI_MOSI`, and `i_SPI_CS_n` into the `i_Clk`
   domain via 2-stage metastability chains.
@@ -564,7 +564,7 @@ on CS-high, `i_TX_DV` latches `i_TX_Byte`); active-low reset; full `SPI_MODE`
 - Ports and the `SPI_MODE` parameter are unchanged; the DEBUG section is
   untouched.
 
-#### Step 2 — Dedicated Unit Testbench
+#### Step 2 — Dedicated Unit Testbench — ✅ Complete (2026-07-14)
 
 - Create `tests/TB_SPI_Slave.v` exercising: functional equivalence (MSB-first
   byte assembly; `o_RX_DV` a single `i_Clk` pulse with valid `o_RX_Byte`;
@@ -573,7 +573,7 @@ on CS-high, `i_TX_DV` latches `i_TX_Byte`); active-low reset; full `SPI_MODE`
   SCK edge); plus a mode-1/2/3 smoke check.
 - Document pass/fail conditions per the `tests/` convention.
 
-#### Step 3 — Regression
+#### Step 3 — Regression — ✅ Complete (2026-07-14)
 
 - Confirm `TB_Step1_Programmer` and `TB_Step8_FullSystem` still pass unchanged
   (system-level functional-equivalence check).
