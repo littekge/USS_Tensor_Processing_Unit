@@ -2,6 +2,64 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-14 — v0.5.1 SPI_Slave synchronous-oversampling rewrite (Verification: PENDING)
+
+- **What was done:** rewrote the internals of
+  `TPU/PROGRAMMER/SPI_LINK/SPI_Slave.v` as a fully synchronous oversampling
+  receiver in the `i_Clk` (50 MHz) domain, replacing the nandland design that
+  used the raw SPI clock as a real clock and raw CS as an asynchronous reset
+  with a cross-domain "byte done" flag. Eliminates the glitch-triggered
+  spurious clocking, the last-byte/CS-deassert race, and the CDC exposure that
+  made large-model SPI flashing unreliable on the passive 5V→3.3V path (see the
+  2026-07-14 v0.5 known-issue entry).
+- **New architecture (internals only):**
+  - 2-stage FF metastability synchronizers on `i_SPI_Clk`, `i_SPI_MOSI`,
+    `i_SPI_CS_n` (reset to idle SCK level / deasserted CS).
+  - Debounce of SCK and CS via `localparam DEBOUNCE_N = 3`: a level change is
+    accepted only after N consecutive equal synchronized samples (~60 ns),
+    rejecting slow-edge bounce and short glitches. Edge-detect on the debounced
+    level.
+  - CPOL/CPHA derived from `SPI_MODE` (localparams `CPOL`/`CPHA`) select the
+    sample edge (capture MOSI) and shift edge (advance MISO), covering modes
+    0–3.
+  - RX: on the sample edge, shift synchronized MOSI MSB-first into an 8-bit
+    register and advance a 0..7 counter; on the 8th bit latch `o_RX_Byte` and
+    pulse `o_RX_DV` for exactly one `i_Clk` cycle.
+  - Synchronous CS framing: CS-assert resets the RX bit counter; CS-deassert
+    NEVER asynchronously clears received-byte/DV state (this fixes the
+    last-byte race). Partial byte discarded at the next frame start.
+  - TX/MISO driven synchronously off the shift edge: MSB preload on CS-assert,
+    MSB-first shift, tri-state when synchronized CS is high, `i_TX_Byte`
+    registered on `i_TX_DV`.
+- **Contract preserved (byte-identical interface):** module ports, the
+  `#(parameter SPI_MODE = 0)` declaration, and functional behavior are
+  unchanged — verified against `SPI_Interface.v` (which ties `i_TX_DV`=0 and
+  reads `o_RX_DV`/`o_RX_Byte` into the FIFO `wrreq`/`data`). `o_RX_DV` remains a
+  single-cycle pulse (critical: it drives `wrreq`); MSB-first assembly;
+  multi-byte per CS window; active-low reset; full mode 0–3 semantics. DEBUG
+  section untouched; no other `.v` files changed.
+- **Files created/modified:**
+  - `TPU/PROGRAMMER/SPI_LINK/SPI_Slave.v` — internals rewritten, header comment
+    updated to describe the synchronous-oversampling architecture and state the
+    interface/behavior are unchanged.
+  - `tests/TB_SPI_Slave.v` — NEW dedicated unit testbench (14 tests): MSB-first
+    assembly, single-cycle DV, multi-byte and back-to-back within one CS window,
+    SCK-glitch rejection, CS-glitch rejection, noisy/bouncing edges, last-byte
+    CS-deassert race, DV-exactly-one-cycle over a burst, reset clearing, TX/MISO
+    behavior, and mode 1/2/3 correct-edge smoke checks. Four DUTs (modes 0–3)
+    share the SPI stimulus nets.
+  - `tests/run_regression.sh` — added a `run_tb spi TB_SPI_Slave` block
+    (sources: `SPI_Slave.v`, `tests/TB_SPI_Slave.v`), in sync with the TB
+    header dependency list.
+- **Verification: PENDING (non-Questa machine — Linux laptop, no simulation
+  run).** On the Questa PC run `TB_SPI_Slave` (new), plus `TB_Step1_Programmer`
+  and `TB_Step8_FullSystem` (system-level functional-equivalence, expected to
+  still pass unchanged since the interface is preserved). v0.5.1 `main.md` steps
+  left UNMARKED until the regression passes on the Questa PC.
+- **Spec note:** the `SPI_Slave` description in the Hardware Specification
+  (currently "pulled from nandland") is knowingly left stale; per the user this
+  spec update is deferred to hardware bring-up.
+
 ## 2026-07-14 — v0.5 verified on Questa; build steps marked complete (release-ready)
 
 - **Regression PASS (user-verified on the Questa PC, 2026-07-14):** the full v0.5

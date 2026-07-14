@@ -521,3 +521,64 @@ v0.4 memory subsystem is untouched. No new `.v` files; debug sections untouched.
 - Run the full regression on the Questa PC and record results in `log.md`.
 - On non-Questa machines record `Verification: PENDING` (naming TB_Step3/4/7/8)
   and leave the v0.5 steps unmarked until the regression passes on the Questa PC.
+
+### v0.5.1 — SPI_Slave Hardening (Synchronous Oversampling Rewrite)
+
+Rewrites the `SPI_Slave` internals as a fully synchronous oversampling receiver
+in the `i_Clk` (50 MHz) domain, eliminating the raw-SCK-as-clock and
+raw-CS-as-async-reset hazards, the last-byte/CS-deassert race, and the CDC
+exposure that make large-model SPI flashing unreliable. Module ports, the
+`SPI_MODE` parameter, and their functional contract are unchanged — internals
+only.
+
+**Scope note.** All changes are confined to
+`TPU/PROGRAMMER/SPI_LINK/SPI_Slave.v`; module ports, the `SPI_MODE` parameter,
+and their functional behavior are unchanged; no other `.v` files; the DEBUG
+section is untouched. Verification is Questa-gated. The `SPI_Slave` description
+in the Hardware Specification (currently "pulled from nandland") will be stale
+after this rewrite; per the user this spec update is intentionally deferred
+until the hardware is built.
+
+**Contract preserved.** `o_RX_DV` is a single `i_Clk`-cycle pulse per received
+byte with `o_RX_Byte` (MSB-first) valid on that cycle; multi-byte per CS-low
+window; TX/MISO behavior (preload MSB on CS-assert, MSB-first shift, tri-state
+on CS-high, `i_TX_DV` latches `i_TX_Byte`); active-low reset; full `SPI_MODE`
+0–3 semantics.
+
+#### Step 1 — Synchronous Oversampling Rewrite
+
+- Synchronize `i_SPI_Clk`, `i_SPI_MOSI`, and `i_SPI_CS_n` into the `i_Clk`
+  domain via 2-stage metastability chains.
+- Debounce SCK and CS: accept a level change only after `DEBOUNCE_N` stable
+  `i_Clk` samples (localparam, default 3 ≈ 60 ns) to reject slow-edge bounce and
+  glitches.
+- Edge-detect the debounced SCK per `SPI_MODE` (CPOL/CPHA) to select the sample
+  edge; sample `i_SPI_MOSI` MSB-first into a shift register; on the 8th sampled
+  bit latch `o_RX_Byte` and assert `o_RX_DV` for exactly one `i_Clk` cycle.
+- Synchronous CS framing: CS-assert resets the bit counter; CS-deassert never
+  asynchronously clears received-byte state (fixes the last-byte race); a
+  partial byte is discarded on mid-byte CS-deassert.
+- Preserve TX/MISO synchronously: preload MSB on CS-assert, shift MSB-first on
+  the shift edge, tri-state `o_SPI_MISO` when CS is high, and register
+  `i_TX_Byte` on `i_TX_DV`.
+- Ports and the `SPI_MODE` parameter are unchanged; the DEBUG section is
+  untouched.
+
+#### Step 2 — Dedicated Unit Testbench
+
+- Create `tests/TB_SPI_Slave.v` exercising: functional equivalence (MSB-first
+  byte assembly; `o_RX_DV` a single `i_Clk` pulse with valid `o_RX_Byte`;
+  multi-byte and back-to-back bytes within one CS-low window) and robustness
+  (injected SCK glitches, slow/noisy edges, CS-deassert one bit after the final
+  SCK edge); plus a mode-1/2/3 smoke check.
+- Document pass/fail conditions per the `tests/` convention.
+
+#### Step 3 — Regression
+
+- Confirm `TB_Step1_Programmer` and `TB_Step8_FullSystem` still pass unchanged
+  (system-level functional-equivalence check).
+- Add the `TB_SPI_Slave` block to `tests/run_regression.sh`.
+- Run the full regression on the Questa PC and record results in `log.md`. On
+  non-Questa machines record `Verification: PENDING` (naming `TB_SPI_Slave`,
+  `TB_Step1_Programmer`, `TB_Step8_FullSystem`) and leave the v0.5.1 steps
+  unmarked until the regression passes on the Questa PC.

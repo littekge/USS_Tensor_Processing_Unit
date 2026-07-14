@@ -157,6 +157,10 @@ run_tb 1 TB_Step1_Programmer \
   TPU/PROGRAMMER/Programmer.v \
   tests/TB_Step1_Programmer.v
 
+run_tb spi TB_SPI_Slave \
+  TPU/PROGRAMMER/SPI_LINK/SPI_Slave.v \
+  tests/TB_SPI_Slave.v
+
 run_tb 1 TB_Step1_DataMemory \
   TPU/MEMORY/0X1_BUFFER/TPU_0x1_Buffer.v \
   TPU/MEMORY/MEM_UNIT/Mem_Unit.v \
