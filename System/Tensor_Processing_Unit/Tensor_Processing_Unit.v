@@ -192,35 +192,29 @@ TPU tpu (
    .i_input_data(input_data),         // device-mode input value
    .o_output_data(output_val),        // output value (both modes)
    .o_output_data_valid(output_valid), // one-cycle pulse: o_output_data valid
-	.o_end_reached(end_reached)
+	.o_end_reached(end_reached),
+	
+	.o_error_code(error_code)
 );
 
 // ---------- END CODE ---------- //
 
 // ---------- DEBUG ---------- //
-assign LEDR[9:0] = SW[9:0];
+wire [2:0] error_code;
 
+reg [9:0] LEDS;
+assign LEDR[9:0] = LEDS[9:0];
 
-/*
-debug dbg (
-   .i_clk(clk),
-	.i_rst(rst),
-	.i_data(32'd3232),
-	.i_write_next(~KEY[1]), 
-	.i_clear(~KEY[2]),
-	.o_write_ready(),
-	
-	//VGA signal passthrough
-	.vga_blank(VGA_BLANK_N),
-	.vga_b(VGA_B),
-	.vga_r(VGA_R),
-	.vga_g(VGA_G),
-	.vga_clk(VGA_CLK),
-	.vga_hs(VGA_HS),
-	.vga_vs(VGA_VS),
-	.vga_sync(VGA_SYNC_N)
-);
+always @ (*) begin
+	LEDS[9] = SW[9];
+	if (error_code == 3'd0) begin
+		LEDS[8] = 1'd0;
+		LEDS[7:0] = SW[7:0];
+	end else begin
+		LEDS[8] = 1'd1;
+		LEDS[7:0] = error_code;
+	end
+end
 
-*/
 // ---------- END DEBUG ---------- //
 endmodule

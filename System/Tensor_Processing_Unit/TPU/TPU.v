@@ -30,9 +30,10 @@ module TPU (
     input      [7:0]  i_input_data,         // device-mode input value
     output wire [7:0] o_output_data,        // output value (both modes)
     output wire       o_output_data_valid,  // one-cycle pulse: o_output_data valid
-	 output wire		 o_end_reached   // one-cycle pulse when an end instruction is fetched
+	 output wire		 o_end_reached,   // one-cycle pulse when an end instruction is fetched
 
     // ---------- DEBUG ---------- //
+	 output wire [2:0] o_error_code
     // ---------- END DEBUG ---------- //
 );
 
@@ -232,7 +233,9 @@ Programmer prog (
     .i_SPI_Clk          (i_SPI_Clk),
     .o_SPI_MISO         (o_SPI_MISO),
     .i_SPI_MOSI         (i_SPI_MOSI),
-    .i_SPI_SS           (i_SPI_SS)
+    .i_SPI_SS           (i_SPI_SS),
+	 
+	 .o_error_code(o_error_code)
 );
 
 Program_Memory pm (

@@ -69,9 +69,10 @@ module Programmer (
     input              i_SPI_Clk,
     output wire        o_SPI_MISO,
     input              i_SPI_MOSI,
-    input              i_SPI_SS
+    input              i_SPI_SS,
 
     // ---------- DEBUG ---------- //
+	 output reg [2:0] o_error_code
     // ---------- END DEBUG ---------- //
 );
 
@@ -526,5 +527,16 @@ end
 // ---------- END CODE ---------- //
 
 // ---------- DEBUG ---------- //
+//output error states should they occur
+always @ (*)
+begin
+	case (S)
+		STATE_ERROR: o_error_code = 3'd1;
+		COM_ERROR: o_error_code = 3'd2;
+		WRITE_ERROR: o_error_code = 3'd3;
+		PROG_OVERFLOW_ERROR: o_error_code = 3'd4;
+		default: o_error_code = 3'd0;
+	endcase
+end
 // ---------- END DEBUG ---------- //
 endmodule
