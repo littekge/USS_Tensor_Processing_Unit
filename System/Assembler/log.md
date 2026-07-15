@@ -2,6 +2,24 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-15 — Docs: correct bias-removal rationale
+
+- Fixed the `MLIR/bias_removal.py` module docstring, which wrongly stated biases
+  "were validated as accuracy-neutral for the target networks." Recorded the
+  actual rationale: bias removal was validated on LeNet-5 (<1% accuracy drop,
+  acceptable). Tiny_NN and Bigger_NN do lose significant accuracy without biases,
+  but they are functionless test/benchmark networks (Tiny_NN a regression sanity
+  check; Bigger_NN exercises matrix partitioning), so their accuracy is
+  irrelevant to the decision. Kept the accurate points (bias tensors stay
+  resident in weight memory via Process_Weights; no longer referenced in the
+  instruction stream; consumers rerouted to the non-bias/matmul operand).
+- Docstring text only — no code logic changed.
+- Files modified: `nn_assembler/MLIR/bias_removal.py`, `log.md`.
+- Tests: 63 pass, 1 fail (`test_full_pipeline_bigger_nn_real`); the failure is
+  pre-existing (Bigger_NN artifact requant-metadata mismatch, M0/n != (172,19))
+  and independent of this docstring-only change — confirmed by reproducing it on
+  the unmodified tree.
+
 ## 2026-07-13 — v0.5 review fixes: stale-stride reset + real Bigger_NN e2e
 
 - **FIX 1 — pass-through matmul stride reset (user-approved rule).** `ld1`/`ld2`
