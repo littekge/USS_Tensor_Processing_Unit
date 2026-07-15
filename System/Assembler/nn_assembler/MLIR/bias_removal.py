@@ -1,10 +1,12 @@
 """Bias-removal pass: drop bias adds from the *Functional TPU* dialect.
 
-In v0.3 the requantization multiplier `M` folds the bias contribution's scaling
-into the matmul output, and the biases themselves were validated as
-accuracy-neutral for the target networks -- so the bias `add` operations are
-dropped from the instruction stream. The bias tensors stay resident in weight
-memory (Process_Weights still maps them); they are simply no longer referenced.
+Dropping the bias `add` operations was validated on LeNet-5, where it costs a
+<1% accuracy drop -- acceptable for the target network. Tiny_NN and Bigger_NN do
+lose significant accuracy without their biases, but neither is a functional
+network (Tiny_NN is a regression sanity check; Bigger_NN exists only to exercise
+matrix partitioning), so their accuracy has no bearing on this decision. The bias
+tensors stay resident in weight memory (Process_Weights still maps them); they are
+simply no longer referenced in the instruction stream.
 
 The pass identifies `AddOp`s whose operand traces to a `*.bias` function
 argument (a `weight_map` entry with `kind == "bias"`), reroutes every consumer of
