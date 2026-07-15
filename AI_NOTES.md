@@ -7,28 +7,36 @@
 > CLAUDE.md files, not here — this file holds decision history (with reasons),
 > in-flight state, and machine notes.
 
-## Current State (2026-07-14)
+## Current State (2026-07-15)
 
-- **v0.5.0 SHIPPED.** Matmul partitioning via GEMM-style leading-dimension
-  addressing (`stride`/CONFIG instruction + `multip`/accumulator-clear split).
-  Merged to `main` and tagged `v0.5.0` by the user; Questa-verified + real
-  Bigger_NN e2e. Full design history in memory `v0-5-partitioning-redo`.
-- **v0.5.1 in progress on `v0.5.1-Workspace` — SPI_Slave hardening.** Complete
-  internal rewrite of `SPI_Slave.v` to a synchronous oversampling receiver
-  (interface byte-identical). **Questa regression PASS + hardware-validated:
-  Bigger_NN flashed 3×/3× with zero errors.** This RTL fix alone restored
-  flashing reliability — the logic-level converter is now a likely-unneeded
-  backup. Committed + pushed (88d299a); not yet released.
+- **v0.5.1 RELEASED (merged to `main`).** SPI_Slave hardening — complete internal
+  rewrite of `SPI_Slave.v` to a synchronous oversampling receiver (interface
+  byte-identical). Questa regression PASS + hardware-validated (Bigger_NN flashed
+  3×/3×, zero errors); the RTL fix alone restored flashing reliability, so the
+  logic-level converter is now a likely-unneeded backup. HW-Spec SPI_Slave
+  description + changelog bumped to v0.5.1 (commit 59eb1b3), proofread clean.
+  On `main` via 88d299a / 7689ff5 / 59eb1b3. **NOTE: no `v0.5.1` git tag exists
+  yet — only `v0.5.0` is tagged; confirm whether v0.5.1 still needs a tag.**
+- **v0.5.0 SHIPPED** — matmul partitioning via GEMM-style leading-dimension
+  addressing (`stride`/CONFIG + `multip`/accumulator-clear split); merged to
+  `main` and tagged `v0.5.0`; Questa + real Bigger_NN e2e. Detail in memory
+  `v0-5-partitioning-redo`.
 - **v0.4 shipped** earlier (`v0.4.0`/`v0.4.1`, Questa + real FPGA verified).
 
-## Tomorrow (in order)
+## Next Focus — v0.6 (im2col for convolution)
 
-1. **Hardware-Spec update (user's task; `Specifications/` is read-only for
-   Claude):** the `SPI_Slave` description still says "pulled from nandland" —
-   rewrite it for the new synchronous-oversampling design.
-2. **Release v0.5.1:** TPU `main.md` v0.5.1 steps are marked complete and
-   `log.md` records the pass (done below); merge `v0.5.1-Workspace` and tag.
-3. **v0.6 planning:** on-device `im2col` for conv (see Roadmap).
+A fresh chat is starting for v0.6. Direction (from memory
+`lenet5-end-goal-roadmap`): on-device `im2col` for conv — a CONFIG conv-param
+bank (bank1) + a SHAPE-format im2col *execute* (`src`/`dst`/`funct`, heavy params
+read from CONFIG); see the CONFIG/SHAPE taxonomy in memory
+`v0-5-partitioning-redo`. Must run on-device (conv feature maps are runtime
+intermediates, not compile-time reshapes). Open forks: a general gather/scatter
+data-movement primitive vs. special-purpose ops; confirm target-LeNet
+activations (ReLU vs tanh) and pooling (avg vs max).
+
+Carry-over housekeeping: (1) confirm/apply the `v0.5.1` git tag (see Current
+State); (2) optional cosmetic — in the HW-Spec `SPI_Slave` §Transmit, *MISO* is
+italicized while the signal list uses bare "MISO".
 
 ## v0.5.1 — SPI_Slave Hardening & Flashing Resolution
 
@@ -45,6 +53,8 @@
   Ports/`SPI_MODE` byte-identical (user's hard rules: changes confined to
   `SPI_Slave.v`, interface unchanged). **Questa PASS + Bigger_NN 3×/3× clean on
   hardware.** Converter track parked as an optional backup, not a blocker.
+  **Released 2026-07-15** — merged to `main`; HW-Spec + changelog updated to
+  v0.5.1 (proofread clean). Git tag still pending (see Current State).
 
 ## v0.5.0 — Partitioning Update (shipped, for reference)
 
