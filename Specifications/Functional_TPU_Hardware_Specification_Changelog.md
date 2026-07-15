@@ -1,7 +1,25 @@
 # Functional TPU Hardware Specification — Change Log
 
 > Append a new entry every time a change is made. Newest entries at the top.
->
+
+## 2026-07-14 — Functional TPU Hardware Specification v0.5.1 — SPI_Slave Hardening
+
+- **Rewrote the SPI_Slave module description** to reflect a synchronous
+oversampling receiver, replacing the previous externally-sourced (nandland)
+description. The module interface and byte-level behavior are unchanged.
+- **SPI_Slave:**
+- Documented the *clk*/*rst*, SPI (*SPI_Clk*, *MOSI*, *CS_n*, *MISO*), and byte
+interface (*RX_DV*, *RX_Byte*, *TX_DV*, *TX_Byte*) signals, plus the SPI mode
+parameter (CPOL/CPHA, modes 0–3; deployed at mode 0).
+- Specified byte reception (MSB-first, one byte per eight *SPI_Clk* sampling
+edges, with a one-clock-cycle *RX_DV* pulse), back-to-back multi-byte
+transactions while *CS_n* is held LOW, and the tri-stated MISO transmit path.
+- Added a *Synchronous Recovery* section: the SPI inputs are synchronized into
+the *clk* domain, debounced, and *SPI_Clk* edges are recovered by oversampling —
+the module never uses *SPI_Clk* as a register clock or *CS_n* as an asynchronous
+reset — so glitches and slow (signal-integrity-limited) edges cannot produce
+spurious clock edges or transaction boundaries.
+
 ## 2026-07-13 — Functional TPU Hardware Specification v0.5 — Leading Dimension Update
 
 - **Implemented strided (leading-dimension) matrix addressing** in tandem with

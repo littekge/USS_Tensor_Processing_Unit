@@ -3,7 +3,7 @@
 > **Purpose:** This document outlines the Functional TPU hardware specification,
 > including module instantiation hierarchy and functional descriptions of modules.
 >
-> **Version:** 0.5.1
+> **Version: 0.5.0**
 >
 > **ISA:** `Functional_TPU_ISA.md`
 > **Message Protocol:** `Functional_TPU_Message_Protocol.md`
@@ -113,56 +113,13 @@ inputs of the data memory and the feeder controls the *wren*, *data*, and
 used to flush the vector buffer. *clear* is combined with inverted *trst* via a
 logical OR operation and passed to the *sclr* input of the vector buffer so
 that either *trst* going LOW or *clear* going HIGH will flush the buffer.
-
+  
 ### SPI_Slave
 
 **Description:** The SPI_Slave module is the connection point between the
-external SPI signals and the TPU internals. It operates as an SPI slave device,
-deserializing the incoming MOSI bit stream into bytes and (optionally)
-serializing a response byte onto MISO. Because the external SPI signals are
-asynchronous to the system clock, the module recovers bytes entirely within the
-*clk* domain by oversampling the SPI clock rather than using it directly as a
-register clock (see **Synchronous Recovery** below).
-
-- **Synchronous Control Signals:**
-  - **Inputs:**
-    - ***clk***: Module input clock. All module logic is synchronous to *clk*.
-    - ***rst***: Module reset signal (active LOW).
-    - ***SPI_Clk***: Serial clock driven by the external SPI master.
-    - ***MOSI***: Master-Out-Slave-In serial data input.
-    - ***CS_n***: Chip select (active LOW); frames a transaction while held LOW.
-    - ***TX_DV***: Asserted HIGH for one clock cycle to register *TX_Byte* for
-    transmission.
-    - ***TX_Byte***: Byte to serialize onto MISO.
-  - **Outputs:**
-    - ***RX_DV***: Asserted HIGH for one clock cycle when a newly received byte
-    is available on *RX_Byte*.
-    - ***RX_Byte***: The byte most recently received on *MOSI*.
-    - ***MISO***: Master-In-Slave-Out serial data output; tri-stated while
-    *CS_n* is HIGH.
-- **SPI Mode:** A module parameter selects the clock polarity and phase
-(CPOL/CPHA) using the standard SPI mode numbering (0–3), which determines the
-sampling and shifting edges of *SPI_Clk*. The TPU deploys the module in mode 0.
-- **Byte Reception:** Bytes are received most-significant-bit first, one byte per
-eight *SPI_Clk* sampling edges. When the eighth bit of a byte is sampled, the
-module presents the assembled byte on *RX_Byte* and asserts *RX_DV* HIGH for one
-*clk* cycle. This *RX_DV* pulse meshes directly with the *wrreq* input of the
-SPI_Input_buffer (see SPI_Interface).
-- **Multi-byte Transactions:** Any number of bytes may be received back-to-back
-while *CS_n* is held LOW; each assertion of *CS_n* begins a new transaction, and
-a byte only partially received when *CS_n* is deasserted is discarded.
-- **Transmit (MISO):** On each *CS_n* assertion the module preloads the
-most-significant bit of the registered *TX_Byte* and shifts the byte out
-most-significant-bit first on the shifting edge of *SPI_Clk*. *MISO* is
-tri-stated while *CS_n* is HIGH so that multiple slaves may share the bus.
-- **Synchronous Recovery:** The module treats *SPI_Clk*, *MOSI*, and *CS_n* as
-asynchronous inputs and never uses *SPI_Clk* as a register clock or *CS_n* as an
-asynchronous reset. The SPI inputs are first synchronized into the *clk* domain
-and then debounced, and *SPI_Clk* edges are recovered by oversampling, so that
-glitches and slow (signal-integrity-limited) edges do not produce spurious clock
-edges or transaction boundaries. This requires *clk* to oversample *SPI_Clk* by
-a wide margin, which is satisfied by the system clock running far faster than
-the SPI clock.
+external SPI signals and TPU internals. This module is pulled from
+[nandland's SPI Slave](https://github.com/nandland/spi-slave) repository.
+Relevant documentation on the module's functionality can be found there.
 
 ### SPI_Input_buffer
 
