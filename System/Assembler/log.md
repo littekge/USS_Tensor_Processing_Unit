@@ -2,6 +2,32 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-16 — v0.6 Step 6: end-to-end LeNet-5
+
+- Drove the full pipeline (`NN_import` -> transpose analysis -> `Process_Weights`
+  -> `Process_MLIR` -> `Assemble` -> `Serialize`) on the real re-exported
+  `LeNet_5_Recent.{mlir,weights.npz}` artifact (already carries per-layer
+  `__M__`/`__scales__` for conv1/conv2/fc1-3). CLI (`python -m nn_assembler LeNet_5
+  Recent`) writes an 83015-byte framed `out/TRANSMISSION.bin` (FLASH 'U' ... STOP 'S').
+- Verified in `test/test_serializer_and_e2e.py::test_full_pipeline_lenet5_real`:
+  framed transmission; exactly 4 deduped `window`s with correct geometry
+  (conv1 1/28/28->26/26 3x3 s1; pool1 6/26/26->13/13 2x2 s2; conv2 6/13/13->11/11
+  3x3 s1; pool2 16/11/11->5/5 2x2 s2); im2col columns channel-major `[9,676]` and
+  `[54,121]` (K = chans*kh*kw); per-channel pool outputs `[6,13,13]`, `[16,5,5]`;
+  4 ReLUs; CHW intermediates chaining with no reshape (input -> conv1 im2col; relu
+  -> pool; pool -> conv2 im2col; relu -> pool2); one `stride` per matmul
+  `[(9,676),(54,121),(400,120),(120,84),(84,10)]` = `(K,N)`; conv1 tiled in K
+  (9->8+1) and N (676->84*8+4) with weight `[out_ch,K]` as LHS and im2col columns
+  as RHS, correct sub-block bases (`lhs=ki`, `rhs=ki*N+ni`, `dst=ni`) and ragged
+  edges; `M0/n` on every conv1/conv2 tile equal to the exported multiplier's dyadic
+  decomposition; FC3 output `[1,10]` tiled in N with base pinned to I/O 0x1
+  (tiles at 0x1 + {0,8}).
+- Files modified: `test/test_serializer_and_e2e.py`, `main.md`, `log.md`.
+- Tests: 79 pass (incl. new LeNet-5 E2E), 1 pre-existing fail
+  (`test_full_pipeline_bigger_nn_real`, Bigger_NN artifact metadata mismatch,
+  M0/n != (172,19)) documented since 2026-07-15 and unrelated to v0.6 — reproduces
+  identically on the v0.6 base commit.
+
 ## 2026-07-16 — v0.6 Step 5: feature-map & im2col memory allocation
 
 - No new allocation code was needed: the Step 2 generalization of

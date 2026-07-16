@@ -633,7 +633,7 @@ Update `Process_Weights.py` / `Assembler.py` allocation:
 - Confirm each conv/pool output is CHW-planar so it feeds the next layer's window
   op (and the final flatten to the FC vector) with no reshape.
 
-#### Step 6 — End-to-End: LeNet-5
+#### Step 6 — End-to-End: LeNet-5 — ✅ Complete (2026-07-16)
 
 - Run the full pipeline on the re-exported `LeNet_5` artifact; confirm a framed
   `/out/TRANSMISSION.bin`.

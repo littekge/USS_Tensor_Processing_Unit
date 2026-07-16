@@ -13,10 +13,19 @@ from nn_assembler.Assembler import (
     Assemble,
 )
 from nn_assembler.Convert import NN_import
-from nn_assembler.MLIR.dialect import MultipOp, MultOp, StrideOp, parse_program
+from nn_assembler.MLIR.dialect import (
+    Im2colOp,
+    MaxPoolOp,
+    MultipOp,
+    MultOp,
+    ReluOp,
+    StrideOp,
+    WindowOp,
+    parse_program,
+)
 from nn_assembler.MLIR.transpose_analysis import analyze_transposes_file
 from nn_assembler.Process_MLIR import Process_MLIR
-from nn_assembler.Process_Weights import Process_Weights
+from nn_assembler.Process_Weights import Process_Weights, decompose_multiplier
 from nn_assembler.Protocol import FLASH, MEM, PROGRAM, STOP
 from nn_assembler.Serializer import Serialize
 
@@ -27,6 +36,11 @@ _NETWORKS_DIR = Path(__file__).resolve().parents[2] / "Neural_Networks"
 _BIGGER_NN_DIR = _NETWORKS_DIR / "Bigger_NN"
 _have_bigger_nn = (_BIGGER_NN_DIR / "Bigger_NN_Recent.mlir").is_file() and (
     _BIGGER_NN_DIR / "Bigger_NN_Recent.weights.npz"
+).is_file()
+
+_LENET_DIR = _NETWORKS_DIR / "LeNet_5"
+_have_lenet = (_LENET_DIR / "LeNet_5_Recent.mlir").is_file() and (
+    _LENET_DIR / "LeNet_5_Recent.weights.npz"
 ).is_file()
 
 
@@ -219,3 +233,114 @@ def test_full_pipeline_bigger_nn_real(tmp_path):
         if _bits(instructions[i], 127, 124) == 0b1000
     )
     assert _bits(last_mult, 59, 36) == 1  # returned result pinned to I/O address 0x1
+
+
+@pytest.mark.skipif(not _have_stablehlo_opt(), reason="stablehlo-opt not on PATH")
+@pytest.mark.skipif(not _have_lenet, reason="LeNet_5_Recent artifacts not present")
+def test_full_pipeline_lenet5_real(tmp_path):
+    """Full pipeline on the REAL re-exported LeNet-5 artifact (v0.6 E2E).
+
+    Two conv layers (im2col + tiled matmul), two max-pools, three FC layers, and
+    ReLU throughout. Verifies windowed geometry, channel-major im2col, conv-matmul
+    tiling, per-channel pooling, ReLU emission, CHW chaining, and M0/n on tiles.
+    """
+    NN_import("LeNet_5", "Recent", tmp_dir=tmp_path, nn_dir=_NETWORKS_DIR)
+
+    weights = np.load(tmp_path / "weights.npz", allow_pickle=True)
+    # Per-layer requant metadata is present for every conv/fc weight.
+    for layer in ("conv1.weight", "conv2.weight", "fc1.weight", "fc2.weight", "fc3.weight"):
+        assert f"__M__{layer}" in weights.files
+        assert f"__scales__{layer}" in weights.files
+
+    analyze_transposes_file(tmp_path)
+    Process_Weights(tmp_path)
+    Process_MLIR(tmp_path)
+    instructions = Assemble(tmp_path)
+    out_path = Serialize(tmp_path, tmp_path / "out")
+
+    # Framed transmission.
+    data = out_path.read_bytes()
+    assert data[0] == FLASH and data[-1] == STOP
+
+    program = parse_program((tmp_path / "optimized.partitioned.tpu.mlir").read_text())
+
+    # --- One window per conv/pool with correct geometry (deduped, in order). ---
+    windows = [op for op in program.ops if isinstance(op, WindowOp)]
+    geometry = [
+        (w.chans, w.inh, w.inw, w.outh, w.outw, w.winh, w.winw, w.strh, w.strw, w.padh, w.padw)
+        for w in windows
+    ]
+    assert geometry == [
+        (1, 28, 28, 26, 26, 3, 3, 1, 1, 0, 0),  # conv1
+        (6, 26, 26, 13, 13, 2, 2, 2, 2, 0, 0),  # pool1
+        (6, 13, 13, 11, 11, 3, 3, 1, 1, 0, 0),  # conv2
+        (16, 11, 11, 5, 5, 2, 2, 2, 2, 0, 0),  # pool2
+    ]
+
+    # --- im2col columns in channel-major K order (K = chans*kh*kw), N = outh*outw. ---
+    im2cols = [op for op in program.ops if isinstance(op, Im2colOp)]
+    assert [op.out_shape for op in im2cols] == [[9, 676], [54, 121]]
+
+    # --- Per-channel max-pool outputs (CHW). ---
+    pools = [op for op in program.ops if isinstance(op, MaxPoolOp)]
+    assert [op.out_shape for op in pools] == [[6, 13, 13], [16, 5, 5]]
+
+    # --- ReLU emitted (one per conv + one per FC before the last). ---
+    relus = [op for op in program.ops if isinstance(op, ReluOp)]
+    assert len(relus) == 4
+
+    # --- CHW intermediates chain with no reshape: each windowed op reads the
+    #     previous layer's CHW output. ---
+    assert im2cols[0].src.name == "%arg10"  # network input feeds conv1 im2col
+    assert pools[0].src.name == relus[0].result  # relu(conv1) -> pool1
+    assert im2cols[1].src.name == pools[0].result  # pool1 -> conv2 im2col
+    assert pools[1].src.name == relus[1].result  # relu(conv2) -> pool2
+
+    # --- One stride per matmul: (ld1 = K, ld2 = N) for conv1/conv2/fc1/fc2/fc3. ---
+    strides = [op for op in program.ops if isinstance(op, StrideOp)]
+    assert [(s.ld1, s.ld2) for s in strides] == [
+        (9, 676),  # conv1: K=1*3*3, N=26*26
+        (54, 121),  # conv2: K=6*3*3, N=11*11
+        (400, 120),  # fc1
+        (120, 84),  # fc2
+        (84, 10),  # fc3
+    ]
+
+    S = MAX_MATMUL_SIZE
+
+    # --- conv1 matmul (6x9 @ 9x676): tiled in K (9 -> 8+1) and N (676 -> 84*8+4).
+    #     Weight (out_ch x K) is the LHS, im2col columns the RHS. ---
+    conv1_stride = next(s for s in strides if (s.ld1, s.ld2) == (9, 676))
+    conv1_tiles = _tiles_between_strides(program, conv1_stride)
+    K1, N1 = 9, 676
+    # M = 6 <= S so a single M-tile; K-run per output tile is (multip, mult).
+    _k_run_covers_contraction(conv1_tiles, K1, S)
+    # LHS sub-block corner: offset = mi*K + ki = ki (mi=0). RHS: ki*N + ni. dst: ni.
+    assert {t.lhs.offset for t in conv1_tiles} == set(range(0, K1, S))  # {0, 8}
+    assert sorted({t.dst_offset for t in conv1_tiles}) == list(range(0, N1, S))
+    assert {t.rhs.offset for t in conv1_tiles} == {
+        ki * N1 + ni for ki in range(0, K1, S) for ni in range(0, N1, S)
+    }
+    # Ragged edges: K remainder 1, N remainder 4.
+    assert {t.lhs.shape[1] for t in conv1_tiles} == {S, K1 - S}
+    assert {t.rhs.shape[1] for t in conv1_tiles} == {S, N1 - 84 * S}
+
+    # --- M0/n on every conv tile matches the exported multiplier decomposition. ---
+    conv1_M0, conv1_n = decompose_multiplier(float(weights["__M__conv1.weight"]))
+    assert all((t.M0, t.n) == (conv1_M0, conv1_n) for t in conv1_tiles)
+
+    conv2_stride = next(s for s in strides if (s.ld1, s.ld2) == (54, 121))
+    conv2_tiles = _tiles_between_strides(program, conv2_stride)
+    conv2_M0, conv2_n = decompose_multiplier(float(weights["__M__conv2.weight"]))
+    assert all((t.M0, t.n) == (conv2_M0, conv2_n) for t in conv2_tiles)
+
+    def _bits(value, hi, lo):
+        return (value >> lo) & ((1 << (hi - lo + 1)) - 1)
+
+    # --- The returned FC3 result [1x10] is pinned to the I/O address 0x1. It tiles
+    #     in N (10 -> 8 + 2), so its two output tiles write at base 0x1 + {0, 8}. ---
+    fc3_stride = next(s for s in strides if (s.ld1, s.ld2) == (84, 10))
+    fc3_tiles = _tiles_between_strides(program, fc3_stride)
+    assert sorted({t.dst_offset for t in fc3_tiles}) == [0, 8]
+    mult_rds = {_bits(i, 59, 36) for i in instructions if _bits(i, 127, 124) == 0b1000}
+    assert {1, 9} <= mult_rds  # base tile at 0x1, second N-tile at 0x1 + 8
