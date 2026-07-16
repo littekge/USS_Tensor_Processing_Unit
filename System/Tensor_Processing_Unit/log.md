@@ -2,6 +2,197 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-16 — v0.6 Step 5: Regression runner synced; full v0.6 verification PENDING
+
+- **Context:** v0.6 Step 5 — sync `tests/run_regression.sh` with the v0.6
+  testbench changes and record the deferred verification state. No RTL changes.
+- **`tests/run_regression.sh` (already updated across Steps 1/4, confirmed in
+  sync):**
+  - New `run_tb pool TB_Pooler` block (sources `TPU/PROCESSING/Pooler.v`,
+    `tests/TB_Pooler.v`).
+  - `TB_Step8_FullSystem` source list gained `TPU/PROCESSING/Pooler.v` (TPU now
+    instantiates the Pooler). `TB_Step3_Controller` and
+    `TB_Step4_VectorProcessor` blocks unchanged (their RTL dependency lists —
+    `Controller.v` and `Vector_Processor.v` respectively — did not change, only
+    the testbench contents). Each block's source list matches its testbench
+    "How to run" header.
+  - Ran `./tests/run_regression.sh` here: it self-gated (Questa absent) and
+    exited with the deferral notice, as expected — no simulation attempted.
+- **Verification: PENDING (Linux laptop — no `vsim.exe` at
+  `C:\intelFPGA_lite\23.1std\questa_fse\win64\`).** On the Questa PC run
+  `./tests/run_regression.sh`; expected new/changed counts:
+  - `TB_Pooler` 9/9 (new)
+  - `TB_Step3_Controller` 17/17 (13 -> 17: WINCONFIG latch, im2col/max decode,
+    destination select, pooler funct, im2col skips writeback)
+  - `TB_Step4_VectorProcessor` 19/19 (16 -> 19: im2col zero-fill gather, max
+    window stream + window_end, max min-fill)
+  - `TB_Step8_FullSystem` 15/15 (13 -> 15: end-to-end convolution im2col+matmul,
+    max pooling)
+  - plus the unchanged Step1/2/5/6/7 and SPI benches for regressions
+  (pass = each `Results:` line with 0 FAIL and no `Test N: FAIL`).
+  The v0.6 `main.md` Steps 1-5 are left UNMARKED until that run confirms.
+- **Open item surfaced (see report):** the user-provided `Pooler.v` was an empty
+  0-byte file rather than the port-list skeleton the v0.6 prerequisite describes;
+  its header/ports were authored from the Hardware Spec + ALU/Activator
+  convention. The user should confirm the authored interface matches intent.
+
+## 2026-07-16 — v0.6 Step 4: TPU top-level integration (Pooler + windowed routing)
+
+- **Context:** v0.6 Step 4 wires the Pooler into `TPU/TPU.v` and routes the
+  Controller window-descriptor/pooler-function nets to the vector processors and
+  Pooler, per the Hardware Spec v0.6.0 (TPU Pooler / Vector Buffer bullets) and
+  `main.md` v0.6 Step 4. RTL + `tests/TB_Step8_FullSystem.v` updated. No new `.v`
+  files; no debug sections touched.
+- **`TPU/TPU.v`:**
+  - Instantiated the Pooler: `i_data` = vector processor a data, `i_enable` =
+    a's `element_valid`, `i_window_end` = a's new `o_window_end`, `i_clear` =
+    `ctrl_clear` (inter-operation flush), `i_pooler_op` = `ctrl_pooler_funct`,
+    `i_trst` = `trst` (Pooler added to the trst reset list).
+  - Added the Pooler as a third vector-buffer writer: `vb_wrreq = act_write |
+    alu_write | pool_write`, `vb_data_in` three-way mux (only one is non-NO-OP
+    per instruction).
+  - Routed the Controller's eleven `o_win_*` descriptor nets to VP_A's window
+    inputs (VP_B's tied to 0 — windowed instructions use VP_A only) and
+    `o_pooler_funct` to the Pooler.
+  - Added the `vpa_window_end` net; VP_B's `o_window_end` left unconnected.
+- **Tests — `tests/TB_Step8_FullSystem.v` (13 -> 15):** new `mk_window`/
+  `mk_im2col`/`mk_max` builders. Test 14 = convolution: a 3x3 feature map is
+  expanded by im2col (2x2 window, stride 1) to a 4x4 dense matrix and multiplied
+  by a 1x4 all-ones kernel, giving per-window sums [12,16,24,28] end to end
+  (FLASH -> im2col -> matmul -> requant -> memory). Test 15 = max pooling: a 4x4
+  feature map (1..16), 2x2 window stride 2, pooled to [6,8,14,16] through the
+  windowed VP -> Pooler -> vector buffer -> writeback path.
+- **`tests/run_regression.sh`:** added `TPU/PROCESSING/Pooler.v` to the
+  `TB_Step8_FullSystem` source list (TPU now instantiates the Pooler), in sync
+  with the TB "How to run" header.
+- **Verification: PENDING** (Linux laptop — no `vsim.exe`; `run_regression.sh`
+  self-gates). On the Questa PC run `TB_Step8_FullSystem` (expect 15/15).
+  `main.md` v0.6 Step 4 left UNMARKED until the regression passes there.
+
+## 2026-07-16 — v0.6 Step 3: Vector_Processor windowed addressing (im2col / max)
+
+- **Context:** v0.6 Step 3 adds windowed address generation to
+  `TPU/PROCESSING/Vector_Processor.v` per the Hardware Spec v0.6.0
+  (Vector_Processor Windowed Addressing) and ISA v0.6 (im2col / max gather
+  order, fill values). RTL + `tests/TB_Step4_VectorProcessor.v` updated. No new
+  `.v` files; no debug sections touched.
+- **`TPU/PROCESSING/Vector_Processor.v`:**
+  - Added the eleven window-descriptor inputs (`i_win_chans`/`inh`/`inw`/`outh`/
+    `outw` [12-bit]; `winh`/`winw`/`strh`/`strw`/`padh`/`padw` [4-bit]), latched
+    in IDLE at `vector_start`; added the `o_window_end` output.
+  - Added `VSRC_MEM_WIN = 3'd3` and `VDST_POOL = 3'd6`; widened the state
+    register to 5 bits; added windowed states `WIN_ADDR`/`WIN_WAIT`/`WIN_WAIT2`/
+    `WIN_FORWARD`/`WIN_WRITE`.
+  - Windowed gather: for each window element, derives the input coordinate
+    ih = oh*strh + wr - padh, iw = ow*strw + wc - padw (via non-negative bases
+    with a pad-region compare), bounds-checks against inh x inw, and substitutes
+    the fill when out of bounds — read steered to 0x0 (returns 0) for im2col,
+    minimum representable value (0x80) for max. Element count is descriptor-
+    derived (chans*winh*winw*outh*outw), not from length.
+  - `im2col` (dest VDST_MEM): iterates ch,wr,wc,oh,ow (output positions inner)
+    and writes every gathered element contiguously to dest, yielding the dense
+    (chans*winh*winw) x (outh*outw) Row-major matrix. `max` (dest VDST_POOL):
+    iterates ch,oh,ow,wr,wc (window inner), streams each element to the Pooler
+    via o_data/o_element_valid, and asserts `o_window_end` coincident with
+    `element_valid` on each window's final element.
+  - v0.5 contiguous/strided paths (MEM/SA/VB) and the requant datapath are
+    unchanged.
+- **Tests — `tests/TB_Step4_VectorProcessor.v` (16 -> 19):** new window-descriptor
+  drive registers + `o_window_end` connection, and a windowed-stream capture
+  block (element data + window_end). Test 17 = padded im2col zero-fill, dense
+  matrix written Row-major to dest ([0,0,0,4,0,0,3,0,0,2,0,0,1,0,0,0]). Test 18
+  = max window stream (4x4 map, 2x2/stride2) to the Pooler dest with window_end
+  on each window's 4th element; descriptor-derived 16-element count. Test 19 =
+  padded max min-fill (0x80) on out-of-bounds elements. Tests 3/4/15/16 (v0.5
+  contiguous/strided) unchanged.
+- **`tests/run_regression.sh`:** unchanged for Step 4 (RTL dependency list is
+  still just `Vector_Processor.v` + the testbench).
+- **Verification: PENDING** (Linux laptop — no `vsim.exe`; `run_regression.sh`
+  self-gates). On the Questa PC run `TB_Step4_VectorProcessor` (expect 19/19).
+  `main.md` v0.6 Step 3 left UNMARKED until the regression passes there.
+
+## 2026-07-16 — v0.6 Step 2: Controller window descriptors + windowed decode
+
+- **Context:** v0.6 Step 2 adds the window descriptor registers and windowed-
+  instruction handling to `TPU/CONTROL/Controller.v` per the Hardware Spec v0.6.0
+  (Controller Window Descriptor Registers) and ISA v0.6 (W/A-format field
+  positions). RTL + `tests/TB_Step3_Controller.v` updated. No new `.v` files; no
+  debug sections touched.
+- **`TPU/CONTROL/Controller.v`:**
+  - Opcodes added: `OP_MAX = 1100` (POOL), `OP_IM2COL = 1101` (SHAPE),
+    `OP_WINDOW = 1110` (WINCONFIG). Source/dest encodings added:
+    `VSRC_MEM_WIN = 3'd3` (windowed gather), `VDST_POOL = 3'd6` (Pooler input).
+    Function code `FUNCT_MAX = 3'd0`.
+  - Eleven window descriptor registers (`chans`, `inh`, `inw`, `outh`, `outw`
+    [12-bit]; `winh`, `winw`, `strh`, `strw`, `padh`, `padw` [4-bit]), latched
+    from the W-format fields of a `window` instruction in the CLEAR state (same
+    timing as `stride`'s ld1/ld2 latch, from `i_instruction`), retained until the
+    next `window`; cleared to 0 on `trst`.
+  - Generalized the register-configuration decode path: CLEAR returns to IDLE
+    (no execute/writeback) for both `stride` (LDCONFIG) and `window` (WINCONFIG).
+  - `im2col`/`max` decode added to the VP control block: both set VP_A source
+    `VSRC_MEM_WIN` from src1 (bits 123-100). `im2col` dest `VDST_MEM` at rd
+    (bits 99-76); `max` execute dest `VDST_POOL`, writeback `VSRC_VEC_BUF` ->
+    `VDST_MEM` at rd with `length = chans*outh*outw`. `EXEC_VP_WAIT` routes
+    `im2col` straight to IDLE (writes to memory during Execute — skips Writeback).
+    `single_vp_op` (relu/im2col/max) gates `all_exec_vps_done` to VP_A only.
+  - Outputs added: `o_pooler_funct` (MAX during a `max`, NO-OP otherwise) and the
+    eleven `o_win_*` descriptor outputs (mirror the persistent registers).
+- **Tests — `tests/TB_Step3_Controller.v` (13 -> 17):** new `make_window`/
+  `make_im2col`/`make_max` builders (W/A-format), new port connections, a
+  `vector_start_a` pulse counter. Test 14 = WINCONFIG latches all eleven
+  registers, no vector_start. Test 15 = im2col routes VSRC_MEM_WIN->VDST_MEM at
+  dest, pooler NO-OP, skips writeback (exactly one vector_start_a pulse, VP_A
+  never reads SA/vector-buffer). Test 16 = max execute VSRC_MEM_WIN->VDST_POOL
+  from src1, pooler MAX. Test 17 = max writeback VSRC_VEC_BUF->VDST_MEM at dest,
+  length = chans*outh*outw (24 for the preceding window).
+- **`tests/run_regression.sh`:** unchanged for Step 3 (its RTL dependency list is
+  still just `Controller.v` + the testbench).
+- **Verification: PENDING** (Linux laptop — no `vsim.exe`; `run_regression.sh`
+  self-gates). On the Questa PC run `TB_Step3_Controller` (expect 17/17).
+  `main.md` v0.6 Step 2 left UNMARKED until the regression passes there.
+
+## 2026-07-16 — v0.6 Step 1: Pooler module (streaming max-pooling reducer)
+
+- **Context:** v0.6 Step 1 implements `TPU/PROCESSING/Pooler.v`, the streaming
+  reducer peer to the ALU/Activator, per the Hardware Specification v0.6.0
+  (Pooler description) and `main.md` v0.6 Step 1.
+- **Skeleton was EMPTY (surfaced):** the user-provided `Pooler.v` was a 0-byte
+  file, not the "module declaration + port list + parameter/code/debug sections"
+  skeleton the v0.6 prerequisite describes. The module header and port list were
+  authored from the Hardware Specification (Pooler control-signal list) plus the
+  established `ALU.v`/`Activator.v` convention (i_/o_ naming, `i_pooler_op`
+  mirroring `i_alu_op`/`i_activator_op`, `o_write` to the vector buffer). The
+  DEBUG section is present but empty for the user to fill. **User should confirm
+  the authored interface matches intent.**
+- **`TPU/PROCESSING/Pooler.v` (implemented):**
+  - Ports: `i_clk`, `i_trst`, `i_enable`, `i_clear`, `i_window_end`,
+    `i_pooler_op[2:0]`, `i_data[7:0]`; `o_write`, `o_data[7:0]`. Unlike ALU/
+    Activator, `i_clk` is connected (the module is sequential — it holds an
+    accumulator across a window's stream).
+  - Function params `MAX = 3'h0` (POOL funct3 0x0) and `NOOP = 3'h7`; identity
+    `MIN_VALUE = 8'h80` (-128, min representable signed 8-bit).
+  - `acc` register: reset to `MIN_VALUE` on `i_trst` LOW or `i_clear`; while
+    `i_enable` HIGH, folds each input via a signed `max` comparator, and on
+    `i_window_end` resets to identity for the next window.
+  - `o_data` combinational = `max(acc, i_data)` so on the `window_end` cycle it
+    holds the fully reduced window at the same time `o_write` pulses (matches the
+    vector buffer's single-cycle capture). `o_write = i_enable & i_window_end &
+    (op != NOOP)` — exactly one buffer write per window, suppressed for NO OP.
+  - No requantization (pooled value is an input value already in the datatype).
+- **Tests:** `tests/TB_Pooler.v` (NEW, 9 tests): single-element window (proves
+  identity is min not 0), clear resets accumulator, multi-element window max,
+  two back-to-back windows reset independently, min-fill (-128) never wins,
+  all-fill window reduces to -128, NO-OP write suppression, `o_write` LOW
+  mid-window, `o_write` LOW when disabled. Follows the post-v0.1 dedicated-unit-
+  testbench convention (`TB_SPI_Slave.v`).
+- **`tests/run_regression.sh`:** added a `run_tb pool TB_Pooler` block (sources
+  `Pooler.v`, `tests/TB_Pooler.v`), in sync with the TB header dependency list.
+- **Verification: PENDING** (Linux laptop — no `vsim.exe` at
+  `C:\intelFPGA_lite\23.1std\questa_fse\win64\`; `run_regression.sh` self-gates).
+  On the Questa PC run `TB_Pooler` (expect 9/9). `main.md` v0.6 Step 1 left
+  UNMARKED until the regression passes there.
+
 ## 2026-07-14 — v0.5.1 SPI_Slave rewrite verified (Questa PASS + hardware)
 
 - **Verification: PASS.** Full Questa regression passed on the Questa PC —

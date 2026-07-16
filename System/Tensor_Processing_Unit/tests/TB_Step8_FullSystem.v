@@ -43,6 +43,7 @@
  *        vlog -work work TPU/MEMORY/VECTOR_BUFFER/Vector_Buffer.v
  *        vlog -work work TPU/PROCESSING/Activator.v
  *        vlog -work work TPU/PROCESSING/ALU.v
+ *        vlog -work work TPU/PROCESSING/Pooler.v
  *        vlog -work work TPU/PROCESSING/Vector_Processor.v
  *        vlog -work work TPU/SYSTOLIC_ARRAY/Multiply_Accumulate_Unit.v
  *        vlog -work work TPU/SYSTOLIC_ARRAY/Systolic_Array_Input_Buffer.v
@@ -55,7 +56,7 @@
  * -------------------------------------------------------------------------
  * PASS / FAIL CRITERIA:
  *   Each test prints "PASS" or "FAIL". A final summary prints pass/fail counts.
- *   All 13 tests should show PASS for a correct implementation.
+ *   All 15 tests should show PASS for a correct implementation.
  *
  * TEST CASES:
  *   Test 1: Device-mode FLASH completes — program/tpu_rst return HIGH after STOP.
@@ -91,6 +92,13 @@
  *           ld1=16 so each 2x8 sub-block of A is read in place (row 1 at
  *           base+16, not base+8); ld2=2 addresses B/dest. A=[row0=1s,row1=2s],
  *           B[k]=[1,2] -> C=[[16,32],[32,64]], requant (M0=1,n=4) = [[1,2],[2,4]].
+ *   Test 14 (v0.6): Convolution via im2col + matmul. A 3x3 feature map is
+ *           expanded by im2col (2x2 window, stride 1) into a 4x4 dense matrix,
+ *           then multiplied by a 1x4 all-ones kernel to give the per-window
+ *           sums [12,16,24,28].
+ *   Test 15 (v0.6): Max pooling. A 4x4 feature map (1..16) is max-pooled with a
+ *           2x2 window, stride 2, giving [6,8,14,16] via the windowed vector-
+ *           processor -> Pooler -> vector-buffer -> writeback path.
  * -------------------------------------------------------------------------
  */
 
@@ -326,6 +334,36 @@ module TB_Step8_FullSystem;
         input [23:0] im1, im2;
         begin
             mk_stride = {4'b1111, im1, im2, 76'd0};
+        end
+    endfunction
+
+    // window builder (ISA v0.6 W-format): opcode 1110 | inh[123:112] |
+    // inw[111:100] | chans[99:88] | outh[87:76] | outw[75:64] | winh[63:60] |
+    // winw[59:56] | strh[55:52] | strw[51:48] | padh[47:44] | padw[43:40] |
+    // reserved[39:3] | funct3[2:0]=0.
+    function [127:0] mk_window;
+        input [11:0] inh, inw, chans, outh, outw;
+        input [3:0]  winh, winw, strh, strw, padh, padw;
+        begin
+            mk_window = {4'b1110, inh, inw, chans, outh, outw,
+                         winh, winw, strh, strw, padh, padw, 37'd0, 3'd0};
+        end
+    endfunction
+
+    // im2col builder (ISA v0.6 A-format): opcode 1101 | src1[123:100] |
+    // dest[99:76] | aux[75:60] | reserved[59:3] | funct3[2:0]=0.
+    function [127:0] mk_im2col;
+        input [23:0] src1, dest;
+        begin
+            mk_im2col = {4'b1101, src1, dest, 16'd0, 57'd0, 3'd0};
+        end
+    endfunction
+
+    // max builder (ISA v0.6 A-format, same layout as im2col): opcode 1100.
+    function [127:0] mk_max;
+        input [23:0] src1, dest;
+        begin
+            mk_max = {4'b1100, src1, dest, 16'd0, 57'd0, 3'd0};
         end
     endfunction
 
@@ -751,6 +789,84 @@ module TB_Step8_FullSystem;
         check((shadow_main[128] === 8'd1) && (shadow_main[129] === 8'd2) &&
               (shadow_main[130] === 8'd2) && (shadow_main[131] === 8'd4),
               "tiled matmul (multip+mult, ld1=16) = [[1,2],[2,4]]");
+
+        // ===================================================================
+        // Test 14 (v0.6): convolution via im2col + matmul.
+        //   Feature map (chans=1, 3x3) f = [[1,2,3],[4,5,6],[7,8,9]] @0x02.
+        //   window 2x2, stride 1, pad 0 -> outh=outw=2 (4 output positions).
+        //   im2col expands to the dense (winh*winw=4) x (outh*outw=4) matrix
+        //   @0x20. A 1x4 kernel W = [1,1,1,1] @0x40 is multiplied by the dense
+        //   matrix (K=4, N=4) so each output is the 2x2 window sum:
+        //     [1+2+4+5, 2+3+5+6, 4+5+7+8, 5+6+8+9] = [12,16,24,28] @0x50.
+        //   Requant M0=1,n=0 is the identity. End-to-end im2col -> matmul path.
+        // ===================================================================
+        $display("Test 14: convolution (window + im2col + matmul)");
+        rst = 0; repeat (4) @(posedge clk); rst = 1; repeat (4) @(posedge clk);
+        mode_select = 1'b0;
+        for (si = 0; si < 1024; si = si + 1) shadow_main[si] = 8'hEE;
+
+        spi_ss = 0;
+        send_spi_byte(FLASH_CODE);
+        // Feature map 3x3 = 1..9 (Row-major) @ flat 2..10.
+        for (m = 0; m < 9; m = m + 1) send_buf[m] = m + 1;
+        send_mem_block(24'h000002, 9);
+        // Kernel W = [1,1,1,1] @ flat 64..67.
+        for (m = 0; m < 4; m = m + 1) send_buf[m] = 8'd1;
+        send_mem_block(24'h000040, 4);
+        // Program: window, im2col (-> dense @0x20), matmul W(1x4)*dense(4x4)
+        // -> C(1x4) @0x50, end.
+        send_program(mk_window(12'd3, 12'd3, 12'd1, 12'd2, 12'd2,
+                               4'd2, 4'd2, 4'd1, 4'd1, 4'd0, 4'd0));
+        send_program(mk_im2col(24'h000002, 24'h000020));
+        send_program(mk_mul_rq(24'h000040, 4'd1, 4'd4, 24'h000020, 4'd4, 4'd4,
+                               24'h000050, 8'd1, 8'd0));
+        send_program(128'd0); // end
+        send_spi_byte(STOP_CODE);
+        spi_ss = 1;
+        wait_feeder_done(400000);
+        repeat (200) @(posedge clk);
+        $display("  conv C mem[80..83] = %0d %0d %0d %0d  (expect 12 16 24 28)",
+                 $signed(shadow_main[80]), $signed(shadow_main[81]),
+                 $signed(shadow_main[82]), $signed(shadow_main[83]));
+        check((shadow_main[80] === 8'd12) && (shadow_main[81] === 8'd16) &&
+              (shadow_main[82] === 8'd24) && (shadow_main[83] === 8'd28),
+              "convolution (im2col + matmul) = [12,16,24,28]");
+
+        // ===================================================================
+        // Test 15 (v0.6): max pooling (window + max).
+        //   Feature map (chans=1, 4x4) f = 1..16 (Row-major) @0x02.
+        //   window 2x2, stride 2, pad 0 -> outh=outw=2, four non-overlapping
+        //   windows. Max of each window:
+        //     [max(1,2,5,6), max(3,4,7,8), max(9,10,13,14), max(11,12,15,16)]
+        //       = [6, 8, 14, 16]  written as 1x2x2 @0x30.
+        //   Exercises the vector-processor windowed stream -> Pooler -> vector
+        //   buffer -> writeback path end to end.
+        // ===================================================================
+        $display("Test 15: max pooling (window + max)");
+        rst = 0; repeat (4) @(posedge clk); rst = 1; repeat (4) @(posedge clk);
+        mode_select = 1'b0;
+        for (si = 0; si < 1024; si = si + 1) shadow_main[si] = 8'hEE;
+
+        spi_ss = 0;
+        send_spi_byte(FLASH_CODE);
+        // Feature map 4x4 = 1..16 (Row-major) @ flat 2..17.
+        for (m = 0; m < 16; m = m + 1) send_buf[m] = m + 1;
+        send_mem_block(24'h000002, 16);
+        // Program: window, max (-> pooled 1x2x2 @0x30), end.
+        send_program(mk_window(12'd4, 12'd4, 12'd1, 12'd2, 12'd2,
+                               4'd2, 4'd2, 4'd2, 4'd2, 4'd0, 4'd0));
+        send_program(mk_max(24'h000002, 24'h000030));
+        send_program(128'd0); // end
+        send_spi_byte(STOP_CODE);
+        spi_ss = 1;
+        wait_feeder_done(400000);
+        repeat (200) @(posedge clk);
+        $display("  pool C mem[48..51] = %0d %0d %0d %0d  (expect 6 8 14 16)",
+                 $signed(shadow_main[48]), $signed(shadow_main[49]),
+                 $signed(shadow_main[50]), $signed(shadow_main[51]));
+        check((shadow_main[48] === 8'd6)  && (shadow_main[49] === 8'd8) &&
+              (shadow_main[50] === 8'd14) && (shadow_main[51] === 8'd16),
+              "max pooling (window + max) = [6,8,14,16]");
 
         // ===================================================================
         // Summary

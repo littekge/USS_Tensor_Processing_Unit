@@ -187,6 +187,10 @@ run_tb 6 TB_Step6_ALU \
   TPU/PROCESSING/ALU.v \
   tests/TB_Step6_ALU.v
 
+run_tb pool TB_Pooler \
+  TPU/PROCESSING/Pooler.v \
+  tests/TB_Pooler.v
+
 run_tb 7 TB_Step7_SystolicArray \
   TPU/SYSTOLIC_ARRAY/Multiply_Accumulate_Unit.v \
   TPU/SYSTOLIC_ARRAY/Systolic_Array_Input_Buffer.v \
@@ -207,6 +211,7 @@ run_tb 8 TB_Step8_FullSystem \
   TPU/MEMORY/VECTOR_BUFFER/Vector_Buffer.v \
   TPU/PROCESSING/Activator.v \
   TPU/PROCESSING/ALU.v \
+  TPU/PROCESSING/Pooler.v \
   TPU/PROCESSING/Vector_Processor.v \
   TPU/SYSTOLIC_ARRAY/Multiply_Accumulate_Unit.v \
   TPU/SYSTOLIC_ARRAY/Systolic_Array_Input_Buffer.v \

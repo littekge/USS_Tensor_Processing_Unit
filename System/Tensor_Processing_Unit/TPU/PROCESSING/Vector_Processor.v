@@ -56,12 +56,32 @@ module Vector_Processor (
     input  [7:0]       i_scale,   // M0: unsigned dyadic multiplier
     input  [7:0]       i_shift,   // n:  unsigned right-shift amount
 
+    // Window descriptor (WINCONFIG), supplied by the Controller. Consumed only
+    // by the windowed instructions (im2col / max); the element count and
+    // iteration order are derived from these rather than from i_length.
+    input  [11:0]      i_win_chans,
+    input  [11:0]      i_win_inh,
+    input  [11:0]      i_win_inw,
+    input  [11:0]      i_win_outh,
+    input  [11:0]      i_win_outw,
+    input  [3:0]       i_win_winh,
+    input  [3:0]       i_win_winw,
+    input  [3:0]       i_win_strh,
+    input  [3:0]       i_win_strw,
+    input  [3:0]       i_win_padh,
+    input  [3:0]       i_win_padw,
+
     // ---------- PARAMETERS ---------- //
     // ---------- END PARAMETERS ---------- //
 
     // Handshake outputs to Controller
     output wire        o_vector_idle,
     output reg         o_element_valid,
+
+    // Asserted HIGH for one clock cycle coincident with o_element_valid on the
+    // final element of each pooling window during a max instruction. Signals
+    // the Pooler that the window's reduction is complete.
+    output reg         o_window_end,
 
     // Data Memory port interface (flat 24-bit unified address space)
     output reg  [23:0] o_dm_address,
@@ -97,28 +117,34 @@ module Vector_Processor (
 // ---------- PARAMETERS ---------- //
 
 // State machine states
-parameter [3:0]
-    STATE_ERROR  = 4'd0,
-    START        = 4'd1,
-    IDLE         = 4'd2,
-    MEM_ADDR     = 4'd3,   // Assert memory read address
-    MEM_WAIT     = 4'd4,   // Wait for registered RAM output (latency cycle 1)
-    MEM_FORWARD  = 4'd5,   // RAM output valid; route to destination
-    VB_RDREQ     = 4'd6,   // Assert vector buffer rdreq
-    VB_WAIT      = 4'd7,   // Wait for FIFO output (latency cycle 1)
-    VB_WRITE     = 4'd8,   // Write FIFO output to memory
-    SA_OUT_SEL   = 4'd9,   // Present SA row/col selectors; c is combinational
-    SA_OUT_WRITE = 4'd10,  // Write requantized MAC value to memory
-    DONE_STATE   = 4'd11,
-    MEM_ERROR    = 4'd12,
-    VB_WAIT2     = 4'd13,  // Wait for FIFO output (latency cycle 2)
-    MEM_WAIT2    = 4'd14;  // Wait for registered RAM output (latency cycle 2)
+parameter [4:0]
+    STATE_ERROR  = 5'd0,
+    START        = 5'd1,
+    IDLE         = 5'd2,
+    MEM_ADDR     = 5'd3,   // Assert memory read address
+    MEM_WAIT     = 5'd4,   // Wait for registered RAM output (latency cycle 1)
+    MEM_FORWARD  = 5'd5,   // RAM output valid; route to destination
+    VB_RDREQ     = 5'd6,   // Assert vector buffer rdreq
+    VB_WAIT      = 5'd7,   // Wait for FIFO output (latency cycle 1)
+    VB_WRITE     = 5'd8,   // Write FIFO output to memory
+    SA_OUT_SEL   = 5'd9,   // Present SA row/col selectors; c is combinational
+    SA_OUT_WRITE = 5'd10,  // Write requantized MAC value to memory
+    DONE_STATE   = 5'd11,
+    MEM_ERROR    = 5'd12,
+    VB_WAIT2     = 5'd13,  // Wait for FIFO output (latency cycle 2)
+    MEM_WAIT2    = 5'd14,  // Wait for registered RAM output (latency cycle 2)
+    WIN_ADDR     = 5'd15,  // Windowed gather: assert the window read address
+    WIN_WAIT     = 5'd16,  // Windowed read latency cycle 1
+    WIN_WAIT2    = 5'd17,  // Windowed read latency cycle 2
+    WIN_FORWARD  = 5'd18,  // Windowed read valid; route to Pooler or hold for write
+    WIN_WRITE    = 5'd19;  // im2col: write the gathered element to dest memory
 
 // Source encoding (must match Controller.v)
 parameter [2:0]
     VSRC_MEM     = 3'd0,
     VSRC_SA_OUT  = 3'd1,
-    VSRC_VEC_BUF = 3'd2;
+    VSRC_VEC_BUF = 3'd2,
+    VSRC_MEM_WIN = 3'd3;   // windowed feature-map gather (im2col / max)
 
 // Destination encoding (must match Controller.v)
 parameter [2:0]
@@ -127,14 +153,15 @@ parameter [2:0]
     VDST_SA_B  = 3'd2,
     VDST_ACT   = 3'd3,
     VDST_ALU_A = 3'd4,
-    VDST_ALU_B = 3'd5;
+    VDST_ALU_B = 3'd5,
+    VDST_POOL  = 3'd6;     // Pooler input (max)
 
 // ---------- END PARAMETERS ---------- //
 
 // ---------- CODE ---------- //
 
 // State machine registers
-reg [3:0] S, NS;
+reg [4:0] S, NS;
 
 // Latched control signals (stable throughout an operation)
 reg [2:0]  vect_source_lat;
@@ -148,10 +175,22 @@ reg [7:0]  scale_lat;        // M0: dyadic requantization multiplier
 reg [7:0]  shift_lat;        // n:  dyadic requantization right-shift
 reg [23:0] ld_lat;           // physical row stride (0 = contiguous)
 
+// Latched window descriptor (windowed instructions only)
+reg [11:0] chans_lat, inh_lat, inw_lat, outh_lat, outw_lat;
+reg [3:0]  winh_lat, winw_lat, strh_lat, strw_lat, padh_lat, padw_lat;
+
 // Element counters
 reg [15:0] elem_cnt;   // flat element index (linear and VB operations)
 reg [3:0]  row_cnt;    // row index for SA operations
 reg [3:0]  col_cnt;    // column index for SA operations
+
+// Windowed iteration counters: channel, output row/col, window row/col.
+reg [11:0] ch_cnt, oh_cnt, ow_cnt;
+reg [3:0]  wr_cnt, wc_cnt;
+
+// im2col holds the gathered datum for one cycle between the read (WIN_FORWARD)
+// and the memory write (WIN_WRITE).
+reg [7:0]  win_wr_data;
 
 // Physical row stride for sub-block addressing: defaults to the matrix's own
 // width (dim1_lat) when the leading dimension is 0 (contiguous), otherwise the
@@ -232,6 +271,50 @@ wire sa_b_last   = (col_cnt == dim1_lat - 4'd1) && (row_cnt == dim0_lat - 4'd1);
 wire sa_out_last = (row_cnt == dim0_lat - 4'd1) && (col_cnt == dim1_lat - 4'd1);
 wire linear_last = (elem_cnt + 16'd1 >= length_lat);
 
+// ---------------- Windowed addressing (im2col / max) ---------------- //
+// A windowed operation gathers, for each output position and window offset, the
+// input feature-map element whose coordinate is derived from the output
+// position, the window offset, the stride, and the padding. im2col writes the
+// dense matrix to memory; max streams each window to the Pooler.
+wire win_is_pool = (vect_dest_lat == VDST_POOL);   // max
+wire win_is_mem  = (vect_dest_lat == VDST_MEM);    // im2col
+
+// Current input coordinate and out-of-bounds (padding) test. ih_base/iw_base
+// are non-negative (output position * stride + window offset); a coordinate is
+// out of bounds when it lies in the pad region (base < pad) or past the map.
+reg [31:0] ih_base, iw_base, ih, iw;
+reg        vert_in, horz_in, win_oob;
+reg [39:0] win_in_addr_full;
+reg [23:0] win_rd_addr;
+reg [7:0]  win_data;
+always @(*)
+begin
+    ih_base = (oh_cnt * strh_lat) + wr_cnt;
+    iw_base = (ow_cnt * strw_lat) + wc_cnt;
+    vert_in = (ih_base >= padh_lat) && ((ih_base - padh_lat) < inh_lat);
+    horz_in = (iw_base >= padw_lat) && ((iw_base - padw_lat) < inw_lat);
+    win_oob = !(vert_in && horz_in);
+    ih      = ih_base - padh_lat;
+    iw      = iw_base - padw_lat;
+    // Row-major feature map: src + channel*(inh*inw) + ih*inw + iw.
+    win_in_addr_full = mem_source_lat + (ch_cnt * (inh_lat * inw_lat))
+                                      + (ih * inw_lat) + iw;
+    // Out-of-bounds reads are steered to the hardwired 0x0 register (returns 0);
+    // the min-representable fill for max is substituted on the data path below.
+    win_rd_addr = win_oob ? 24'd0 : win_in_addr_full[23:0];
+    win_data    = win_oob ? (win_is_pool ? 8'h80 : 8'd0) : i_dm_q;
+end
+
+// Final element of the current window (max asserts window_end here) and final
+// element of the entire windowed operation (all five counters at their max).
+wire win_end_now = (wr_cnt == winh_lat - 4'd1) && (wc_cnt == winw_lat - 4'd1);
+wire windowed_last = (ch_cnt == chans_lat - 12'd1) &&
+                     (oh_cnt == outh_lat - 12'd1) &&
+                     (ow_cnt == outw_lat - 12'd1) &&
+                     (wr_cnt == winh_lat  - 4'd1) &&
+                     (wc_cnt == winw_lat  - 4'd1);
+// -------------------------------------------------------------------- //
+
 // State machine driver
 always @(posedge i_clk or negedge i_trst)
 begin
@@ -256,6 +339,8 @@ begin
                     NS = SA_OUT_SEL;
                 else if (i_vect_source == VSRC_VEC_BUF)
                     NS = VB_RDREQ;
+                else if (i_vect_source == VSRC_MEM_WIN)
+                    NS = WIN_ADDR;   // windowed gather (im2col / max)
                 else
                     NS = MEM_ADDR;   // VSRC_MEM
             end
@@ -300,6 +385,23 @@ begin
             NS = SA_OUT_WRITE;
         SA_OUT_WRITE:
             NS = sa_out_last ? DONE_STATE : SA_OUT_SEL;
+        WIN_ADDR:
+            NS = WIN_WAIT;
+        WIN_WAIT:
+            // Windowed reads have the same two-cycle Data_Memory read latency.
+            NS = WIN_WAIT2;
+        WIN_WAIT2:
+            NS = WIN_FORWARD;
+        WIN_FORWARD:
+            // im2col holds the read datum for a memory write next cycle; max
+            // streams it straight to the Pooler and advances to the next window
+            // element (or finishes).
+            if (win_is_mem)
+                NS = WIN_WRITE;
+            else
+                NS = windowed_last ? DONE_STATE : WIN_ADDR;
+        WIN_WRITE:
+            NS = windowed_last ? DONE_STATE : WIN_ADDR;
         DONE_STATE:
             NS = IDLE;
         MEM_ERROR:
@@ -326,9 +428,26 @@ begin
         scale_lat        <= 8'd0;
         shift_lat        <= 8'd0;
         ld_lat           <= 24'd0;
+        chans_lat        <= 12'd0;
+        inh_lat          <= 12'd0;
+        inw_lat          <= 12'd0;
+        outh_lat         <= 12'd0;
+        outw_lat         <= 12'd0;
+        winh_lat         <= 4'd0;
+        winw_lat         <= 4'd0;
+        strh_lat         <= 4'd0;
+        strw_lat         <= 4'd0;
+        padh_lat         <= 4'd0;
+        padw_lat         <= 4'd0;
         elem_cnt         <= 16'd0;
         row_cnt          <= 4'd0;
         col_cnt          <= 4'd0;
+        ch_cnt           <= 12'd0;
+        oh_cnt           <= 12'd0;
+        ow_cnt           <= 12'd0;
+        wr_cnt           <= 4'd0;
+        wc_cnt           <= 4'd0;
+        o_window_end     <= 1'b0;
         o_dm_address     <= 24'd0;
         o_dm_wren        <= 1'b0;
         o_dm_data        <= 8'd0;
@@ -351,6 +470,7 @@ begin
         o_sa_top_wrreq  <= 8'd0;
         o_sa_left_wrreq <= 8'd0;
         o_element_valid <= 1'b0;
+        o_window_end    <= 1'b0;
 
         case (S)
 
@@ -369,9 +489,26 @@ begin
                     scale_lat       <= i_scale;
                     shift_lat       <= i_shift;
                     ld_lat          <= i_leading_dimension;
+                    // Latch the window descriptor for the windowed instructions.
+                    chans_lat       <= i_win_chans;
+                    inh_lat         <= i_win_inh;
+                    inw_lat         <= i_win_inw;
+                    outh_lat        <= i_win_outh;
+                    outw_lat        <= i_win_outw;
+                    winh_lat        <= i_win_winh;
+                    winw_lat        <= i_win_winw;
+                    strh_lat        <= i_win_strh;
+                    strw_lat        <= i_win_strw;
+                    padh_lat        <= i_win_padh;
+                    padw_lat        <= i_win_padw;
                     elem_cnt        <= 16'd0;
                     row_cnt         <= 4'd0;
                     col_cnt         <= 4'd0;
+                    ch_cnt          <= 12'd0;
+                    oh_cnt          <= 12'd0;
+                    ow_cnt          <= 12'd0;
+                    wr_cnt          <= 4'd0;
+                    wc_cnt          <= 4'd0;
                 end
             end
 
@@ -492,6 +629,100 @@ begin
                     row_cnt  <= row_cnt + 4'd1;
                 end
                 elem_cnt <= elem_cnt + 16'd1;
+            end
+
+            WIN_ADDR:
+            begin
+                // Drive the windowed read address (0x0 when out of bounds).
+                // Feature maps live in main memory, so the 0x1 offset is unused.
+                o_dm_address <= win_rd_addr;
+                o_dm_offset  <= 10'd0;
+            end
+
+            WIN_WAIT:;   // windowed read latency cycle 1
+            WIN_WAIT2:;  // windowed read latency cycle 2; i_dm_q valid next cycle
+
+            WIN_FORWARD:
+            begin
+                if (win_is_pool)
+                begin
+                    // max: stream the element to the Pooler, asserting
+                    // window_end on the window's final element. Advance in max
+                    // order (wc, wr, ow, oh, ch) so each window's winh*winw
+                    // elements are contiguous.
+                    o_data          <= win_data;
+                    o_element_valid <= 1'b1;
+                    o_window_end    <= win_end_now;
+
+                    if (wc_cnt + 4'd1 < winw_lat)
+                        wc_cnt <= wc_cnt + 4'd1;
+                    else
+                    begin
+                        wc_cnt <= 4'd0;
+                        if (wr_cnt + 4'd1 < winh_lat)
+                            wr_cnt <= wr_cnt + 4'd1;
+                        else
+                        begin
+                            wr_cnt <= 4'd0;
+                            if (ow_cnt + 12'd1 < outw_lat)
+                                ow_cnt <= ow_cnt + 12'd1;
+                            else
+                            begin
+                                ow_cnt <= 12'd0;
+                                if (oh_cnt + 12'd1 < outh_lat)
+                                    oh_cnt <= oh_cnt + 12'd1;
+                                else
+                                begin
+                                    oh_cnt <= 12'd0;
+                                    ch_cnt <= ch_cnt + 12'd1;
+                                end
+                            end
+                        end
+                    end
+                end
+                else
+                begin
+                    // im2col: hold the datum for the memory write next cycle.
+                    win_wr_data <= win_data;
+                end
+            end
+
+            WIN_WRITE:
+            begin
+                // im2col: write the gathered element contiguously to dest, then
+                // advance in im2col order (ow, oh, wc, wr, ch) so the dense
+                // (chans*winh*winw) x (outh*outw) matrix lands Row-Major.
+                o_dm_address <= wr_addr;
+                o_dm_offset  <= wr_offset;
+                o_dm_data    <= win_wr_data;
+                o_dm_wren    <= 1'b1;
+                elem_cnt     <= elem_cnt + 16'd1;
+
+                if (ow_cnt + 12'd1 < outw_lat)
+                    ow_cnt <= ow_cnt + 12'd1;
+                else
+                begin
+                    ow_cnt <= 12'd0;
+                    if (oh_cnt + 12'd1 < outh_lat)
+                        oh_cnt <= oh_cnt + 12'd1;
+                    else
+                    begin
+                        oh_cnt <= 12'd0;
+                        if (wc_cnt + 4'd1 < winw_lat)
+                            wc_cnt <= wc_cnt + 4'd1;
+                        else
+                        begin
+                            wc_cnt <= 4'd0;
+                            if (wr_cnt + 4'd1 < winh_lat)
+                                wr_cnt <= wr_cnt + 4'd1;
+                            else
+                            begin
+                                wr_cnt <= 4'd0;
+                                ch_cnt <= ch_cnt + 12'd1;
+                            end
+                        end
+                    end
+                end
             end
 
             default:;
