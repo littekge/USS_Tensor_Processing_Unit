@@ -2,6 +2,44 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-16 — Functional TPU Hardware Specification v0.6.0 — Convolution and Pooling
+
+- **Added the hardware for convolution (via *im2col*) and max pooling**, in
+tandem with ISA v0.6.
+- **Pooler (new module, peer of the ALU and Activator; feeds the Vector_Buffer):**
+- Reduces a stream of input values to a single output value per pooling window
+using one accumulator and one reduction operator (a comparator for *max*).
+- Folds one value per clock while *enable* is HIGH; on *window_end* it writes the
+result to the vector buffer and resets the accumulator to the reduction identity
+(the minimum representable value for *max*).
+- The Controller selects the function, fixing both the operator and its identity;
+NO OP suppresses buffer writes. Performs no requantization and cannot overflow.
+- **Vector_Processor:**
+- Added windowed addressing for *im2col* and *max*: derives input feature map
+coordinates from the window descriptor, checks them against the feature map
+bounds, and substitutes the out-of-bounds fill (0 for *im2col*, minimum
+representable value for *max*) in place of a memory read.
+- Added the *window_end* output, asserted with *element_valid* on the final
+element of each pooling window.
+- Added the Pooler input as a destination. The element count for windowed
+instructions is derived from the window descriptor rather than the *length* input.
+- **Controller:**
+- Added the eleven window descriptor registers (*chans*, *inh*, *inw*, *outh*,
+*outw*, *winh*, *winw*, *strh*, *strw*, *padh*, *padw*), loaded by the *window*
+instruction and retained until the next *window* instruction or *trst*; they have
+no default value.
+- Generalized the *stride* decode-and-latch path into a single
+register-configuration path covering LDCONFIG and WINCONFIG (no Execute or
+Writeback phase).
+- Skips the Writeback phase for instructions that write their result directly to
+memory during Execute (*im2col*).
+- Added the Pooler to the inter-operation *clear* list.
+- **TPU:**
+- Wired vector processor *a* to the Pooler (*element_valid* → *enable*,
+*window_end* → *window_end*).
+- Added the Pooler to the *trst* reset list.
+- **Programmer:** Added the Pooler to the *tpu_rst* reset-module list.
+
 ## 2026-07-14 — Functional TPU Hardware Specification v0.5.1 — SPI_Slave Hardening
 
 - **Rewrote the SPI_Slave module description** to reflect a synchronous

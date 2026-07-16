@@ -3,7 +3,7 @@
 > **Purpose:** This document outlines the Functional TPU hardware specification,
 > including module instantiation hierarchy and functional descriptions of modules.
 >
-> **Version:** 0.6.0
+> **Version:** 0.5.1
 >
 > **ISA:** `Functional_TPU_ISA.md`
 > **Message Protocol:** `Functional_TPU_Message_Protocol.md`
@@ -26,9 +26,8 @@ Each module is instantiated following the hierarchy below.
       - Mem_Unit -> general device data memory unit
     - Vector_Processor -> moves vectors to and from memory
     - Activator -> implements activation functions
-    - Pooler -> implements pooling reductions
     - ALU -> implements element-wise operations
-    - Vector_Buffer -> buffers output of ALU, Activator, and Pooler
+    - Vector_Buffer -> buffers output of ALU and Activator
     - Systolic_Array -> instantiates MACs and systolic array input buffers
       - Multiply_Accumulate_Unit -> single systolic array unit
       - Systolic_Array_Input_Buffer -> buffers input to the MACs
@@ -91,11 +90,6 @@ connections are described below.
   signal from *a* is connected to the *enable* input of the activator to ensure
   that data is properly processed through the activator and written to the
   vector buffer.
-  - **Pooler:** *a* handles input to the Pooler. The *element_valid* signal from
-  *a* is connected to the *enable* input of the Pooler and the *window_end*
-  signal from *a* is connected to the *window_end* input of the Pooler, so that
-  each windowed value is folded into the reduction and the pooled result is
-  written to the vector buffer at each window boundary.
   - **Vector Buffer:** *a* handles accesses to the output of the vector buffer.
   - **Systolic Array Buffers:** *a* handles input to the top side systolic array
   input buffers and *b* handles input to the left side input buffers.
@@ -104,8 +98,8 @@ connections are described below.
 with the global reset *rst* via a logical AND operation, and the resultant
 signal *trst* is passed to the following modules such that either *rst* or
 *tpu_rst* can hold them in a default state: Feeder, Systolic_Array, Controller,
-Vector_Processor (*a* and *b*), Activator, ALU, and Pooler. This is to ensure
-that the TPU internals cannot modify device memory while programming occurs.
+Vector_Processor (*a* and *b*), Activator, and ALU. This is to ensure that the
+TPU internals cannot modify device memory while programming occurs.
 - **Memory MUX:** The Programmer module has full control over all device memory
 while the *program* signal is low. To implement this, the *data*, *address*,
 and *wren* inputs to the program memory as well as the *data_a*, *address_a*,
@@ -235,7 +229,7 @@ The module defines a complex finite state machine to implement these functions.
     - ***program***: Indicates that the module is currently programming the
     device (active LOW).
     - ***tpu_rst***: Resets the Feeder, Systolic_Array, Controller,
-    Vector_Processor (*a* and *b*), Activator, ALU, and Pooler (active LOW).
+    Vector_Processor (*a* and *b*), Activator, and ALU (active LOW).
     - ***output_data_valid***: Asserted HIGH for one clock cycle when output data
     is valid.
 - **Modes:** The Programmer module operates in one of two modes determined by
@@ -517,32 +511,20 @@ the Controller supplies the active leading dimension to each vector processor as
 part of its control signals: *ld1* when loading *src1*, *ld2* when loading
 *src2*, and *ld2* during writeback to *dest*. A value of 0 selects contiguous
 access.
-- **Window Descriptor Registers:** The Controller maintains the eleven window
-descriptor registers *chans*, *inh*, *inw*, *outh*, *outw*, *winh*, *winw*,
-*strh*, *strw*, *padh*, and *padw* (defined in *Functional TPU ISA*), each sized
-to hold its corresponding instruction field. They are loaded by the *window*
-instruction and retain their values until the next *window* instruction or
-*trst*. Unlike the leading-dimension registers they have no default value; a
-*window* instruction must set the descriptor before any windowed instruction
-(*im2col* or *max*) is issued. For windowed instructions the Controller supplies
-the descriptor to the vector processors as part of their control signals and
-selects the destination for the gathered data: device memory for *im2col* and
-the Pooler for *max*.
 - **State Machine Flow:**
   - Wait for the Feeder to assert *controller_start* HIGH.
   - When the Feeder asserts *controller_start* HIGH, assert *controller_idle*
   LOW and continue.
   - Assert *clear* signals for the vector buffer (via *clear* in the TPU
-  module), ALU, Activator, Pooler, and systolic array HIGH for one clock cycle
-  to clear all residual data from the previous operation (**NOTE:** this step
-  does NOT clear the systolic array accumulators).
+  module), ALU, activator, and systolic array HIGH for one clock cycle to clear
+  all residual data from the previous operation (**NOTE:** this step does NOT
+  clear the systolic array accumulators).
   - Combinationally decode instruction from the Feeder and send control signals
   to other modules. (Decode)
-    - If the decoded instruction is a *register configuration* instruction
-    (opcodes LDCONFIG and WINCONFIG), latch the instruction fields into their
-    respective registers, assert *controller_idle* HIGH, and return to the start
-    of the control loop (a *register configuration* instruction has no Execute
-    or Writeback phase).
+    - If the decoded instruction is a *stride* instruction, latch *im1* and
+    *im2* into *ld1* and *ld2*, assert *controller_idle* HIGH, and return to the
+    start of the control loop (a *stride* instruction has no Execute or
+    Writeback phase).
   - Assert the vector processors' *vector_start* signals HIGH for one clock
   cycle. (Execute)
   - Wait for vector processors to finish execute operations. (Execute)
@@ -550,8 +532,6 @@ the Pooler for *max*.
     - Assert the array's *systolic_array_start* signal HIGH for one clock cycle.
     (Execute)
     - Wait for the systolic array to finish execute operations. (Execute)
-  - If the decoded instruction writes its result directly to memory during
-  Execute (*im2col*), skip the Writeback phase.
   - Set writeback control signals for Vector_Processors. (Writeback)
   - Assert the vector processors' *vector_start* signals HIGH for one clock cycle.
   (Writeback)
@@ -568,9 +548,8 @@ DECODE_ERROR state if it decodes an invalid instruction.
 ### Vector_Processor
 
 **Description:** The Vector_Processor module defines a state machine that
-handles memory accesses, data routing to and from the Activator, Pooler, and
-Systolic Array, and proper formatting of data, including the windowed gathering
-required by the *im2col* and *max* instructions.
+handles memory accesses, data routing to and from the Activator and Systolic
+Array, and proper formatting of data.
 
 - **Synchronous Control Signals:**
   - **Inputs:**
@@ -584,9 +563,6 @@ required by the *im2col* and *max* instructions.
     - ***element_valid***: Asserted HIGH for one clock cycle when the module's
     data route from source to destination is valid and the resultant data
     transfer will be successful.
-    - ***window_end***: Asserted HIGH for one clock cycle, coincident with
-    *element_valid*, on the final element of each pooling window during a *max*
-    instruction. Signals the Pooler that the window's reduction is complete.
 - **ISA compliance:** The Vector_Processor module formats data written to the
 data memory in accordance with the *Functional TPU ISA*. Likewise, it expects
 all data read from memory to be formatted in accordance with the ISA. As a
@@ -631,29 +607,8 @@ output that it uses to interpret data.
       - Systolic array input buffer a
       - Systolic array input buffer b
       - Activator input
-      - Pooler input
       - ALU input a
       - ALU input b
-  - **Windowed Addressing:** For the windowed instructions (*im2col* and *max*),
-  the Vector_Processor module defines window descriptor inputs (*chans*, *inh*,
-  *inw*, *outh*, *outw*, *winh*, *winw*, *strh*, *strw*, *padh*, *padw*),
-  supplied by the Controller, and generates input feature map read addresses in
-  the order required by the *Functional TPU ISA* rather than reading a
-  contiguous or simple strided block. For each window element the module derives
-  the input coordinate from the output position, the window offset, the stride,
-  and the padding, then checks it against the feature map bounds (*inh* x
-  *inw*). When a coordinate falls outside the feature map the module substitutes
-  the instruction's fill value in place of a memory read: 0 for *im2col* (which
-  may be sourced from the hardwired 0x0 address) and the minimum representable
-  value for *max*. The number of elements processed is determined by the
-  descriptor rather than the *length* input. The windowed instructions differ
-  only in iteration order and destination:
-    - ***im2col***: writes every gathered element, with no reduction, to the
-    *dest* memory region as the dense (*chans* x *winh* x *winw*) x (*outh* x
-    *outw*) matrix defined by the ISA.
-    - ***max***: streams each channel's window to the Pooler input one element
-    per clock, asserting *window_end* on the final element of each window so the
-    Pooler emits one pooled value per window.
   - **Scale and Shift:** The Vector_Processor module defines *scale* and *shift*
   inputs that determine the requantization parameters during writeback from the
   systolic array outputs.
@@ -662,13 +617,9 @@ output that it uses to interpret data.
   - When the Controller asserts *vector_start* HIGH, assert *vector_idle* LOW.
   - Combinationally decode control signals from the controller.
   - In a loop until all elements have been processed:
-    - Set data path and memory addresses. For windowed instructions, generate
-    the next window coordinate and substitute the fill value when it falls
-    outside the feature map (see Windowed Addressing).
+    - Set data path and memory addresses.
     - Assert *element_valid* HIGH for one clock cycle when the data path is
     valid (accounting for RAM latency in the process if necessary).
-    - During a *max* instruction, assert *window_end* HIGH coincident with
-    *element_valid* on the final element of each window.
   - When the loop finishes, assert *vector_idle* HIGH and repeat.
 - **Error States:** The state machine defaults to a STATE_ERROR state in the
 event of undefined state machine behavior, a MEM_ERROR state if it attempts
@@ -728,51 +679,10 @@ the ALU's operation is set to NO OP buffer writing is suppressed.
 - **Overflow handling:** If an overflow occurs during arithmetic operations, the
 ALU module clamps the output before writing to the vector buffer.
 
-### Pooler
-
-**Description:** The Pooler module implements the POOL instruction functions
-from the *Functional TPU ISA*. Unlike the ALU and Activator, which emit one
-output value per input value, the Pooler module reduces a stream of input
-values to a single output value per pooling window.
-
-- **Synchronous Control Signals:**
-  - **Inputs:**
-    - ***clk***: Module input clock.
-    - ***trst***: Module reset signal (active LOW).
-    - ***enable***: Enables the Pooler (active HIGH).
-    - ***clear***: Clears residual values from the Pooler's input and
-    intermediate registers and resets the accumulator to the reduction identity
-    when asserted HIGH.
-    - ***window_end***: Asserted HIGH on the final input value of a pooling
-    window to signal that the window's reduction is complete.
-- **Streaming Reduction:** The Pooler maintains a single accumulator register
-and applies a single reduction operator. While *enable* is asserted HIGH, every
-clock cycle the module folds the current input value into the accumulator using
-the reduction operator (for *max*, accumulator = max(accumulator, input)).
-Because the reduction is applied one value per clock cycle, a window of any size
-is processed with fixed hardware regardless of how many values it contains.
-- **Function Selection:** The Controller module sets the Pooler function based
-on instruction. The selected function fixes both the reduction operator and its
-identity (for *max*, the operator is a comparator and the identity is the
-minimum representable value); the accumulator is reset to this identity by
-*clear* or *trst*. If the current instruction does not use the Pooler, the
-Controller sets the Pooler function to NO OP.
-- **Window Emission:** When *window_end* is asserted HIGH (coincident with the
-final *enable* of the window), the module folds the final input value, writes
-the resulting accumulator value to the vector buffer, and resets the accumulator
-to the reduction identity for the next window. As a result, the module writes
-exactly one value to the vector buffer per pooling window. If the Pooler
-function is set to NO OP buffer writing is suppressed.
-- **Value Preservation:** Because the pooled result for *max* is always one of
-the input values, the module performs no requantization and cannot overflow.
-Window elements that fall outside the feature map are substituted with the
-reduction identity upstream by the vector processor, so padding never affects
-the result.
-
 ### Vector_Buffer
 
 **Description:** The Vector_Buffer module is a FIFO (First-In-First-Out) memory
-module. It temporarily stores outputs from the ALU, Activator, or Pooler.
+module. It temporarily stores outputs from the ALU or activator.
 
 - **Synchronous Control Signals:**
   - **Inputs:**
