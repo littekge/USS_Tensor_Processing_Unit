@@ -8,15 +8,21 @@ results are allocated in main data memory and the final output is pinned to 0x1.
 from nn_assembler.Assembler import (
     MAX_MATMUL_SIZE,
     OPCODE_ADD,
+    OPCODE_IM2COL,
+    OPCODE_MAX,
     OPCODE_MULT,
     OPCODE_STRIDE,
+    OPCODE_WINDOW,
     assemble_program,
     encode_add,
     encode_end,
+    encode_im2col,
+    encode_max,
     encode_mult,
     encode_mult_in_place,
     encode_relu,
     encode_stride,
+    encode_window,
 )
 from nn_assembler.MLIR.dialect import MultOp, Operand, Program, ReturnOp, EndOp
 from nn_assembler.MLIR.partition import partition_program
@@ -80,6 +86,63 @@ def test_encode_relu_fields():
     assert _bits(instr, 75, 60) == 16  # len (16-bit)
     assert _bits(instr, 59, 3) == 0  # reserved
     assert _bits(instr, 2, 0) == 0  # funct3
+
+
+def test_encode_window_fields():
+    # conv1 window: chans=1, inh=inw=28, outh=outw=26, winh=winw=3, unit stride, no pad.
+    instr = encode_window(
+        chans=1, inh=28, inw=28, outh=26, outw=26,
+        winh=3, winw=3, strh=1, strw=1, padh=0, padw=0,
+    )
+    assert _is_128_bit(instr)
+    assert _bits(instr, 127, 124) == 0b1110  # opcode WINCONFIG
+    assert _bits(instr, 123, 112) == 28  # inh (12-bit)
+    assert _bits(instr, 111, 100) == 28  # inw (12-bit)
+    assert _bits(instr, 99, 88) == 1  # chans (12-bit)
+    assert _bits(instr, 87, 76) == 26  # outh (12-bit)
+    assert _bits(instr, 75, 64) == 26  # outw (12-bit)
+    assert _bits(instr, 63, 60) == 3  # winh (4-bit)
+    assert _bits(instr, 59, 56) == 3  # winw (4-bit)
+    assert _bits(instr, 55, 52) == 1  # strh (4-bit)
+    assert _bits(instr, 51, 48) == 1  # strw (4-bit)
+    assert _bits(instr, 47, 44) == 0  # padh (4-bit)
+    assert _bits(instr, 43, 40) == 0  # padw (4-bit)
+    assert _bits(instr, 39, 3) == 0  # reserved
+    assert _bits(instr, 2, 0) == 0  # funct3 WINDOW
+
+
+def test_encode_window_pool_fields():
+    # pool1 window: chans=6, in 26x26, out 13x13, 2x2 window stride 2.
+    instr = encode_window(
+        chans=6, inh=26, inw=26, outh=13, outw=13,
+        winh=2, winw=2, strh=2, strw=2, padh=0, padw=0,
+    )
+    assert _bits(instr, 99, 88) == 6  # chans
+    assert _bits(instr, 87, 76) == 13  # outh
+    assert _bits(instr, 63, 60) == 2  # winh
+    assert _bits(instr, 55, 52) == 2  # strh
+
+
+def test_encode_im2col_fields():
+    instr = encode_im2col(rs1=1, rd=20)
+    assert _is_128_bit(instr)
+    assert _bits(instr, 127, 124) == 0b1101  # opcode SHAPE
+    assert _bits(instr, 123, 100) == 1  # rs1 (src)
+    assert _bits(instr, 99, 76) == 20  # rd (dest)
+    assert _bits(instr, 75, 60) == 0  # aux
+    assert _bits(instr, 59, 3) == 0  # reserved
+    assert _bits(instr, 2, 0) == 0  # funct3 IM2COL
+
+
+def test_encode_max_fields():
+    instr = encode_max(rs1=30, rd=40)
+    assert _is_128_bit(instr)
+    assert _bits(instr, 127, 124) == 0b1100  # opcode POOL
+    assert _bits(instr, 123, 100) == 30  # rs1 (src)
+    assert _bits(instr, 99, 76) == 40  # rd (dest)
+    assert _bits(instr, 75, 60) == 0  # aux
+    assert _bits(instr, 59, 3) == 0  # reserved
+    assert _bits(instr, 2, 0) == 0  # funct3 MAX
 
 
 def test_encode_end_is_all_zero():

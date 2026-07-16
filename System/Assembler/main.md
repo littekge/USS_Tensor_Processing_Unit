@@ -588,7 +588,7 @@ Update `nn_assembler/MLIR/dialect.py`:
   strh, strw, padh, padw), `Im2colOp` (src/dst), and `MaxPoolOp` (src/dst).
 - Serialize/parse round-trip for each, keeping the dialect ~1:1 with the ISA.
 
-#### Step 2 — Encoders: window / im2col / max
+#### Step 2 — Encoders: window / im2col / max — ✅ Complete (2026-07-16)
 
 Update `Assembler.py`:
 

@@ -2,6 +2,27 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-16 — v0.6 Step 2: window / im2col / max encoders + dispatch
+
+- `nn_assembler/Assembler.py`: added opcodes (WINDOW=1110, IM2COL/SHAPE=1101,
+  MAX/POOL=1100) and encoders. `encode_window` packs the 11 W-Format fields at
+  their ISA bit positions (inh 123-112, inw 111-100, chans 99-88, outh 87-76,
+  outw 75-64, winh 63-60, winw 59-56, strh 55-52, strw 51-48, padh 47-44, padw
+  43-40; five 12-bit, six 4-bit). `encode_im2col`/`encode_max` share an A-Format
+  helper (rs1 123-100 = src, rd 99-76 = dest, aux 75-60 = 0). Added dispatch
+  branches in `assemble_program`: WindowOp emits config (no result); Im2colOp /
+  MaxPoolOp allocate their result via the existing IntermediateAllocator and free
+  dead sources.
+- Generalized `_result_words`/`_operand_names` to any-order tensors (windowed
+  results are CHW/[K,N]) via a local `_prod`; added Im2colOp/MaxPoolOp to the
+  `last_use` liveness scan (MultipOp still excluded so tiled runs are not freed
+  early).
+- Files modified: `nn_assembler/Assembler.py`, `test/test_assembler.py`, `main.md`,
+  `log.md`.
+- Tests: added window (conv + pool geometry), im2col, and max bit-field tests. 70
+  pass, 1 pre-existing fail (`test_full_pipeline_bigger_nn_real`, Bigger_NN
+  artifact metadata; unrelated).
+
 ## 2026-07-16 — v0.6 Step 1: dialect window / im2col / max ops
 
 - Added three dialect ops to `nn_assembler/MLIR/dialect.py`, each 1:1 with an ISA
