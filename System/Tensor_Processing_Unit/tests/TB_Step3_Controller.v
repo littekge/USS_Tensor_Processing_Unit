@@ -24,7 +24,7 @@
  * PASS / FAIL CRITERIA:
  *   Each test prints "PASS" or "FAIL" to the transcript.
  *   A final summary prints total pass/fail counts.
- *   All 13 tests should show PASS for a correct implementation.
+ *   All 17 tests should show PASS for a correct implementation.
  *
  * TEST CASES:
  *   Test 1: After reset — controller_idle HIGH, clear LOW
@@ -47,6 +47,14 @@
  *   Test 13 (v0.5): after a stride, a MUL presents ld1 on leading_dimension_a
  *            and ld2 on leading_dimension_b during the src1/src2 load, and ld2
  *            on leading_dimension_a during writeback.
+ *   Test 14 (v0.6): window (WINCONFIG) latches all eleven descriptor registers
+ *            and runs no execute/writeback phase.
+ *   Test 15 (v0.6): im2col decode — VSRC_MEM_WIN -> VDST_MEM at dest, pooler
+ *            NO-OP, skips writeback (one vector_start_a pulse only).
+ *   Test 16 (v0.6): max execute decode — VSRC_MEM_WIN -> VDST_POOL from src1,
+ *            pooler function MAX.
+ *   Test 17 (v0.6): max writeback decode — VSRC_VEC_BUF -> VDST_MEM at dest,
+ *            length = chans*outh*outw (24 for the preceding window).
  * -------------------------------------------------------------------------
  */
 
@@ -108,6 +116,9 @@ wire        systolic_array_start;
 wire        accumulator_clear;
 wire [23:0] leading_dimension_a;
 wire [23:0] leading_dimension_b;
+wire [2:0]  pooler_funct;
+wire [11:0] win_chans_o, win_inh_o, win_inw_o, win_outh_o, win_outw_o;
+wire [3:0]  win_winh_o, win_winw_o, win_strh_o, win_strw_o, win_padh_o, win_padw_o;
 
 // ---------------------------------------------------------------------------
 // DUT instantiation
@@ -144,7 +155,19 @@ Controller dut (
     .o_activator_funct      (activator_funct),
     .o_alu_funct            (alu_funct),
     .o_systolic_array_start (systolic_array_start),
-    .o_accumulator_clear    (accumulator_clear)
+    .o_accumulator_clear    (accumulator_clear),
+    .o_pooler_funct         (pooler_funct),
+    .o_win_chans            (win_chans_o),
+    .o_win_inh              (win_inh_o),
+    .o_win_inw              (win_inw_o),
+    .o_win_outh             (win_outh_o),
+    .o_win_outw             (win_outw_o),
+    .o_win_winh             (win_winh_o),
+    .o_win_winw             (win_winw_o),
+    .o_win_strh             (win_strh_o),
+    .o_win_strw             (win_strw_o),
+    .o_win_padh             (win_padh_o),
+    .o_win_padw             (win_padw_o)
 );
 
 // ---------------------------------------------------------------------------
@@ -153,6 +176,9 @@ Controller dut (
 localparam [3:0] OP_MULT   = 4'b1000;
 localparam [3:0] OP_RELU   = 4'b1001;
 localparam [3:0] OP_ADD    = 4'b1010;
+localparam [3:0] OP_MAX    = 4'b1100;
+localparam [3:0] OP_IM2COL = 4'b1101;
+localparam [3:0] OP_WINDOW = 4'b1110;
 localparam [3:0] OP_STRIDE = 4'b1111;
 localparam [3:0] OP_BAD    = 4'b0111; // invalid opcode
 
@@ -170,9 +196,12 @@ localparam [2:0] VDST_SA_B    = 3'd2;
 localparam [2:0] VDST_ACT     = 3'd3;
 localparam [2:0] VDST_ALU_A   = 3'd4;
 localparam [2:0] VDST_ALU_B   = 3'd5;
+localparam [2:0] VDST_POOL    = 3'd6;
+localparam [2:0] VSRC_MEM_WIN = 3'd3;
 localparam [2:0] FUNCT_NOOP   = 3'd7;
 localparam [2:0] FUNCT_RELU   = 3'd0;
 localparam [2:0] FUNCT_ADD    = 3'd0;
+localparam [2:0] FUNCT_MAX    = 3'd0;
 
 // Count systolic_array_start pulses (used by Test 8)
 integer sa_start_count;
@@ -185,6 +214,13 @@ integer acc_clear_count;
 always @(posedge clk)
     if (trst === 1'b1 && accumulator_clear === 1'b1)
         acc_clear_count = acc_clear_count + 1;
+
+// Count vector_start_a pulses (used by the v0.6 windowed tests to prove
+// im2col runs one VP phase — execute only — while relu/add/max run two).
+integer vsa_count;
+always @(posedge clk)
+    if (trst === 1'b1 && vector_start_a === 1'b1)
+        vsa_count = vsa_count + 1;
 
 // Build a MUL instruction (ISA v0.5 MUL format): opcode[127:124] |
 // rs1[123:100] | sz11[99:96] | sz12[95:92] | rs2[91:68] | sz21[67:64] |
@@ -246,6 +282,30 @@ function [127:0] make_add;
     input [23:0] rs1, rs2, rd;
     input [7:0]  sz1, sz2;
     make_add = {OP_ADD, rs1, rs2, sz1, sz2, rd, 36'd0};
+endfunction
+
+// Build a window instruction (ISA v0.6 W-format): opcode[127:124] |
+// inh[123:112] | inw[111:100] | chans[99:88] | outh[87:76] | outw[75:64] |
+// winh[63:60] | winw[59:56] | strh[55:52] | strw[51:48] | padh[47:44] |
+// padw[43:40] | reserved[39:3] | funct3[2:0] = 0.
+function [127:0] make_window;
+    input [11:0] inh, inw, chans, outh, outw;
+    input [3:0]  winh, winw, strh, strw, padh, padw;
+    make_window = {OP_WINDOW, inh, inw, chans, outh, outw,
+                   winh, winw, strh, strw, padh, padw, 37'd0, 3'd0};
+endfunction
+
+// Build an im2col instruction (ISA v0.6 A-format):
+// opcode[127:124] | src1[123:100] | dest[99:76] | aux[75:60] | reserved | funct3.
+function [127:0] make_im2col;
+    input [23:0] src1, dest;
+    make_im2col = {OP_IM2COL, src1, dest, 16'd0, 57'd0, 3'd0};
+endfunction
+
+// Build a max instruction (ISA v0.6 A-format, same layout as im2col).
+function [127:0] make_max;
+    input [23:0] src1, dest;
+    make_max = {OP_MAX, src1, dest, 16'd0, 57'd0, 3'd0};
 endfunction
 
 // ---------------------------------------------------------------------------
@@ -310,6 +370,11 @@ reg       wb_captured, exec_rq_zero;
 integer   mult_acc_clears, multip_acc_clears;
 integer   stride_vstart_seen;
 reg       ld_exec_a_ok, ld_exec_b_ok, ld_wb_a_ok;
+integer   window_vstart_seen;
+reg       im2col_route_ok, im2col_saw_wb_src;
+reg       max_exec_ok, max_wb_ok;
+reg [2:0] cap_im2col_pool, cap_max_pool_exec;
+reg [15:0] cap_max_wb_len;
 
 initial
 begin
@@ -741,6 +806,119 @@ begin
     end
     check((ld_exec_a_ok === 1'b1) && (ld_exec_b_ok === 1'b1) &&
           (ld_wb_a_ok === 1'b1), 13);
+
+    // -----------------------------------------------------------------------
+    // Test 14 (v0.6): window (WINCONFIG) latches all eleven descriptor
+    // registers and has no execute/writeback phase (no vector_start pulses).
+    // -----------------------------------------------------------------------
+    do_reset;
+    vector_idle_a = 1'b1; vector_idle_b = 1'b1; systolic_array_idle = 1'b1;
+
+    instruction        = make_window(12'd28, 12'd28, 12'd6, 12'd24, 12'd24,
+                                     4'd5, 4'd5, 4'd1, 4'd1, 4'd0, 4'd0);
+    window_vstart_seen = 0;
+    @(posedge clk); #1; controller_start = 1'b1;
+    @(posedge clk); #1; controller_start = 1'b0;
+    while (!controller_idle)
+    begin
+        if (vector_start_a === 1'b1 || vector_start_b_out === 1'b1)
+            window_vstart_seen = 1;
+        @(posedge clk); #1;
+    end
+    check((dut.inh   === 12'd28) && (dut.inw  === 12'd28) &&
+          (dut.chans === 12'd6)  && (dut.outh === 12'd24) &&
+          (dut.outw  === 12'd24) && (dut.winh === 4'd5)   &&
+          (dut.winw  === 4'd5)   && (dut.strh === 4'd1)   &&
+          (dut.strw  === 4'd1)   && (dut.padh === 4'd0)   &&
+          (dut.padw  === 4'd0)   && (window_vstart_seen === 0),
+          14);
+
+    // -----------------------------------------------------------------------
+    // Test 15 (v0.6): im2col decode — VP_A gathers (VSRC_MEM_WIN) into device
+    // memory (VDST_MEM) at dest, pooler funct is NO-OP, and it skips writeback
+    // (exactly one vector_start_a pulse, VP_A never reads SA outputs or the
+    // vector buffer).
+    // -----------------------------------------------------------------------
+    do_reset;
+    vector_idle_a = 1'b0; vector_idle_b = 1'b1; systolic_array_idle = 1'b1;
+    instruction        = make_im2col(24'h000100, 24'h000200);
+    im2col_route_ok    = 1'b0;
+    im2col_saw_wb_src  = 1'b0;
+    cap_im2col_pool    = FUNCT_MAX; // seed with wrong value; must become NOOP
+    vsa_count          = 0;
+
+    @(posedge clk); #1; controller_start = 1'b1;
+    @(posedge clk); #1; controller_start = 1'b0;
+    @(posedge clk); #1; // CLEAR
+    @(posedge clk); #1; // EXEC_VP_START — sample execute decode
+    if ((vect_source_a === VSRC_MEM_WIN) && (vect_dest_a === VDST_MEM) &&
+        (mem_source_address_a === 24'h000100) &&
+        (mem_dest_address_a === 24'h000200))
+        im2col_route_ok = 1'b1;
+    cap_im2col_pool = pooler_funct;
+    vector_idle_a = 1'b1; // release
+    while (!controller_idle)
+    begin
+        @(posedge clk); #1;
+        if (vect_source_a === VSRC_SA_OUT || vect_source_a === VSRC_VEC_BUF)
+            im2col_saw_wb_src = 1'b1;
+    end
+    check((im2col_route_ok === 1'b1) && (cap_im2col_pool === FUNCT_NOOP) &&
+          (im2col_saw_wb_src === 1'b0) && (vsa_count === 1), 15);
+
+    // -----------------------------------------------------------------------
+    // Test 16 (v0.6): max execute decode — VP_A streams (VSRC_MEM_WIN) to the
+    // Pooler (VDST_POOL) from src1, and the pooler function is MAX.
+    // -----------------------------------------------------------------------
+    do_reset;
+    vector_idle_a = 1'b0; vector_idle_b = 1'b1; systolic_array_idle = 1'b1;
+    instruction       = make_max(24'h000300, 24'h000400);
+    max_exec_ok       = 1'b0;
+    cap_max_pool_exec = FUNCT_NOOP; // seed wrong; must become MAX
+
+    @(posedge clk); #1; controller_start = 1'b1;
+    @(posedge clk); #1; controller_start = 1'b0;
+    @(posedge clk); #1; // CLEAR
+    @(posedge clk); #1; // EXEC_VP_START — sample execute decode
+    if ((vect_source_a === VSRC_MEM_WIN) && (vect_dest_a === VDST_POOL) &&
+        (mem_source_address_a === 24'h000300))
+        max_exec_ok = 1'b1;
+    cap_max_pool_exec = pooler_funct;
+    vector_idle_a = 1'b1;
+    while (!controller_idle) @(posedge clk); #1;
+    check((max_exec_ok === 1'b1) && (cap_max_pool_exec === FUNCT_MAX), 16);
+
+    // -----------------------------------------------------------------------
+    // Test 17 (v0.6): max writeback decode — after streaming to the Pooler,
+    // VP_A copies the pooled results from the vector buffer (VSRC_VEC_BUF) to
+    // dest (VDST_MEM) with length = chans*outh*outw. A preceding window sets
+    // chans=2, outh=3, outw=4 -> length 24.
+    // -----------------------------------------------------------------------
+    do_reset;
+    vector_idle_a = 1'b1; vector_idle_b = 1'b1; systolic_array_idle = 1'b1;
+    send_instruction(make_window(12'd6, 12'd6, 12'd2, 12'd3, 12'd4,
+                                 4'd2, 4'd2, 4'd2, 4'd2, 4'd0, 4'd0));
+
+    vector_idle_a = 1'b0; vector_idle_b = 1'b1; systolic_array_idle = 1'b1;
+    instruction    = make_max(24'h000300, 24'h000400);
+    max_wb_ok      = 1'b0;
+    cap_max_wb_len = 16'd0;
+
+    @(posedge clk); #1; controller_start = 1'b1;
+    @(posedge clk); #1; controller_start = 1'b0;
+    // Sweep the whole instruction; capture the writeback decode.
+    while (!controller_idle)
+    begin
+        @(posedge clk); #1;
+        if ((vect_source_a === VSRC_VEC_BUF) && (vect_dest_a === VDST_MEM) &&
+            (mem_dest_address_a === 24'h000400))
+        begin
+            max_wb_ok      = 1'b1;
+            cap_max_wb_len = length_a;
+        end
+        vector_idle_a = 1'b1; // let it proceed through both phases
+    end
+    check((max_wb_ok === 1'b1) && (cap_max_wb_len === 16'd24), 17);
 
     // -----------------------------------------------------------------------
     // Summary

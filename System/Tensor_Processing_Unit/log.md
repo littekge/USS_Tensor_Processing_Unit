@@ -2,6 +2,47 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-16 — v0.6 Step 2: Controller window descriptors + windowed decode
+
+- **Context:** v0.6 Step 2 adds the window descriptor registers and windowed-
+  instruction handling to `TPU/CONTROL/Controller.v` per the Hardware Spec v0.6.0
+  (Controller Window Descriptor Registers) and ISA v0.6 (W/A-format field
+  positions). RTL + `tests/TB_Step3_Controller.v` updated. No new `.v` files; no
+  debug sections touched.
+- **`TPU/CONTROL/Controller.v`:**
+  - Opcodes added: `OP_MAX = 1100` (POOL), `OP_IM2COL = 1101` (SHAPE),
+    `OP_WINDOW = 1110` (WINCONFIG). Source/dest encodings added:
+    `VSRC_MEM_WIN = 3'd3` (windowed gather), `VDST_POOL = 3'd6` (Pooler input).
+    Function code `FUNCT_MAX = 3'd0`.
+  - Eleven window descriptor registers (`chans`, `inh`, `inw`, `outh`, `outw`
+    [12-bit]; `winh`, `winw`, `strh`, `strw`, `padh`, `padw` [4-bit]), latched
+    from the W-format fields of a `window` instruction in the CLEAR state (same
+    timing as `stride`'s ld1/ld2 latch, from `i_instruction`), retained until the
+    next `window`; cleared to 0 on `trst`.
+  - Generalized the register-configuration decode path: CLEAR returns to IDLE
+    (no execute/writeback) for both `stride` (LDCONFIG) and `window` (WINCONFIG).
+  - `im2col`/`max` decode added to the VP control block: both set VP_A source
+    `VSRC_MEM_WIN` from src1 (bits 123-100). `im2col` dest `VDST_MEM` at rd
+    (bits 99-76); `max` execute dest `VDST_POOL`, writeback `VSRC_VEC_BUF` ->
+    `VDST_MEM` at rd with `length = chans*outh*outw`. `EXEC_VP_WAIT` routes
+    `im2col` straight to IDLE (writes to memory during Execute — skips Writeback).
+    `single_vp_op` (relu/im2col/max) gates `all_exec_vps_done` to VP_A only.
+  - Outputs added: `o_pooler_funct` (MAX during a `max`, NO-OP otherwise) and the
+    eleven `o_win_*` descriptor outputs (mirror the persistent registers).
+- **Tests — `tests/TB_Step3_Controller.v` (13 -> 17):** new `make_window`/
+  `make_im2col`/`make_max` builders (W/A-format), new port connections, a
+  `vector_start_a` pulse counter. Test 14 = WINCONFIG latches all eleven
+  registers, no vector_start. Test 15 = im2col routes VSRC_MEM_WIN->VDST_MEM at
+  dest, pooler NO-OP, skips writeback (exactly one vector_start_a pulse, VP_A
+  never reads SA/vector-buffer). Test 16 = max execute VSRC_MEM_WIN->VDST_POOL
+  from src1, pooler MAX. Test 17 = max writeback VSRC_VEC_BUF->VDST_MEM at dest,
+  length = chans*outh*outw (24 for the preceding window).
+- **`tests/run_regression.sh`:** unchanged for Step 3 (its RTL dependency list is
+  still just `Controller.v` + the testbench).
+- **Verification: PENDING** (Linux laptop — no `vsim.exe`; `run_regression.sh`
+  self-gates). On the Questa PC run `TB_Step3_Controller` (expect 17/17).
+  `main.md` v0.6 Step 2 left UNMARKED until the regression passes there.
+
 ## 2026-07-16 — v0.6 Step 1: Pooler module (streaming max-pooling reducer)
 
 - **Context:** v0.6 Step 1 implements `TPU/PROCESSING/Pooler.v`, the streaming

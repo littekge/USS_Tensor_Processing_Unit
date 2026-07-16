@@ -70,7 +70,25 @@ module Controller (
     output wire        o_systolic_array_start,
     // Pulsed HIGH for one cycle after writeback to zero the SA accumulators.
     // Asserted only when funct3 selects clearing (mult, not multip).
-    output wire        o_accumulator_clear
+    output wire        o_accumulator_clear,
+
+    // Pooler function select (max during a max instruction, NO-OP otherwise)
+    output wire [2:0]  o_pooler_funct,
+
+    // Window descriptor registers (WINCONFIG). Supplied to the vector
+    // processors for the windowed instructions (im2col / max); persist until
+    // the next window instruction or trst.
+    output wire [11:0] o_win_chans,
+    output wire [11:0] o_win_inh,
+    output wire [11:0] o_win_inw,
+    output wire [11:0] o_win_outh,
+    output wire [11:0] o_win_outw,
+    output wire [3:0]  o_win_winh,
+    output wire [3:0]  o_win_winw,
+    output wire [3:0]  o_win_strh,
+    output wire [3:0]  o_win_strw,
+    output wire [3:0]  o_win_padh,
+    output wire [3:0]  o_win_padw
 
     // ---------- DEBUG ---------- //
     // ---------- END DEBUG ---------- //
@@ -98,7 +116,10 @@ parameter [3:0]
     OP_MULT   = 4'b1000,   // shared by mult / multip, distinguished by funct3
     OP_RELU   = 4'b1001,
     OP_ADD    = 4'b1010,
-    OP_STRIDE = 4'b1111;
+    OP_MAX    = 4'b1100,   // POOL    (max pooling)
+    OP_IM2COL = 4'b1101,   // SHAPE   (im2col gather)
+    OP_WINDOW = 4'b1110,   // WINCONFIG (load window descriptor)
+    OP_STRIDE = 4'b1111;   // LDCONFIG  (load leading dimensions)
 
 // funct3 sub-codes for the MUL opcode (per ISA Instruction Set Listing)
 parameter [2:0]
@@ -109,7 +130,8 @@ parameter [2:0]
 parameter [2:0]
     VSRC_MEM     = 3'd0,   // Device memory
     VSRC_SA_OUT  = 3'd1,   // Systolic array output registers
-    VSRC_VEC_BUF = 3'd2;   // Vector buffer output
+    VSRC_VEC_BUF = 3'd2,   // Vector buffer output
+    VSRC_MEM_WIN = 3'd3;   // Device memory, windowed gather (im2col / max)
 
 // Vector destination encoding passed to Vector_Processor
 parameter [2:0]
@@ -118,12 +140,14 @@ parameter [2:0]
     VDST_SA_B  = 3'd2,   // Systolic array left input buffers
     VDST_ACT   = 3'd3,   // Activator input
     VDST_ALU_A = 3'd4,   // ALU input A
-    VDST_ALU_B = 3'd5;   // ALU input B
+    VDST_ALU_B = 3'd5,   // ALU input B
+    VDST_POOL  = 3'd6;   // Pooler input
 
-// Function codes forwarded to Activator and ALU (from ISA funct3 field)
+// Function codes forwarded to Activator, ALU, and Pooler (ISA funct3 field)
 parameter [2:0]
     FUNCT_RELU = 3'd0,   // ReLU activation (funct3=0x0 per ISA)
     FUNCT_ADD  = 3'd0,   // Element-wise add (funct3=0x0 per ISA)
+    FUNCT_MAX  = 3'd0,   // Max pooling (funct3=0x0 per ISA)
     FUNCT_NOOP = 3'd7;   // No operation (unused funct3 encoding)
 
 // ---------- END PARAMETERS ---------- //
@@ -151,6 +175,35 @@ reg [23:0] ld2;
 wire [23:0] cfg_im1 = i_instruction[123:100];
 wire [23:0] cfg_im2 = i_instruction[99:76];
 
+// Window descriptor registers (ISA v0.6). Loaded by the window (WINCONFIG)
+// instruction and held until the next window or trst. No default value; a
+// window must be issued before any windowed instruction (im2col / max).
+reg [11:0] chans, inh, inw, outh, outw;
+reg [3:0]  winh, winw, strh, strw, padh, padw;
+
+// WINCONFIG (W-format) field aliases, decoded from i_instruction directly
+// because (like stride) the descriptor is latched at the posedge that exits
+// CLEAR, when instr_latch still holds the previous instruction.
+wire [11:0] win_inh   = i_instruction[123:112];
+wire [11:0] win_inw   = i_instruction[111:100];
+wire [11:0] win_chans = i_instruction[99:88];
+wire [11:0] win_outh  = i_instruction[87:76];
+wire [11:0] win_outw  = i_instruction[75:64];
+wire [3:0]  win_winh  = i_instruction[63:60];
+wire [3:0]  win_winw  = i_instruction[59:56];
+wire [3:0]  win_strh  = i_instruction[55:52];
+wire [3:0]  win_strw  = i_instruction[51:48];
+wire [3:0]  win_padh  = i_instruction[47:44];
+wire [3:0]  win_padw  = i_instruction[43:40];
+
+// SHAPE / POOL (A-format) field aliases for im2col / max: src1 = instr_rs1
+// (bits 123-100, shared alias), dest at bits 99-76.
+wire [23:0] shape_rd = instr_latch[99:76];
+
+// Writeback element count for max: chans * outh * outw pooled results are
+// streamed to the vector buffer during Execute and copied to dest in Writeback.
+wire [15:0] max_out_len = chans * outh * outw;
+
 // MUL-format field aliases (v0.4)
 wire [3:0]  mul_sz11 = instr_latch[99:96];   // rows of matrix 1
 wire [3:0]  mul_sz12 = instr_latch[95:92];   // cols of matrix 1
@@ -175,9 +228,12 @@ wire [15:0] elem_length = {8'd0, elem_sz1} * {8'd0, elem_sz2};
 
 // True when all execute-phase vector processors required by the current
 // instruction have asserted vector_idle HIGH.
-// OP_RELU only uses VP_A; OP_MULT and OP_ADD use both VP_A and VP_B.
+// OP_RELU, OP_IM2COL, and OP_MAX only use VP_A; OP_MULT and OP_ADD use both.
+wire single_vp_op = (instr_opcode == OP_RELU)   ||
+                    (instr_opcode == OP_IM2COL) ||
+                    (instr_opcode == OP_MAX);
 wire all_exec_vps_done;
-assign all_exec_vps_done = (instr_opcode == OP_RELU) ?
+assign all_exec_vps_done = single_vp_op ?
                             i_vector_idle_a :
                             (i_vector_idle_a & i_vector_idle_b);
 
@@ -203,23 +259,30 @@ begin
             // posedge that exits CLEAR, so it holds the previous instruction
             // here. The Feeder holds i_instruction stable during controller
             // processing.
-            // A stride instruction only latches ld1/ld2 (done in the execution
-            // block) and has no Execute or Writeback phase, so return to IDLE.
-            if (i_instruction[127:124] == OP_STRIDE)
+            // A register-configuration instruction (stride/window) only latches
+            // its fields (done in the execution block) and has no Execute or
+            // Writeback phase, so it returns straight to IDLE.
+            if ((i_instruction[127:124] == OP_STRIDE) ||
+                (i_instruction[127:124] == OP_WINDOW))
                 NS = IDLE;
-            else if ((i_instruction[127:124] == OP_MULT) ||
-                     (i_instruction[127:124] == OP_RELU) ||
-                     (i_instruction[127:124] == OP_ADD))
+            else if ((i_instruction[127:124] == OP_MULT)   ||
+                     (i_instruction[127:124] == OP_RELU)   ||
+                     (i_instruction[127:124] == OP_ADD)    ||
+                     (i_instruction[127:124] == OP_IM2COL) ||
+                     (i_instruction[127:124] == OP_MAX))
                 NS = EXEC_VP_START;
             else
                 NS = DECODE_ERROR;
         EXEC_VP_START:
             NS = EXEC_VP_WAIT;
         EXEC_VP_WAIT:
-            // Route to systolic array only for multiply; otherwise go directly
-            // to writeback phase
+            // Multiply routes through the systolic array; im2col writes its
+            // result directly to memory during Execute so it skips Writeback and
+            // returns to IDLE; all others (relu / add / max) go to Writeback.
             NS = all_exec_vps_done ?
-                 ((instr_opcode == OP_MULT) ? SA_START : WB_VP_START) :
+                 ((instr_opcode == OP_MULT)   ? SA_START :
+                  (instr_opcode == OP_IM2COL) ? IDLE     :
+                  WB_VP_START) :
                  EXEC_VP_WAIT;
         SA_START:
             NS = SA_WAIT;
@@ -253,6 +316,20 @@ begin
         instr_latch <= 128'd0;
         ld1         <= 24'd0;
         ld2         <= 24'd0;
+        // Window descriptor has no default value per the ISA, but is cleared on
+        // trst so a windowed instruction issued without a preceding window sees
+        // a defined (zero) descriptor rather than stale/undefined values.
+        chans       <= 12'd0;
+        inh         <= 12'd0;
+        inw         <= 12'd0;
+        outh        <= 12'd0;
+        outw        <= 12'd0;
+        winh        <= 4'd0;
+        winw        <= 4'd0;
+        strh        <= 4'd0;
+        strw        <= 4'd0;
+        padh        <= 4'd0;
+        padw        <= 4'd0;
     end
     else
     begin
@@ -260,12 +337,26 @@ begin
             CLEAR:
             begin
                 instr_latch <= i_instruction;
-                // Latch the leading dimensions for a stride instruction. Uses
-                // i_instruction (same timing as the instr_latch load).
+                // Register-configuration instructions latch their fields here.
+                // Uses i_instruction (same timing as the instr_latch load).
                 if (i_instruction[127:124] == OP_STRIDE)
                 begin
                     ld1 <= cfg_im1;
                     ld2 <= cfg_im2;
+                end
+                if (i_instruction[127:124] == OP_WINDOW)
+                begin
+                    chans <= win_chans;
+                    inh   <= win_inh;
+                    inw   <= win_inw;
+                    outh  <= win_outh;
+                    outw  <= win_outw;
+                    winh  <= win_winh;
+                    winw  <= win_winw;
+                    strh  <= win_strh;
+                    strw  <= win_strw;
+                    padh  <= win_padh;
+                    padw  <= win_padw;
                 end
             end
             default:;
@@ -304,6 +395,23 @@ assign o_activator_funct = (instr_opcode == OP_RELU) ? FUNCT_RELU : FUNCT_NOOP;
 
 // ALU function: add during add instruction, no-op otherwise
 assign o_alu_funct = (instr_opcode == OP_ADD) ? FUNCT_ADD : FUNCT_NOOP;
+
+// Pooler function: max during a max instruction, no-op otherwise
+assign o_pooler_funct = (instr_opcode == OP_MAX) ? FUNCT_MAX : FUNCT_NOOP;
+
+// Window descriptor outputs mirror the persistent descriptor registers so the
+// vector processors always see the descriptor set by the most recent window.
+assign o_win_chans = chans;
+assign o_win_inh   = inh;
+assign o_win_inw   = inw;
+assign o_win_outh  = outh;
+assign o_win_outw  = outw;
+assign o_win_winh  = winh;
+assign o_win_winw  = winw;
+assign o_win_strh  = strh;
+assign o_win_strw  = strw;
+assign o_win_padh  = padh;
+assign o_win_padw  = padw;
 
 // Combinational decode of Vector_Processor control signals.
 // Signals change between execute phase (EXEC_VP_START / EXEC_VP_WAIT) and
@@ -410,6 +518,40 @@ begin
                 o_vect_dest_a        = VDST_MEM;
                 o_mem_dest_address_a = elem_rd;
                 o_length_a           = elem_length;
+            end
+        end
+
+        OP_IM2COL:
+        begin
+            // im2col has only an Execute phase: VP_A gathers the windowed
+            // feature map at src1 and writes the dense im2col matrix directly to
+            // dest. The window descriptor (routed via the o_win_* outputs) sets
+            // the element count and iteration order, so length/dim are unused.
+            o_vect_source_a        = VSRC_MEM_WIN;
+            o_vect_dest_a          = VDST_MEM;
+            o_mem_source_address_a = instr_rs1;
+            o_mem_dest_address_a   = shape_rd;
+        end
+
+        OP_MAX:
+        begin
+            if (S == EXEC_VP_START || S == EXEC_VP_WAIT)
+            begin
+                // Execute: VP_A streams each channel's window to the Pooler,
+                // asserting window_end on each window's final element. The
+                // Pooler writes one pooled value per window to the vector buffer.
+                o_vect_source_a        = VSRC_MEM_WIN;
+                o_vect_dest_a          = VDST_POOL;
+                o_mem_source_address_a = instr_rs1;
+            end
+            else
+            begin
+                // Writeback: VP_A copies the chans*outh*outw pooled results from
+                // the vector buffer to dest (linear, like relu/add writeback).
+                o_vect_source_a      = VSRC_VEC_BUF;
+                o_vect_dest_a        = VDST_MEM;
+                o_mem_dest_address_a = shape_rd;
+                o_length_a           = max_out_len;
             end
         end
 
