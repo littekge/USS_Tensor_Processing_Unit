@@ -213,6 +213,50 @@ def test_assemble_reuses_freed_intermediate_regions():
     assert _bits(instructions[3], 59, 36) == 1  # %4 final output -> 0x1
 
 
+def test_assemble_allocates_windowed_intermediates_in_main_memory_with_reuse():
+    # A conv (window+im2col+mult) -> relu -> pool (window+max) -> relu chain.
+    # The im2col column scratch and the CHW pool output must live in main data
+    # memory (past the weight region), freed regions must be reused, and the final
+    # output must be pinned to 0x1.
+    tpu_text = (
+        "module @m {\n"
+        "  tpu.func @main {\n"
+        "    tpu.window chans = 1, inh = 4, inw = 4, outh = 2, outw = 2, winh = 3, winw = 3, strh = 1, strw = 1, padh = 0, padw = 0\n"
+        "    %col = tpu.im2col %in -> 4x4\n"
+        "    %0 = tpu.mult %w : 2x4, %col : 4x4 -> 2x4 {M0 = 128, n = 8}\n"
+        "    %1 = tpu.relu %0 : 8 -> 8\n"
+        "    tpu.window chans = 2, inh = 2, inw = 2, outh = 2, outw = 2, winh = 1, winw = 1, strh = 1, strw = 1, padh = 0, padw = 0\n"
+        "    %2 = tpu.max %1 -> 2x2x2\n"
+        "    %3 = tpu.relu %2 : 8 -> 8\n"
+        "    tpu.return %3 : 2x2x2\n"
+        "    tpu.end\n"
+        "  }\n"
+        "}\n"
+    )
+    weight_map = {
+        "%w": {"kind": "weight", "address": 2, "num_words": 8, "M0": 128, "n": 8},
+        "%in": {"kind": "input", "address": 1, "num_words": 16},
+    }
+    instructions = assemble_program(tpu_text, weight_map)
+
+    base = 10  # first_free_address = weight end (2 + 8)
+
+    def rd_a(instr):  # A-format rd (im2col/max/relu) at bits 99-76
+        return _bits(instr, 99, 76)
+
+    # window(1101? no): order -> [window, im2col, mult, relu, window, max, relu, end]
+    im2col, mult, relu1, maxp, relu2 = (
+        instructions[1], instructions[2], instructions[3], instructions[5], instructions[6],
+    )
+    assert _bits(im2col, 127, 124) == OPCODE_IM2COL
+    assert rd_a(im2col) == base  # im2col [4x4] scratch in main memory
+    assert _bits(mult, 59, 36) == base + 16  # %0 conv output past the scratch
+    assert rd_a(relu1) == base  # relu reuses the freed im2col scratch region
+    assert _bits(maxp, 127, 124) == OPCODE_MAX
+    assert rd_a(maxp) >= base and rd_a(maxp) != 1  # CHW pool output in main memory
+    assert rd_a(relu2) == 1  # final output pinned to 0x1
+
+
 def test_encode_multip_shares_mult_layout_differs_in_funct3():
     m = encode_mult(rs1=5, lhs=(8, 8), rs2=9, rhs=(8, 8), rd=7, M0=128, n=8)
     mp = encode_mult_in_place(rs1=5, lhs=(8, 8), rs2=9, rhs=(8, 8), rd=7, M0=128, n=8)

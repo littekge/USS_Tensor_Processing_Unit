@@ -2,6 +2,23 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-16 — v0.6 Step 5: feature-map & im2col memory allocation
+
+- No new allocation code was needed: the Step 2 generalization of
+  `_result_words`/`_operand_names` to any-order tensors plus the existing
+  `IntermediateAllocator` (free-list with reuse) already place the im2col `[K, N]`
+  column scratch and the 3-D CHW conv/pool outputs in main data memory (0x2+, i.e.
+  past the weight region), reuse freed regions, and pin the network output to 0x1.
+  Confirmed on the real LeNet-5 run: im2col scratch and CHW intermediates all land
+  past the weight region (first free = 60076), the conv1 ReLU output reuses the
+  freed im2col scratch, and the final output base is 0x1. Conv/pool outputs are
+  CHW-planar by construction (conv → `[out_ch, outh*outw]`; pool → `[C, oh, ow]`),
+  so each feeds the next window op and the FC flatten with no reshape.
+- Files modified: `test/test_assembler.py`, `main.md`, `log.md`.
+- Tests: added an assemble-level test driving a conv→relu→pool→relu dialect chain,
+  asserting im2col scratch + CHW pool output in main memory, freed-region reuse,
+  and the final output at 0x1. 78 pass, 1 pre-existing fail (Bigger_NN artifact).
+
 ## 2026-07-16 — v0.6 Step 4: conv/pool legalization + ReLU + hardening
 
 - Rewrote `nn_assembler/MLIR/legalize.py` to lower the LeNet-5 subset while staying

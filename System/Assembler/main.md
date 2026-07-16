@@ -624,7 +624,7 @@ Update `nn_assembler/MLIR/legalize.py` (and `Process_MLIR.py`):
   exist but the legalizer never emits it; LeNet needs it).
 - Harden: assert on any unhandled op instead of silently dropping.
 
-#### Step 5 — Feature-Map & im2col Memory Allocation
+#### Step 5 — Feature-Map & im2col Memory Allocation — ✅ Complete (2026-07-16)
 
 Update `Process_Weights.py` / `Assembler.py` allocation:
 
