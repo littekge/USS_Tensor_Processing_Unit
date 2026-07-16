@@ -81,9 +81,9 @@ array outputs, saturating to the memory datatype (`M0`/`n` mantissa width B=8)
     - **Width:** 8 bits
     - **Depth:** 256 words
 
-## Current State — Built and Verified Through v0.5.1
+## Current State — Built and Verified Through v0.6.0
 
-The TPU is implemented and Questa-verified through **v0.5.1**; the per-version
+The TPU is implemented and Questa-verified through **v0.6.0**; the per-version
 build history is the Build Plan below, with detailed results in `log.md`. Working
 capabilities:
 
@@ -100,9 +100,12 @@ sub-blocks, contraction accumulated in-array).
 `SPI_Slave`; the Programmer message-protocol FSM (device and external modes); and
 the Feeder + Controller fetch–decode–execute–writeback cycle.
 
-**In progress — v0.6 (Convolution and Pooling):** ISA and Hardware Specification
-finalized (both v0.6.0); RTL build plan below; user-provided `Pooler.v` skeleton
-created. No v0.6 RTL implemented yet.
+**v0.6 (Convolution and Pooling):** on-device `im2col` windowed gather + tiled
+matmul for convolution, and per-channel max-pooling via the `Pooler` (streaming
+reducer), both configured by the `window` descriptor — implemented and
+Questa-verified. Remaining before a live LeNet-5 image→VGA demo: the external-mode
+INPUT-header (0x49) `comms` code to feed a runtime 28×28 input, then hardware
+bring-up.
 
 ## Architecture
 

@@ -89,11 +89,12 @@ has 4 stages:
     2. Append START and STOP function codes to create a full transmission.
     3. Save the completed binary to `/out/TRANSMISSION.bin`.
 
-## Current State — Built Through v0.5
+## Current State — Built Through v0.6
 
-The assembler pipeline is **complete through v0.5**: the full flow runs
-end-to-end and produces `/out/TRANSMISSION.bin`. Per-version history is the Build
-Plan below, with details in `log.md`.
+The assembler pipeline is **complete through v0.6**: the full flow runs
+end-to-end and produces `/out/TRANSMISSION.bin`, and LeNet-5 (convolution +
+max-pool, lowered via `window`/`im2col`/`max`) is now a full end-to-end target.
+Per-version history is the Build Plan below, with details in `log.md`.
 
 The project is an installable Python package named **`nn_assembler`** (the
 `nn_assembler/` directory is the package). After a one-time editable install
@@ -128,13 +129,14 @@ weights/biases contiguous. Emits `/tmp/MEM.bin` (3-byte MEM addresses, chunked
 past 65535 words) and `/tmp/weight_map.json` (weight entries carry `M0`/`n`).
 - **MLIR lowering** (`/nn_assembler/MLIR/`): the custom *Functional TPU* dialect
 (Python — see `MLIR/README.md`), StableHLO→dialect legalization (annotates `mult`
-with `M0`/`n`; folds shape-only ops), bias removal, and the v0.5
+with `M0`/`n`; folds shape-only ops; v0.6 lowers `convolution`→`window`+`im2col`+`mult`,
+`reduce_window`→`window`+`max`, and emits `relu`), bias removal, and the v0.5
 matmul-partitioning pass (large matmuls → one `stride` + tiled `mult`/`multip`
 over array-sized sub-blocks). Each pass writes an inspectable `/tmp/*.tpu.mlir`.
 - **Assembly + serialization** (`Assembler.py`, `Serializer.py`, `Protocol.py`):
-24-bit instruction encoding (`mult`/`multip`/`stride`/`add`; a `relu` encoder
-exists but the legalizer does not yet emit it — addressed in v0.6), `M0`/`n` in
-each MUL → `/tmp/PROGRAM.bin`, framed with `MEM.bin` into
+24-bit instruction encoding (`mult`/`multip`/`stride`/`add`/`relu` plus the v0.6
+`window`/`im2col`/`max`), `M0`/`n` in each MUL → `/tmp/PROGRAM.bin`, framed with
+`MEM.bin` into
 `/out/TRANSMISSION.bin` via FLASH/STOP.
 - **Tests:** a pytest suite in `/test/` covering quantization, dyadic
 decomposition, weight mapping/transpose, the dialect, legalization, bias removal,
