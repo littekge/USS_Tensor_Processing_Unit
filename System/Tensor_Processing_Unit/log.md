@@ -2,6 +2,17 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-16 — v0.6 Verification: Questa Regression PASS
+
+- **Verification: PASS.** The full regression was run on the Questa PC and passed
+  with no errors, promoting the v0.6 build (Steps 1-5) from PENDING to verified.
+- v0.6 testbenches pass at the counts documented in the Step 5 entry below:
+  `TB_Pooler` 9/9, `TB_Step3_Controller` 17/17, `TB_Step4_VectorProcessor` 19/19,
+  `TB_Step8_FullSystem` 15/15; the unchanged Step1/2/5/6/7 and SPI benches pass
+  with no regressions.
+- `main.md` v0.6 Steps 1-5 marked complete.
+- Verification-only entry — no RTL changes.
+
 ## 2026-07-16 — v0.6 Step 5: Regression runner synced; full v0.6 verification PENDING
 
 - **Context:** v0.6 Step 5 — sync `tests/run_regression.sh` with the v0.6

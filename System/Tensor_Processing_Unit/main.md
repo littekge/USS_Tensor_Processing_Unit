@@ -594,7 +594,7 @@ agents may not create new `.v` files. `Pooler.v` lives in `TPU/PROCESSING/`
 alongside `Activator.v` and `ALU.v`. Agents implement the module logic and all
 inter-module wiring only.
 
-#### Step 1 — Pooler Module
+#### Step 1 — Pooler Module — ✅ Complete (2026-07-16)
 
 Implement `Pooler.v` (user-provided skeleton) as a streaming reducer.
 
@@ -612,7 +612,7 @@ Implement `Pooler.v` (user-provided skeleton) as a streaming reducer.
   each `window_end`, min-fill values never winning, NO-OP write suppression
   (follows the `TB_SPI_Slave.v` convention for a module added after v0.1).
 
-#### Step 2 — Controller: Window Descriptor Registers + Windowed Decode
+#### Step 2 — Controller: Window Descriptor Registers + Windowed Decode — ✅ Complete (2026-07-16)
 
 Update `Controller.v`.
 
@@ -633,7 +633,7 @@ Update `Controller.v`.
   `im2col`/`max` decode, descriptor routing, and destination select; Pooler
   function/clear asserted; `im2col` skips writeback.
 
-#### Step 3 — Vector_Processor: Windowed Addressing
+#### Step 3 — Vector_Processor: Windowed Addressing — ✅ Complete (2026-07-16)
 
 Update `Vector_Processor.v`.
 
@@ -654,7 +654,7 @@ Update `Vector_Processor.v`.
   descriptor-derived counts; confirm the v0.5 contiguous/strided paths are
   unaffected.
 
-#### Step 4 — TPU Top-Level Integration
+#### Step 4 — TPU Top-Level Integration — ✅ Complete (2026-07-16)
 
 Update `TPU.v`.
 
@@ -670,7 +670,7 @@ Update `TPU.v`.
   `window` + `im2col` and feeds the result to a tiled matmul (a convolution), and
   (b) issues `window` + `max` (a pooling layer), each checked against a reference.
 
-#### Step 5 — Regression
+#### Step 5 — Regression — ✅ Complete (2026-07-16)
 
 - Update `tests/run_regression.sh` for the new/changed testbenches (`TB_Pooler`,
   `TB_Step3_Controller`, `TB_Step4_VectorProcessor`, `TB_Step8_FullSystem`).

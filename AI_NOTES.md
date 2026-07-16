@@ -16,17 +16,16 @@
 - **v0.6 IMPLEMENTED and merged to `v0.6-workspace`** (fan-out of two isolated
   worktrees, both merged clean — sections are path-disjoint):
   - **TPU RTL** — 5 steps (Pooler, windowed Vector_Processor, Controller
-    descriptors/decode, TPU integration). **Verification PENDING** — written on
-    the Linux laptop (no Questa); `main.md` steps UNMARKED until the regression
-    passes on the Questa PC.
+    descriptors/decode, TPU integration). **Verified — Questa regression PASS
+    (2026-07-16)**; `main.md` Steps 1-5 marked complete.
   - **Assembler** — 6 steps (dialect/encoders/conv-weights/legalization/
     allocation/E2E). Verified: 79 pass / 1 pre-existing `Bigger_NN` fail. LeNet-5
     E2E emits a framed `TRANSMISSION.bin`.
   - LeNet-5 artifact re-exported with per-layer `__M__`/`__scales__` (conv+fc).
-- **Next:** (1) run the Questa regression on the Questa PC → verify RTL, mark
-  `main.md` Steps 1-5, promote PENDING→done; (2) implement the comms INPUT-header
-  (0x49) code to feed a live 28×28 input in external mode — the remaining gap for
-  a full image→VGA hardware demo; (3) hardware bring-up.
+- **Next:** (1) implement the comms INPUT-header (0x49) code to feed a live 28×28
+  input in external mode — the remaining gap for a full image→VGA hardware demo;
+  (2) hardware bring-up; (3) merge `v0.6-workspace` → `main` (now that RTL is
+  verified).
 
 ## v0.6 — Convolution and Pooling (specs + implementation merged to v0.6-workspace)
 
