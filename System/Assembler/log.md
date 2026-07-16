@@ -2,6 +2,23 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-16 — v0.6 Step 1: dialect window / im2col / max ops
+
+- Added three dialect ops to `nn_assembler/MLIR/dialect.py`, each 1:1 with an ISA
+  v0.6 instruction: `WindowOp` (11 window-descriptor fields, WINCONFIG), `Im2colOp`
+  (src Operand + `[K, N]` out_shape, SHAPE), `MaxPoolOp` (src Operand + CHW
+  out_shape, POOL). Added serialize branches and parse regexes (`_WINDOW_RE`,
+  `_IM2COL_RE`, `_MAX_RE`) so each round-trips through the textual `.tpu.mlir`.
+  Textual forms: `tpu.window chans = .., inh = .., ...`; `%r = tpu.im2col %src ->
+  KxN`; `%r = tpu.max %src -> CxOHxOW`.
+- Files modified: `nn_assembler/MLIR/dialect.py`, `test/test_dialect_and_legalize.py`,
+  `main.md`, `log.md`.
+- Tests: added window/im2col/max serialize-parse round-trip tests. 66 pass, 1 fail
+  (`test_full_pipeline_bigger_nn_real`) — the failure is pre-existing (Bigger_NN
+  artifact requant-metadata mismatch, M0/n != (172,19)), independent of v0.6.
+- Run pytest with `PYTHONPATH` pointed at this worktree (the shared venv editable
+  install resolves `nn_assembler` to the main working copy).
+
 ## 2026-07-15 — Docs: correct bias-removal rationale
 
 - Fixed the `MLIR/bias_removal.py` module docstring, which wrongly stated biases

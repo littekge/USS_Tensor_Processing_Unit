@@ -6,12 +6,16 @@ from nn_assembler.MLIR.bias_removal import remove_bias_adds
 from nn_assembler.MLIR.dialect import (
     AddOp,
     EndOp,
+    Im2colOp,
+    MaxPoolOp,
     MultipOp,
     MultOp,
     Operand,
     Program,
+    ReluOp,
     ReturnOp,
     StrideOp,
+    WindowOp,
     parse_program,
     serialize,
 )
@@ -204,6 +208,51 @@ def test_untiled_mult_keeps_legacy_form():
     text = serialize(program)
     assert "{M0 = 192, n = 8}" in text
     assert "lo =" not in text and "cap =" not in text
+
+
+def test_window_op_roundtrip():
+    program = Program(name="m")
+    program.ops.append(
+        WindowOp(chans=6, inh=26, inw=26, outh=13, outw=13, winh=2, winw=2, strh=2, strw=2, padh=0, padw=0)
+    )
+    program.ops.append(EndOp())
+
+    text = serialize(program)
+    assert "tpu.window chans = 6, inh = 26, inw = 26" in text
+    reparsed = parse_program(text)
+    win = reparsed.ops[0]
+    assert isinstance(win, WindowOp)
+    assert (win.chans, win.inh, win.inw, win.outh, win.outw) == (6, 26, 26, 13, 13)
+    assert (win.winh, win.winw, win.strh, win.strw, win.padh, win.padw) == (2, 2, 2, 2, 0, 0)
+    assert serialize(reparsed) == text
+
+
+def test_im2col_op_roundtrip():
+    program = Program(name="m")
+    program.ops.append(Im2colOp("%col", Operand("%0", []), [9, 676]))
+    program.ops.append(EndOp())
+
+    text = serialize(program)
+    assert "%col = tpu.im2col %0 -> 9x676" in text
+    reparsed = parse_program(text)
+    op = reparsed.ops[0]
+    assert isinstance(op, Im2colOp)
+    assert op.result == "%col" and op.src.name == "%0" and op.out_shape == [9, 676]
+    assert serialize(reparsed) == text
+
+
+def test_max_op_roundtrip():
+    program = Program(name="m")
+    program.ops.append(MaxPoolOp("%p", Operand("%4", []), [6, 13, 13]))
+    program.ops.append(EndOp())
+
+    text = serialize(program)
+    assert "%p = tpu.max %4 -> 6x13x13" in text
+    reparsed = parse_program(text)
+    op = reparsed.ops[0]
+    assert isinstance(op, MaxPoolOp)
+    assert op.result == "%p" and op.src.name == "%4" and op.out_shape == [6, 13, 13]
+    assert serialize(reparsed) == text
 
 
 def test_bias_removal_preserves_non_bias_adds():

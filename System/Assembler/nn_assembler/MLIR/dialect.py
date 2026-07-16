@@ -109,6 +109,59 @@ class StrideOp:
 
 
 @dataclass
+class WindowOp:
+    """Set the window descriptor -> ISA `window` (WINCONFIG / W-Format).
+
+    Holds the 11 windowed-instruction parameters (feature-map channels/height/
+    width, output height/width, window height/width, strides, and padding). It
+    persists for every subsequent windowed instruction (`im2col`, `max`) until the
+    next `window`. The legalizer emits one only when the descriptor differs from
+    the currently live one (mirrors the v0.5 stale-`stride` handling).
+    """
+
+    chans: int
+    inh: int
+    inw: int
+    outh: int
+    outw: int
+    winh: int
+    winw: int
+    strh: int
+    strw: int
+    padh: int
+    padw: int
+
+
+@dataclass
+class Im2colOp:
+    """Feature map -> column matrix -> ISA `im2col` (SHAPE / A-Format).
+
+    Expands the `chans x inh x inw` feature map at `src` into the dense
+    `(chans*winh*winw) x (outh*outw)` column matrix at `result`, using the live
+    window descriptor. `out_shape` is that `[K, N]` column matrix (K channel-major
+    per the ISA), used by the assembler to size the scratch allocation.
+    """
+
+    result: str
+    src: Operand
+    out_shape: list[int]
+
+
+@dataclass
+class MaxPoolOp:
+    """Windowed max pooling -> ISA `max` (POOL / A-Format).
+
+    Reduces the `chans x inh x inw` feature map at `src` to the pooled
+    `chans x outh x outw` tensor at `result` using the live window descriptor
+    (per-channel max over each window). `out_shape` is the pooled CHW tensor.
+    """
+
+    result: str
+    src: Operand
+    out_shape: list[int]
+
+
+@dataclass
 class AddOp:
     """Elementwise add -> ISA `add` (ELEM format)."""
 
@@ -207,6 +260,18 @@ def _serialize_op(op) -> str:
         )
     if isinstance(op, StrideOp):
         return f"tpu.stride ld1 = {op.ld1}, ld2 = {op.ld2}"
+    if isinstance(op, WindowOp):
+        return (
+            f"tpu.window chans = {op.chans}, inh = {op.inh}, inw = {op.inw}, "
+            f"outh = {op.outh}, outw = {op.outw}, winh = {op.winh}, winw = {op.winw}, "
+            f"strh = {op.strh}, strw = {op.strw}, padh = {op.padh}, padw = {op.padw}"
+        )
+    if isinstance(op, Im2colOp):
+        return (
+            f"{op.result} = tpu.im2col {op.src.name} -> {shape_to_str(op.out_shape)}"
+        )
+    if isinstance(op, MaxPoolOp):
+        return f"{op.result} = tpu.max {op.src.name} -> {shape_to_str(op.out_shape)}"
     if isinstance(op, AddOp):
         return (
             f"{op.result} = tpu.add {op.lhs.name} : {shape_to_str(op.lhs.shape)}, "
@@ -230,6 +295,13 @@ _MULT_RE = re.compile(
     rf"(?:\s*\{{([^}}]*)\}})?"
 )
 _STRIDE_RE = re.compile(r"tpu\.stride\s+ld1\s*=\s*(\d+)\s*,\s*ld2\s*=\s*(\d+)")
+_WINDOW_RE = re.compile(
+    r"tpu\.window\s+chans\s*=\s*(\d+)\s*,\s*inh\s*=\s*(\d+)\s*,\s*inw\s*=\s*(\d+)\s*,\s*"
+    r"outh\s*=\s*(\d+)\s*,\s*outw\s*=\s*(\d+)\s*,\s*winh\s*=\s*(\d+)\s*,\s*winw\s*=\s*(\d+)\s*,\s*"
+    r"strh\s*=\s*(\d+)\s*,\s*strw\s*=\s*(\d+)\s*,\s*padh\s*=\s*(\d+)\s*,\s*padw\s*=\s*(\d+)"
+)
+_IM2COL_RE = re.compile(rf"({_SSA})\s*=\s*tpu\.im2col\s+({_SSA})\s*->\s*({_SHAPE})")
+_MAX_RE = re.compile(rf"({_SSA})\s*=\s*tpu\.max\s+({_SSA})\s*->\s*({_SHAPE})")
 _ATTR_RE = re.compile(r"(\w+)\s*=\s*(-?\d+)")
 _ADD_RE = re.compile(
     rf"({_SSA})\s*=\s*tpu\.add\s+({_SSA})\s*:\s*({_SHAPE})\s*,\s*"
@@ -292,6 +364,21 @@ def _parse_op(line: str):
     if m:
         ld1, ld2 = m.groups()
         return StrideOp(int(ld1), int(ld2))
+
+    m = _WINDOW_RE.match(line)
+    if m:
+        chans, inh, inw, outh, outw, winh, winw, strh, strw, padh, padw = (int(g) for g in m.groups())
+        return WindowOp(chans, inh, inw, outh, outw, winh, winw, strh, strw, padh, padw)
+
+    m = _IM2COL_RE.match(line)
+    if m:
+        res, src, out = m.groups()
+        return Im2colOp(res, Operand(src, []), parse_shape(out))
+
+    m = _MAX_RE.match(line)
+    if m:
+        res, src, out = m.groups()
+        return MaxPoolOp(res, Operand(src, []), parse_shape(out))
 
     m = _ADD_RE.match(line)
     if m:

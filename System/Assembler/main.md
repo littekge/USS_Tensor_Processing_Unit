@@ -580,7 +580,7 @@ feature-map handling. Matmul tiling is unchanged (reused from v0.5). `stablehlo`
 attributes are supported only for the LeNet-5 subset (unit/fixed stride and
 padding, no dilation, NCHW/OIHW); unhandled ops assert rather than drop.
 
-#### Step 1 — Dialect: window / im2col / max ops
+#### Step 1 — Dialect: window / im2col / max ops — ✅ Complete (2026-07-16)
 
 Update `nn_assembler/MLIR/dialect.py`:
 
