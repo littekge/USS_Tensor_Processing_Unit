@@ -123,9 +123,23 @@ wire [15:0]  ctrl_length_b;
 wire [3:0]   ctrl_dim0_b;
 wire [3:0]   ctrl_dim1_b;
 
-// Controller outputs — Activator and ALU function selects
+// Controller outputs — Activator, ALU, and Pooler function selects
 wire [2:0]   ctrl_activator_funct;
 wire [2:0]   ctrl_alu_funct;
+wire [2:0]   ctrl_pooler_funct;
+
+// Controller outputs — window descriptor (WINCONFIG), shared by both VPs
+wire [11:0]  ctrl_win_chans;
+wire [11:0]  ctrl_win_inh;
+wire [11:0]  ctrl_win_inw;
+wire [11:0]  ctrl_win_outh;
+wire [11:0]  ctrl_win_outw;
+wire [3:0]   ctrl_win_winh;
+wire [3:0]   ctrl_win_winw;
+wire [3:0]   ctrl_win_strh;
+wire [3:0]   ctrl_win_strw;
+wire [3:0]   ctrl_win_padh;
+wire [3:0]   ctrl_win_padw;
 
 // Controller output — Systolic_Array start pulse
 wire         ctrl_systolic_array_start;
@@ -157,6 +171,7 @@ wire [9:0]   vpb_dm_offset;
 // VP handshake signals
 wire         vpa_vector_idle;
 wire         vpa_element_valid;
+wire         vpa_window_end;      // final element of each pooling window (VP_A)
 wire         vpb_vector_idle;
 wire         vpb_element_valid;
 
@@ -180,19 +195,25 @@ assign alu_enable = vpa_element_valid & vpb_element_valid;
 wire act_enable;
 assign act_enable = vpa_element_valid;
 
-// Activator and ALU write signals
+// Activator, ALU, and Pooler write signals
 wire act_write;
 wire alu_write;
+wire pool_write;
 
-// Activator and ALU data output signals
+// Activator, ALU, and Pooler data output signals
 wire [7:0] act_data;
 wire [7:0] alu_data;
+wire [7:0] pool_data;
 
-// Vector buffer data/control wires
+// Vector buffer data/control wires. The Activator, ALU, and Pooler share the
+// single vector-buffer write port; at most one is non-NO-OP per instruction, so
+// exactly one of act_write/alu_write/pool_write is asserted at a time.
 wire         vb_wrreq;
 wire [7:0]   vb_data_in;
-assign vb_wrreq   = act_write | alu_write;
-assign vb_data_in = alu_write ? alu_data : act_data;
+assign vb_wrreq   = act_write | alu_write | pool_write;
+assign vb_data_in = alu_write  ? alu_data  :
+                    pool_write ? pool_data :
+                    act_data;
 
 // VP_A vector buffer and downstream data wires
 wire         vpa_vb_rdreq;
@@ -308,7 +329,19 @@ Controller ctrl (
     .o_activator_funct      (ctrl_activator_funct),
     .o_alu_funct            (ctrl_alu_funct),
     .o_systolic_array_start (ctrl_systolic_array_start),
-    .o_accumulator_clear    (ctrl_accumulator_clear)
+    .o_accumulator_clear    (ctrl_accumulator_clear),
+    .o_pooler_funct         (ctrl_pooler_funct),
+    .o_win_chans            (ctrl_win_chans),
+    .o_win_inh              (ctrl_win_inh),
+    .o_win_inw              (ctrl_win_inw),
+    .o_win_outh             (ctrl_win_outh),
+    .o_win_outw             (ctrl_win_outw),
+    .o_win_winh             (ctrl_win_winh),
+    .o_win_winw             (ctrl_win_winw),
+    .o_win_strh             (ctrl_win_strh),
+    .o_win_strw             (ctrl_win_strw),
+    .o_win_padh             (ctrl_win_padh),
+    .o_win_padw             (ctrl_win_padw)
 );
 
 Vector_Processor vp_a (
@@ -325,8 +358,20 @@ Vector_Processor vp_a (
     .i_leading_dimension   (ctrl_leading_dimension_a),
     .i_scale               (ctrl_scale_a),
     .i_shift               (ctrl_shift_a),
+    .i_win_chans           (ctrl_win_chans),
+    .i_win_inh             (ctrl_win_inh),
+    .i_win_inw             (ctrl_win_inw),
+    .i_win_outh            (ctrl_win_outh),
+    .i_win_outw            (ctrl_win_outw),
+    .i_win_winh            (ctrl_win_winh),
+    .i_win_winw            (ctrl_win_winw),
+    .i_win_strh            (ctrl_win_strh),
+    .i_win_strw            (ctrl_win_strw),
+    .i_win_padh            (ctrl_win_padh),
+    .i_win_padw            (ctrl_win_padw),
     .o_vector_idle         (vpa_vector_idle),
     .o_element_valid       (vpa_element_valid),
+    .o_window_end          (vpa_window_end),
     .o_dm_address          (vpa_dm_address),
     .o_dm_wren             (vpa_dm_wren),
     .o_dm_data             (vpa_dm_data),
@@ -358,8 +403,22 @@ Vector_Processor vp_b (
     .i_leading_dimension   (ctrl_leading_dimension_b),
     .i_scale               (8'd0),      // VP_B never requantizes SA outputs
     .i_shift               (8'd0),
+    // VP_B is never issued a windowed instruction (im2col / max use VP_A only),
+    // so its window descriptor inputs are tied off.
+    .i_win_chans           (12'd0),
+    .i_win_inh             (12'd0),
+    .i_win_inw             (12'd0),
+    .i_win_outh            (12'd0),
+    .i_win_outw            (12'd0),
+    .i_win_winh            (4'd0),
+    .i_win_winw            (4'd0),
+    .i_win_strh            (4'd0),
+    .i_win_strw            (4'd0),
+    .i_win_padh            (4'd0),
+    .i_win_padw            (4'd0),
     .o_vector_idle         (vpb_vector_idle),
     .o_element_valid       (vpb_element_valid),
+    .o_window_end          (),          // VP_B never streams to the Pooler
     .o_dm_address          (vpb_dm_address),
     .o_dm_wren             (vpb_dm_wren),
     .o_dm_data             (vpb_dm_data),
@@ -409,6 +468,20 @@ ALU alu (
 	.i_data_a(vpa_data),
 	.i_data_b(vpb_data),
 	.o_data(alu_data)
+);
+
+// Pooler: fed by vector processor a. element_valid enables one fold per clock;
+// window_end (coincident) emits the pooled value and resets the accumulator.
+Pooler pool (
+	.i_clk(i_clk),
+	.i_trst(trst),
+	.i_enable(vpa_element_valid),
+	.i_clear(ctrl_clear),
+	.i_window_end(vpa_window_end),
+	.o_write(pool_write),
+	.i_pooler_op(ctrl_pooler_funct),
+	.i_data(vpa_data),
+	.o_data(pool_data)
 );
 
 Systolic_Array #(.N(8)) sa (

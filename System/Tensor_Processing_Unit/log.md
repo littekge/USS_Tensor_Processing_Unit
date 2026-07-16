@@ -2,6 +2,39 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-16 — v0.6 Step 4: TPU top-level integration (Pooler + windowed routing)
+
+- **Context:** v0.6 Step 4 wires the Pooler into `TPU/TPU.v` and routes the
+  Controller window-descriptor/pooler-function nets to the vector processors and
+  Pooler, per the Hardware Spec v0.6.0 (TPU Pooler / Vector Buffer bullets) and
+  `main.md` v0.6 Step 4. RTL + `tests/TB_Step8_FullSystem.v` updated. No new `.v`
+  files; no debug sections touched.
+- **`TPU/TPU.v`:**
+  - Instantiated the Pooler: `i_data` = vector processor a data, `i_enable` =
+    a's `element_valid`, `i_window_end` = a's new `o_window_end`, `i_clear` =
+    `ctrl_clear` (inter-operation flush), `i_pooler_op` = `ctrl_pooler_funct`,
+    `i_trst` = `trst` (Pooler added to the trst reset list).
+  - Added the Pooler as a third vector-buffer writer: `vb_wrreq = act_write |
+    alu_write | pool_write`, `vb_data_in` three-way mux (only one is non-NO-OP
+    per instruction).
+  - Routed the Controller's eleven `o_win_*` descriptor nets to VP_A's window
+    inputs (VP_B's tied to 0 — windowed instructions use VP_A only) and
+    `o_pooler_funct` to the Pooler.
+  - Added the `vpa_window_end` net; VP_B's `o_window_end` left unconnected.
+- **Tests — `tests/TB_Step8_FullSystem.v` (13 -> 15):** new `mk_window`/
+  `mk_im2col`/`mk_max` builders. Test 14 = convolution: a 3x3 feature map is
+  expanded by im2col (2x2 window, stride 1) to a 4x4 dense matrix and multiplied
+  by a 1x4 all-ones kernel, giving per-window sums [12,16,24,28] end to end
+  (FLASH -> im2col -> matmul -> requant -> memory). Test 15 = max pooling: a 4x4
+  feature map (1..16), 2x2 window stride 2, pooled to [6,8,14,16] through the
+  windowed VP -> Pooler -> vector buffer -> writeback path.
+- **`tests/run_regression.sh`:** added `TPU/PROCESSING/Pooler.v` to the
+  `TB_Step8_FullSystem` source list (TPU now instantiates the Pooler), in sync
+  with the TB "How to run" header.
+- **Verification: PENDING** (Linux laptop — no `vsim.exe`; `run_regression.sh`
+  self-gates). On the Questa PC run `TB_Step8_FullSystem` (expect 15/15).
+  `main.md` v0.6 Step 4 left UNMARKED until the regression passes there.
+
 ## 2026-07-16 — v0.6 Step 3: Vector_Processor windowed addressing (im2col / max)
 
 - **Context:** v0.6 Step 3 adds windowed address generation to
