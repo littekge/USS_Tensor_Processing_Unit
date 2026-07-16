@@ -2,6 +2,53 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 >
+
+## 2026-07-16 — Functional TPU ISA v0.6 (Convolution & Pooling)
+
+- **Added on-device convolution (im2col) and max-pooling instructions.**
+- **Generalized the Row-Major memory model to tensors of any order.** Replaced
+the "order greater than 2 not supported" rule: each dimension's stride is the
+product of the dimensions that follow it, so a *C* x *H* x *W* tensor stores
+channels outermost. MUL-, ELEM-, and ACT-type instructions still operate on
+operands of at most two dimensions; higher-order tensors are addressed only by
+the windowed instructions.
+- **Added the W-Format**, a dedicated layout for the window descriptor.
+- **Removed the reserved SHAPE format** (v0.5, unimplemented); SHAPE is now a
+*type* carried by the A-Format.
+- **Added the WINCONFIG type and the *window* instruction** (opcode 1110),
+which loads the window descriptor until the next *window* or system reset, with
+*outh*/*outw* supplied explicitly.
+- **Defined the eleven Window Descriptor Registers** (*chans*, *inh*, *inw*,
+*outh*, *outw*, *winh*, *winw*, *strh*, *strw*, *padh*, *padw*) — set by
+*window*, read by *im2col*/*max*, mirroring how *stride* sets *ld1*/*ld2*.
+- **Renamed the CONFIG type to LDCONFIG** (C-Format, *stride*); "Configuration"
+now groups LDCONFIG and WINCONFIG.
+- **Added the SHAPE type with the *im2col* function** (A-Format, opcode 1101):
+expands a feature map into the (*chans* x *winh* x *winw*) x (*outh* x *outw*)
+column matrix in channel-major order, zero-filling out-of-bounds elements; the
+convolution is completed by the existing MUL/GEMM path.
+- **Added the POOL type with the *max* function** (A-Format, opcode 1100): the
+per-channel maximum over each window; out-of-bounds elements take the minimum
+representable value.
+- Added Instruction Set Listing rows: *window* (WINCONFIG, 1110/0x0), *im2col*
+(SHAPE, 1101/0x0), *max* (POOL, 1100/0x0).
+
+## 2026-07-15 — Functional TPU ISA v0.6 (Format Update)
+
+- **Reorganized the instruction taxonomy into a three-level hierarchy:**
+*Format* (bit layout) → *Type* (opcode) → *Function* (funct field). No new
+instructions and no bit-layout changes — this stage is naming/structure only.
+- **Renamed the instruction formats** to generic letter codes: *M-Format* (was
+MUL), *A-Format* (was ACT), *E-Format* (was ELEM), *C-Format* (was CONFIG),
+*S-Format* (was SYSTEM). Letters are labels only and carry no binding meaning.
+- **Generalized the A-Format** operand field from *len* to a generic *aux*
+field, so the format can host multiple Types (a single unary src→dst layout).
+- Clarified that *Function* is selected by *funct3* for all formats except
+*S-Format*, which uses *funct7*.
+- Updated the Instruction Set Listing with *Type* and *Format* columns; opcode
+and funct values are unchanged (mult/multip 1000, relu 1001, add 1010, stride
+1111, end/syscall 0000).
+
 ## 2026-07-13 — Functional TPU ISA v0.5 (leading-dimension addressing)
 
 - **Added strided (leading-dimension) matrix addressing** so a single MUL

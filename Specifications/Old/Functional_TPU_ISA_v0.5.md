@@ -3,7 +3,7 @@
 > **Purpose:** This document contains the *Functional TPU* instruction set
 > architecture specification.
 >
-> **Version: 0.6.0**
+> **Version: 0.5.0**
 
 ## Memory
 
@@ -19,17 +19,7 @@ array, with the address of the first element being used to dereference the
 entire tensor. For example, if a tensor is stored at memory address 0x2 with
 dimensions 2x2, the next unused address will be at 0x2 + 4 = 0x6. All matrix
 operands referenced by memory addresses are logically interpreted by the ISA as
-Row-Major arrays.
-
-Tensors of any order are supported and are stored in Row-Major order: the last
-dimension varies fastest, and each dimension's stride is the product of all
-dimensions that follow it. For example, in a *C* x *H* x *W* tensor the channel
-stride is *H* x *W*, the row stride is *W*, and the element stride is 1; a
-2 x 3 x 3 tensor stored at 0x2 spans 18 elements, so the next unused address is
-0x2 + 18 = 0x14 and its second channel begins at 0x2 + 9 = 0xB. MUL-, ELEM-,
-and ACT-type instructions operate on operands of at most two dimensions;
-higher-order tensors are addressed only by the windowed instructions (*im2col*
-and *max*), per the window descriptor.
+Row-Major arrays. Tensors of an order greater than 2 are not supported.
 
 ### Reserved Addresses
 
@@ -57,14 +47,17 @@ overwrites.
 This section describes the registers defined by the *Functional TPU instruction
 set architecture*. **Note** that the ISA does not define any general purpose
 registers; each register has a reserved function and all generic data is stored
-in main memory.
-
-### Leading Dimension Registers
+in main memory. Reference the table below for a general description of each
+register:
 
 | Name | Description |
 | --- | --- |
 | ld1 | Leading dimension of *rs1* |
 | ld2 | Leading dimension of *rs2* |
+
+A detailed description of each register can be found below:
+
+### Leading Dimension Registers
 
 The ISA defines two *leading dimension registers*, *ld1* and *ld2*. A leading
 dimension is the physical row stride of a larger Row-Major matrix, may exceed
@@ -75,90 +68,63 @@ until the next *stride* instruction or system reset, and default to contiguous
 *rs1* and *rs2* for all MUL-type instructions. For writeback, the
 leading dimension of *rd* is always equal to *ld2*.
 
-### Window Descriptor Registers
-
-| Name | Description |
-| --- | --- |
-| chans | Input feature map channels |
-| inh | Input feature map height |
-| inw | Input feature map width |
-| outh | Output feature map height |
-| outw | Output feature map width |
-| winh | Window height |
-| winw | Window width |
-| strh | Vertical window stride |
-| strw | Horizontal window stride |
-| padh | Vertical zero-padding |
-| padw | Horizontal zero-padding |
-
-The ISA defines a set of *window descriptor* registers holding the
-parameters for windowed instructions (*im2col*, *max*): the input feature map
-dimensions (*chans*, *inh*, *inw*), the output spatial dimensions (*outh*,
-*outw*), the window dimensions (*winh*, *winw*), the window strides (*strh*,
-*strw*), and the padding (*padh*, *padw*). The window descriptor is set by the
-*window* instruction and persists until the next *window* instruction or
-system reset. It has no default value; a *window* instruction must set the
-descriptor before any windowed instruction is issued.
-
 ## Instruction Formats
 
 This section describes the general format of *Functional TPU* instructions. In
-the *Functional TPU* ISA, there are a variety of instruction formats which all
-have a fixed length of 128 bits. Instructions are described with the most
-significant bit (127) on the left side of the instruction, and the least
-significant bit (0) on the right side. In common between all instruction formats
-are the following properties:
+the *Functional TPU* ISA, there are a variety of instruction formats (MUL,
+SHAPE, ACT, ELEM, CONFIG, SYSTEM) which all have a fixed length of 128 bits.
+Instructions are described with the most significant bit (127) on the left side
+of the instruction, and the least significant bit (0) on the right side. In
+common between all instruction formats are the following properties:
 
 - **Opcode:** Bits 127-124 are reserved for the OPCODE.
 - **Variable Instruction:** Bits 123-0 are variable based on instruction format.
 
-Instructions in the *Functional TPU ISA* follow a three-level hierarchy:
-
-- **Format:** The physical bit layout. One *format* may be shared by more than
-  one type.
-- **Type:** Selected by the *opcode*. The *type* determines the operation class
-  and the data path it dispatches to.
-- **Function:** Selected by a *funct* (or otherwise similar) field. The
-  *function* selects a specific operation within a class.
-
 Each instruction format is described below:
 
-### M-Format
+### MUL Format
+
+**Description by Bit:**
 
 | 127-124 | 123-100 | 99-96 | 95-92 | 91-68 | 67-64 | 63-60 | 59-36 | 35-28 | 27-20 | 19-3 | 2-0 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 4 | 24 | 4 | 4 | 24 | 4 | 4 | 24 | 8 | 8 | 17 | 3 |
 | opcode | rs1 | sz11 | sz12 | rs2 | sz21 | sz22 | rd | M0 | n | reserved | funct3 |
 
-### A-Format
+### SHAPE Format
+
+> *Not implemented in current revision of ISA*
+
+### ACT Format
+
+**Description by Bit:**
 
 | 127-124 | 123-100 | 99-76 | 75-60 | 59-3 | 2-0 |
 | --- | --- | --- | --- | --- | --- |
 | 4 | 24 | 24 | 16 | 57 | 3 |
-| opcode | rs1 | rd | aux | reserved | funct3 |
+| opcode | rs1 | rd | len | reserved | funct3 |
 
-### E-Format
+### ELEM Format
+
+**Description by Bit:**
 
 | 127-124 | 123-100 | 99-76 | 75-68 | 67-60 | 59-36 | 35-3 | 2-0 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 4 | 24 | 24 | 8 | 8 | 24 | 33 | 3 |
 | opcode | rs1 | rs2 | sz1 | sz2 | rd | reserved | funct3 |
 
-### C-Format
+### CONFIG Format
+
+**Description by Bit:**
 
 | 127-124 | 123-100 | 99-76 | 75-3 | 2-0 |
 | --- | --- | --- | --- | --- |
 | 4 | 24 | 24 | 73 | 3 |
 | opcode | im1 | im2 | reserved | funct3 |
 
-### W-Format
+### SYSTEM Format
 
-| 127-124 | 123-112 | 111-100 | 99-88 | 87-76 | 75-64 | 63-60 | 59-56 | 55-52 | 51-48 | 47-44 | 43-40 | 39-3 | 2-0 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 4 | 12 | 12 | 12 | 12 | 12 | 4 | 4 | 4 | 4 | 4 | 4 | 37 | 3 |
-| opcode | inh | inw | chans | outh | outw | winh | winw | strh | strw | padh | padw | reserved | funct3 |
-
-### S-Format
+**Description by Bit:**
 
 | 127-124 | 123-7 | 6-0 |
 | --- | --- | --- |
@@ -168,11 +134,11 @@ Each instruction format is described below:
 ## Instructions
 
 This section describes individual instructions available in the *Functional TPU*
-ISA. Instructions are grouped by type.
+ISA.
 
-### Multiplication Instructions
+### MUL Instructions
 
-**M-Format Multiplication Instructions:**
+**Description by Bit:**
 
 | 127-124 | 123-100 | 99-96 | 95-92 | 91-68 | 67-64 | 63-60 | 59-36 | 35-28 | 27-20 | 19-3 | 2-0 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -229,25 +195,25 @@ dimensions in effect (ld1, ld2) are shared by every instruction in the run,
 since they are set once by a preceding stride instruction and persist across the
 whole accumulation.
 
-### Activation Instructions
+### ACT Instructions
 
-**A-Format Activation Instructions:**
+**Description by Bit:**
 
 | 127-124 | 123-100 | 99-76 | 75-60 | 59-3 | 2-0 |
 | --- | --- | --- | --- | --- | --- |
 | 4 | 24 | 24 | 16 | 57 | 3 |
-| opcode | rs1 | rd | aux | reserved | funct3 |
-| ACT | src1 | dest | len | 0 | RELU |
+| opcode | rs1 | rd | len | reserved | funct3 |
+| ACT | src1 | dest | size | 0 | RELU |
 
 #### relu
 
 *relu* applies the rectified linear unit activation function (*mathematically
-f(x) = max(0, x)*) to *len* contiguous elements beginning at address *src1* and
-stores them contiguously at address *dest*.
+f(x) = max(0, x)*) to *size* contiguous elements beginning at address *src1* and
+storing them contiguously at address *dest*.
 
-### Element-wise Instructions
+### ELEM Instructions
 
-**E-Format Element-wise Instructions:**
+**Description by Bit:**
 
 | 127-124 | 123-100 | 99-76 | 75-68 | 67-60 | 59-36 | 35-3 | 2-0 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -257,29 +223,21 @@ stores them contiguously at address *dest*.
 
 #### add
 
-*add* performs element-wise addition between two matrices of dimensions *dim1* x
+*add* performs elementwise addition between two matrices of dimensions *dim1* x
 *dim2* located at addresses *src1* and *src2* respectively, storing the result
 contiguously starting at address *dest* in Row-Major order. *reserved* bits are
 set to 0. Note that the current revision of the ISA does not support matrix
 dimensions greater than 255x255 for this instruction.
 
-### Configuration Instructions
+### CONFIG Instructions
 
-**C-Format Configuration Instructions:**
+**Description by Bit:**
 
 | 127-124 | 123-100 | 99-76 | 75-3 | 2-0 |
 | --- | --- | --- | --- | --- |
 | 4 | 24 | 24 | 73 | 3 |
 | opcode | im1 | im2 | reserved | funct3 |
-| LDCONFIG | ld1 | ld2 | 0 | STRIDE |
-
-**W-Format Configuration Instructions:**
-
-| 127-124 | 123-112 | 111-100 | 99-88 | 87-76 | 75-64 | 63-60 | 59-56 | 55-52 | 51-48 | 47-44 | 43-40 | 39-3 | 2-0 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 4 | 12 | 12 | 12 | 12 | 12 | 4 | 4 | 4 | 4 | 4 | 4 | 37 | 3 |
-| opcode | inh | inw | chans | outh | outw | winh | winw | strh | strw | padh | padw | reserved | funct3 |
-| WINCONFIG | inh | inw | chans | outh | outw | winh | winw | strh | strw | padh | padw | 0 | WINDOW |
+| CONFIG | ld1 | ld2 | 0 | STRIDE |
 
 #### stride
 
@@ -289,68 +247,9 @@ MUL-type instructions until the next *stride* instruction or system reset. A
 value of 0 for *ld1* and *ld2* indicates no stride; matrices will be read
 contiguously. *ld1* and *ld2* are set to 0 by default.
 
-#### window
+### SYSTEM Instructions
 
-The *window* instruction loads the window descriptor used by all
-subsequent windowed instructions until the next *window* instruction or
-system reset. The descriptor specifies the input feature map (*chans* channels,
-*inh* rows, *inw* columns), the window dimensions (*winh* x *winw*), the window
-stride (*strh*, *strw*), the zero-padding (*padh*, *padw*), and the output
-spatial dimensions (*outh* x *outw*). *outh* and *outw* are supplied explicitly
-and must equal floor((*inh* + 2*padh* - *winh*) / *strh*) + 1 and floor((*inw* +
-2*padw* - *winw*) / *strw*) + 1 respectively; the hardware does not derive them.
-Reserved bits are set to 0.
-
-### Shape Instructions
-
-**A-Format Shape Instructions:**
-
-| 127-124 | 123-100 | 99-76 | 75-60 | 59-3 | 2-0 |
-| --- | --- | --- | --- | --- | --- |
-| 4 | 24 | 24 | 16 | 57 | 3 |
-| opcode | rs1 | rd | aux | reserved | funct3 |
-| SHAPE | src1 | dest | 0 | 0 | IM2COL |
-
-#### im2col
-
-The *im2col* instruction expands the input feature map at *src1* into the
-column matrix used to compute a convolution as a matrix multiply, writing the
-result to *dest*. It uses the window descriptor set by the most recent *window*
-instruction and interprets the feature map as a *chans* x *inh* x *inw* tensor
-in Row-Major order. For each of the *outh* x *outw* output positions, *im2col*
-gathers the *winh* x *winw* window across all *chans* channels into one column
-of length *chans* x *winh* x *winw*, ordered channel-major (channel outermost,
-then window row, then window column). The columns are written to *dest* as a
-(*chans* x *winh* x *winw*) x (*outh* x *outw*) matrix in Row-Major order.
-Window elements that fall outside the feature map (due to *padh* or *padw*)
-contribute a value of 0. *aux* and reserved bits are set to 0.
-
-### Pooling Instructions
-
-**A-Format Pooling Instructions:**
-
-| 127-124 | 123-100 | 99-76 | 75-60 | 59-3 | 2-0 |
-| --- | --- | --- | --- | --- | --- |
-| 4 | 24 | 24 | 16 | 57 | 3 |
-| opcode | rs1 | rd | aux | reserved | funct3 |
-| POOL | src1 | dest | 0 | 0 | MAX |
-
-#### max
-
-The *max* instruction performs max pooling on the input feature map at *src1*,
-writing the pooled result to *dest*. It uses the window descriptor set by the
-most recent *window* instruction and interprets the feature map as a *chans* x
-*inh* x *inw* tensor in Row-Major order. For each channel independently and each
-of the *outh* x *outw* output positions, *max* outputs the greatest value within
-the *winh* x *winw* window, positioned by the strides *strh* and *strw*. The
-result is written to *dest* as a *chans* x *outh* x *outw* tensor in Row-Major
-order. Window elements that fall outside the feature map (due to *padh* or
-*padw*) take the minimum representable value and therefore never affect the
-result. *aux* and reserved bits are set to 0.
-
-### System Instructions
-
-**S-Format System Instructions:**
+**Description by Bit:**
 
 | 127-124 | 123-7 | 6-0 |
 | --- | --- | --- |
@@ -374,17 +273,15 @@ are passed.
 This section defines the concrete binary layouts for all instructions in the
 *Functional TPU* ISA.
 
-| Instruction | Type | Format | opcode | funct3 |
-| --- | --- | --- | --- | --- |
-| mult | MUL | M-Format | 1000 | 0x0 |
-| multip | MUL | M-Format | 1000 | 0x1 |
-| relu | ACT | A-Format | 1001 | 0x0 |
-| add | ELEM | E-Format | 1010 | 0x0 |
-| stride | LDCONFIG | C-Format | 1111 | 0x0 |
-| window | WINCONFIG | W-Format | 1110 | 0x0 |
-| im2col | SHAPE | A-Format | 1101 | 0x0 |
-| max | POOL | A-Format | 1100 | 0x0 |
-| Instruction | Type | Format | opcode | funct7 |
-| --- | --- | --- | --- | --- |
-| end | SYSTEM | S-Format | 0000 | 0x0 |
-| syscall | SYSTEM | S-Format | 0000 | 0x1 |
+| Instruction | opcode | funct3 |
+| --- | --- | --- |
+| MULT | 1000 | 0x0 |
+| MULTIP | 1000 | 0x1 |
+| RELU | 1001 | 0x0 |
+| ADD | 1010 | 0x0 |
+| STRIDE | 1111 | 0x0 |
+
+| Instruction | opcode | funct7 |
+| --- | --- | --- |
+| END | 0000 | 0x0 |
+| SYSCALL | 0000 | 0x1 |
