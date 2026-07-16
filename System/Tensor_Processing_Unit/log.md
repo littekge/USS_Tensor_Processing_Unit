@@ -2,6 +2,47 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-16 — v0.6 Step 1: Pooler module (streaming max-pooling reducer)
+
+- **Context:** v0.6 Step 1 implements `TPU/PROCESSING/Pooler.v`, the streaming
+  reducer peer to the ALU/Activator, per the Hardware Specification v0.6.0
+  (Pooler description) and `main.md` v0.6 Step 1.
+- **Skeleton was EMPTY (surfaced):** the user-provided `Pooler.v` was a 0-byte
+  file, not the "module declaration + port list + parameter/code/debug sections"
+  skeleton the v0.6 prerequisite describes. The module header and port list were
+  authored from the Hardware Specification (Pooler control-signal list) plus the
+  established `ALU.v`/`Activator.v` convention (i_/o_ naming, `i_pooler_op`
+  mirroring `i_alu_op`/`i_activator_op`, `o_write` to the vector buffer). The
+  DEBUG section is present but empty for the user to fill. **User should confirm
+  the authored interface matches intent.**
+- **`TPU/PROCESSING/Pooler.v` (implemented):**
+  - Ports: `i_clk`, `i_trst`, `i_enable`, `i_clear`, `i_window_end`,
+    `i_pooler_op[2:0]`, `i_data[7:0]`; `o_write`, `o_data[7:0]`. Unlike ALU/
+    Activator, `i_clk` is connected (the module is sequential — it holds an
+    accumulator across a window's stream).
+  - Function params `MAX = 3'h0` (POOL funct3 0x0) and `NOOP = 3'h7`; identity
+    `MIN_VALUE = 8'h80` (-128, min representable signed 8-bit).
+  - `acc` register: reset to `MIN_VALUE` on `i_trst` LOW or `i_clear`; while
+    `i_enable` HIGH, folds each input via a signed `max` comparator, and on
+    `i_window_end` resets to identity for the next window.
+  - `o_data` combinational = `max(acc, i_data)` so on the `window_end` cycle it
+    holds the fully reduced window at the same time `o_write` pulses (matches the
+    vector buffer's single-cycle capture). `o_write = i_enable & i_window_end &
+    (op != NOOP)` — exactly one buffer write per window, suppressed for NO OP.
+  - No requantization (pooled value is an input value already in the datatype).
+- **Tests:** `tests/TB_Pooler.v` (NEW, 9 tests): single-element window (proves
+  identity is min not 0), clear resets accumulator, multi-element window max,
+  two back-to-back windows reset independently, min-fill (-128) never wins,
+  all-fill window reduces to -128, NO-OP write suppression, `o_write` LOW
+  mid-window, `o_write` LOW when disabled. Follows the post-v0.1 dedicated-unit-
+  testbench convention (`TB_SPI_Slave.v`).
+- **`tests/run_regression.sh`:** added a `run_tb pool TB_Pooler` block (sources
+  `Pooler.v`, `tests/TB_Pooler.v`), in sync with the TB header dependency list.
+- **Verification: PENDING** (Linux laptop — no `vsim.exe` at
+  `C:\intelFPGA_lite\23.1std\questa_fse\win64\`; `run_regression.sh` self-gates).
+  On the Questa PC run `TB_Pooler` (expect 9/9). `main.md` v0.6 Step 1 left
+  UNMARKED until the regression passes there.
+
 ## 2026-07-14 — v0.5.1 SPI_Slave rewrite verified (Questa PASS + hardware)
 
 - **Verification: PASS.** Full Questa regression passed on the Questa PC —
