@@ -2,6 +2,40 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-16 — v0.6 Step 5: Regression runner synced; full v0.6 verification PENDING
+
+- **Context:** v0.6 Step 5 — sync `tests/run_regression.sh` with the v0.6
+  testbench changes and record the deferred verification state. No RTL changes.
+- **`tests/run_regression.sh` (already updated across Steps 1/4, confirmed in
+  sync):**
+  - New `run_tb pool TB_Pooler` block (sources `TPU/PROCESSING/Pooler.v`,
+    `tests/TB_Pooler.v`).
+  - `TB_Step8_FullSystem` source list gained `TPU/PROCESSING/Pooler.v` (TPU now
+    instantiates the Pooler). `TB_Step3_Controller` and
+    `TB_Step4_VectorProcessor` blocks unchanged (their RTL dependency lists —
+    `Controller.v` and `Vector_Processor.v` respectively — did not change, only
+    the testbench contents). Each block's source list matches its testbench
+    "How to run" header.
+  - Ran `./tests/run_regression.sh` here: it self-gated (Questa absent) and
+    exited with the deferral notice, as expected — no simulation attempted.
+- **Verification: PENDING (Linux laptop — no `vsim.exe` at
+  `C:\intelFPGA_lite\23.1std\questa_fse\win64\`).** On the Questa PC run
+  `./tests/run_regression.sh`; expected new/changed counts:
+  - `TB_Pooler` 9/9 (new)
+  - `TB_Step3_Controller` 17/17 (13 -> 17: WINCONFIG latch, im2col/max decode,
+    destination select, pooler funct, im2col skips writeback)
+  - `TB_Step4_VectorProcessor` 19/19 (16 -> 19: im2col zero-fill gather, max
+    window stream + window_end, max min-fill)
+  - `TB_Step8_FullSystem` 15/15 (13 -> 15: end-to-end convolution im2col+matmul,
+    max pooling)
+  - plus the unchanged Step1/2/5/6/7 and SPI benches for regressions
+  (pass = each `Results:` line with 0 FAIL and no `Test N: FAIL`).
+  The v0.6 `main.md` Steps 1-5 are left UNMARKED until that run confirms.
+- **Open item surfaced (see report):** the user-provided `Pooler.v` was an empty
+  0-byte file rather than the port-list skeleton the v0.6 prerequisite describes;
+  its header/ports were authored from the Hardware Spec + ALU/Activator
+  convention. The user should confirm the authored interface matches intent.
+
 ## 2026-07-16 — v0.6 Step 4: TPU top-level integration (Pooler + windowed routing)
 
 - **Context:** v0.6 Step 4 wires the Pooler into `TPU/TPU.v` and routes the
