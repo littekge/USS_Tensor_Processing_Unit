@@ -7,7 +7,7 @@
 ## Project Identity
 
 - **Name:** Functional TPU
-- **Version:** 0.4.0
+- **Version:** 0.6.0
 - **Target Platform:** Terasic DE1-SoC FPGA
 - **Language:** Verilog HDL 2001
 - **Development Environment:** Quartus Prime Lite Edition
@@ -81,40 +81,28 @@ array outputs, saturating to the memory datatype (`M0`/`n` mantissa width B=8)
     - **Width:** 8 bits
     - **Depth:** 256 words
 
-## Current State (v0.1 - What's Working)
+## Current State — Built and Verified Through v0.5.1
 
-- **SPI Link:** `SPI_Slave.v` and `SPI_Input_buffer.v` are correctly wired
-together by `SPI_Interface.v` which is currently the top level module for the
-`TPU/PROGRAMMER/TPU_SPI_LINK/` subdirectory. The SPI input buffer has been
-verified to properly receive and store data from the SPI slave module.
-- **VGA Debugging:** `debug.v` can be successfully used to display 32 bit
-integers as hexadecimal values on a monitor connected to the FPGA via it's VGA port.
-- **TPU Memory Modules:** `Program_Memory.v`, `TPU_0x1_Buffer.v`,
-`Vector_Buffer.v`, and `Weight_Memory.v` have been generated using the Quartus
-IP Catalog as device RAMs or FIFO Buffers in accordance with the `Functional_TPU_Hardware_Specification.md`.
-- **Programmer:** `Programmer.v` implements the Functional TPU Messaging
-Protocol FSM. Verified to correctly decode START/MEM/PROGRAM/STOP function codes
-and write to Program_Memory, Weight_Memory port a, and TPU_0x1_Buffer port a.
-- **TPU Top Level (Steps 1–4):** `TPU.v` instantiates and wires together
-Programmer, Program_Memory, Weight_Memory, TPU_0x1_Buffer, Vector_Buffer,
-Feeder, Controller, and both Vector_Processor instances. The memory MUX, *trst*
-signal, and *vb_sclr* logic are all implemented.
-- **Feeder:** `Feeder.v` implements the FETCH step of the CPU instruction cycle.
-Verified to correctly retrieve and forward instructions from Program_Memory to
-the Controller, detect the *end* termination opcode, and increment the program counter.
-- **Controller:** `Controller.v` implements the DECODE-EXECUTE-WRITEBACK steps
-of the CPU instruction cycle. Verified to correctly decode *mult*, *relu*, and
-*add* instructions and drive all Vector_Processor and Systolic_Array control signals.
-- **Vector_Processor:** `Vector_Processor.v` handles all ISA-compliant memory
-accesses and data routing. Verified to correctly stream data from Weight_Memory
-and TPU_0x1_Buffer (including zero-source and strided column access), push
-rows/columns to systolic array input buffers, read and requantize systolic array
-outputs, and read from the Vector_Buffer. MEM_ERROR is correctly triggered on
-writes to reserved address 0x0000.
-- **Activator:** `Activator.v` correctly implements the ReLu activation
-function. Debug values are correctly outputted when in a non-operational state.
-- **ALU:** `ALU.v` correctly implements addition, clamping outputs to an 8-bit
-signed integer. Debug values are correctly outputted when in a non-operational state.
+The TPU is implemented and Questa-verified through **v0.5.1**; the per-version
+build history is the Build Plan below, with detailed results in `log.md`. Working
+capabilities:
+
+- **Compute:** matrix multiply on an output-stationary systolic array with signed
+MACs, tensor addition (ALU), and ReLU (Activator), with per-layer dyadic
+requantization applied to systolic-array outputs on writeback.
+- **Large matmuls:** decomposed into array-sized tiles addressed in place via the
+leading-dimension registers (`stride` → `ld1`/`ld2`; `mult`/`multip` walk strided
+sub-blocks, contraction accumulated in-array).
+- **Memory:** a unified 24-bit dual-port `Data_Memory` wrapping two 65536-word
+`Mem_Unit` blocks and the 1024-word `TPU_0x1_Buffer` (I/O staging), plus an
+8192-word `Program_Memory`.
+- **IO / programming:** SPI programming through a synchronous-oversampling
+`SPI_Slave`; the Programmer message-protocol FSM (device and external modes); and
+the Feeder + Controller fetch–decode–execute–writeback cycle.
+
+**In progress — v0.6 (Convolution and Pooling):** ISA and Hardware Specification
+finalized (both v0.6.0); RTL build plan below; user-provided `Pooler.v` skeleton
+created. No v0.6 RTL implemented yet.
 
 ## Architecture
 
@@ -139,6 +127,7 @@ TPU/
 ├── PROCESSING/
 │   ├── Activator.v
 │   ├── ALU.v
+│   ├── Pooler.v
 │   └── Vector_Processor.v
 ├── PROGRAMMER/
 │   ├── Feeder.v
@@ -582,3 +571,109 @@ on CS-high, `i_TX_DV` latches `i_TX_Byte`); active-low reset; full `SPI_MODE`
   non-Questa machines record `Verification: PENDING` (naming `TB_SPI_Slave`,
   `TB_Step1_Programmer`, `TB_Step8_FullSystem`) and leave the v0.5.1 steps
   unmarked until the regression passes on the Questa PC.
+
+### v0.6 — Convolution and Pooling
+
+Implements the hardware for convolution (via `im2col`) and max pooling per
+`Functional_TPU_ISA.md` v0.6 and `Functional_TPU_Hardware_Specification.md` v0.6.
+Adds a new `Pooler` module (a streaming reducer, peer to the ALU/Activator),
+windowed address generation in the `Vector_Processor` (the `im2col` gather with
+zero-fill and the `max` window stream with min-fill), and the `window` (WINCONFIG)
+descriptor registers plus windowed-instruction handling in the `Controller`.
+Together these let a convolution lower to `im2col` + tiled matmul and a pooling
+layer to `max`, completing the datapath needed to run LeNet-5.
+
+**Scope note.** Control-path and datapath change on the compute side; the v0.4
+memory subsystem and the systolic array are untouched. No new `.v` files beyond
+the user-provided `Pooler.v`; debug sections untouched. Verification is Questa-gated.
+
+**Prerequisite (user-provided).** The `Pooler.v` module skeleton (module
+declaration, port list per the Hardware Specification, and the standard
+parameter/code/debug sections) is created by the user before agents begin, since
+agents may not create new `.v` files. `Pooler.v` lives in `TPU/PROCESSING/`
+alongside `Activator.v` and `ALU.v`. Agents implement the module logic and all
+inter-module wiring only.
+
+#### Step 1 — Pooler Module
+
+Implement `Pooler.v` (user-provided skeleton) as a streaming reducer.
+
+- Maintain one accumulator register and a function-selected reduction operator;
+  for `max` (funct3 0x0) the operator is a signed comparator and the identity is
+  the minimum representable value (`-128` for the 8-bit signed memory datatype).
+- While `enable` is HIGH, fold one input per clock into the accumulator
+  (`acc = max(acc, in)`); reset the accumulator to the reduction identity on
+  `clear` or `trst`.
+- On `window_end` (coincident with the final enabled value of a window), write the
+  accumulator to the vector buffer and reset it for the next window — exactly one
+  write per window. Suppress buffer writes when the function is NO OP.
+- No requantization (the pooled result is an input value already in the datatype).
+- Add `tests/TB_Pooler.v`: single-window max, multi-window streams resetting at
+  each `window_end`, min-fill values never winning, NO-OP write suppression
+  (follows the `TB_SPI_Slave.v` convention for a module added after v0.1).
+
+#### Step 2 — Controller: Window Descriptor Registers + Windowed Decode
+
+Update `Controller.v`.
+
+- Add the eleven window descriptor registers (`chans`, `inh`, `inw`, `outh`,
+  `outw`, `winh`, `winw`, `strh`, `strw`, `padh`, `padw`); load from the `window`
+  (WINCONFIG, 1110) instruction; retain until the next `window` or `trst` (no
+  default).
+- Generalize the `stride` decode-and-latch path into one register-configuration
+  path covering LDCONFIG (1111) and WINCONFIG (1110): latch fields into their
+  registers, assert `controller_idle`, no Execute/Writeback phase.
+- Decode `im2col` (SHAPE, 1101) and `max` (POOL, 1100); supply the descriptor to
+  the vector processors and select the gather destination — device memory for
+  `im2col`, the Pooler for `max`.
+- Set the Pooler function (max / NO-OP); add the Pooler to the inter-operation
+  `clear` assertion.
+- Skip the Writeback phase for `im2col` (writes directly to memory during Execute).
+- Update `tests/TB_Step3_Controller.v`: WINCONFIG latches all eleven registers;
+  `im2col`/`max` decode, descriptor routing, and destination select; Pooler
+  function/clear asserted; `im2col` skips writeback.
+
+#### Step 3 — Vector_Processor: Windowed Addressing
+
+Update `Vector_Processor.v`.
+
+- Add the eleven window-descriptor combinational inputs.
+- Add windowed address generation for `im2col`/`max`: derive each window element's
+  input coordinate from the output position, window offset, stride, and padding;
+  bounds-check against `inh`×`inw`; substitute the fill in place of a memory read
+  when out of bounds — `0` for `im2col` (may source the hardwired `0x0`), minimum
+  representable value for `max`. Element count is descriptor-derived, not from
+  `length`.
+- `im2col`: write every gathered element to `dest` as the dense
+  `(chans·winh·winw)×(outh·outw)` matrix. `max`: stream each channel's window to
+  the Pooler destination, asserting the new `o_window_end` (coincident with
+  `element_valid`) on the final element of each window.
+- Add `o_window_end`; add the Pooler as a valid destination.
+- Update `tests/TB_Step4_VectorProcessor.v`: im2col gather order + zero-fill on a
+  small padded map; max window stream + min-fill + `window_end` timing;
+  descriptor-derived counts; confirm the v0.5 contiguous/strided paths are
+  unaffected.
+
+#### Step 4 — TPU Top-Level Integration
+
+Update `TPU.v`.
+
+- Instantiate and wire the Pooler: vector processor `a` → Pooler input;
+  `element_valid` from `a` → Pooler `enable`; `o_window_end` from `a` → Pooler
+  `window_end`.
+- Add the Pooler as a third writer to the Vector_Buffer (data/`wrreq` mux with the
+  ALU and Activator; only one is non-NO-OP per instruction).
+- Add the Pooler to the `trst` reset list.
+- Route the Controller's window-descriptor and windowed-mode control nets to the
+  vector processors, and the Pooler function-select to the Pooler.
+- Update `tests/TB_Step8_FullSystem.v`: an end-to-end program that (a) issues
+  `window` + `im2col` and feeds the result to a tiled matmul (a convolution), and
+  (b) issues `window` + `max` (a pooling layer), each checked against a reference.
+
+#### Step 5 — Regression
+
+- Update `tests/run_regression.sh` for the new/changed testbenches (`TB_Pooler`,
+  `TB_Step3_Controller`, `TB_Step4_VectorProcessor`, `TB_Step8_FullSystem`).
+- Run the full regression on the Questa PC and record results in `log.md`.
+- On non-Questa machines record `Verification: PENDING` (naming the testbenches)
+  and leave the v0.6 steps unmarked until the regression passes on the Questa PC.

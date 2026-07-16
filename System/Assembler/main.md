@@ -7,7 +7,7 @@
 ## Project Identity
 
 - **Name:** Neural Network Assembler
-- **Version:** 0.3.0
+- **Version:** 0.6.0
 - **Development Platform:** Debian 13 Linux
 - **Languages:** Python 3.13, MLIR, C/C++
 - **License:** MIT License
@@ -89,9 +89,11 @@ has 4 stages:
     2. Append START and STOP function codes to create a full transmission.
     3. Save the completed binary to `/out/TRANSMISSION.bin`.
 
-## Current State (v0.1 — What's Working)
+## Current State — Built Through v0.5
 
-v0.1 is **complete**: the full pipeline runs end-to-end and produces `/out/TRANSMISSION.bin`.
+The assembler pipeline is **complete through v0.5**: the full flow runs
+end-to-end and produces `/out/TRANSMISSION.bin`. Per-version history is the Build
+Plan below, with details in `log.md`.
 
 The project is an installable Python package named **`nn_assembler`** (the
 `nn_assembler/` directory is the package). After a one-time editable install
@@ -113,44 +115,31 @@ package unresolved in the IDE.)
 - As the original script (still supported):
 `python ./nn_assembler/Convert.py Tiny_NN Recent`
 
-- **Main Guard:** The project can be run using
-`python ./nn_assembler/Convert.py` with relevant arguments, or by directly
-calling the `Convert(model_name, run_name)` function.
-- **Neural Network Imports:** The `NN_Import` function in
-`/nn_assembler/Convert.py` imports neural networks based on *model_name* and
-*run_name* and saves them to `/tmp/initial.mlir` (StableHLO computation graph)
-and `/tmp/weights.npz` (neural network weights). The `Neural_Networks` directory
-is located by an upward search from the package (overridable via the
-`NN_ASSEMBLER_NETWORKS_DIR` env var or the `nn_dir` argument), so the project is
-not coupled to a fixed directory depth.
-- **First Optimization Pass:** `/nn_assembler/Process_MLIR.py` runs a base
-optimization pass provided by the StableHLO-opt binary, saving the result to `/tmp/optimized.mlir`.
-- **Weight Processing:** `/nn_assembler/Process_Weights.py` quantizes weights
-f32 → per-tensor symmetric int8 (v0.3; `S_w` from `__scales__`), decomposes each
-layer's `M` into the dyadic pair `M0 · 2^-n`, maps tensors to addresses (input →
-`0x1`, weights/biases contiguous from `0x2`), and writes `/tmp/MEM.bin` and
-`/tmp/weight_map.json` (weight entries carry `M0`/`n`).
-- **Custom Dialect + Legalization:** `/nn_assembler/MLIR/` defines the
-*Functional TPU* dialect (Python implementation — see
-`/nn_assembler/MLIR/README.md`) and the StableHLO → TPU legalization pass, which
-annotates each `tpu.mult` with its `M0`/`n`; `Process_MLIR` writes
-`/tmp/optimized.tpu.mlir`. Shape-only ops (reshape) are folded so each dialect op
-maps 1:1 to an instruction.
-- **Bias Removal (v0.3):** `/nn_assembler/MLIR/bias_removal.py` drops bias `add`
-ops and reroutes consumers to the matmul result; `Process_MLIR` writes
-`/tmp/optimized.nobias.tpu.mlir`, the final dialect the assembler consumes.
-- **Assembler:** `/nn_assembler/Assembler.py` translates the (bias-removed)
-dialect to ISA machine code — encoding `M0` (bits 59-52) and `n` (bits 51-44) in
-each MUL — and exports `/tmp/PROGRAM.bin`. Intermediate results and the network
-input share scratch address `0x1`.
-- **Serializer:** `/nn_assembler/Serializer.py` wraps `MEM.bin` then
-`PROGRAM.bin` with FLASH/STOP into `/out/TRANSMISSION.bin`.
-- **Protocol encoders:** `/nn_assembler/Protocol.py` centralizes the Message
-Protocol byte format (function codes, MEM/PROGRAM block builders).
-- **Tests:** 26 pytest tests in `/test/` cover per-tensor int8 quantization,
-dyadic `M → (M0, n)` decomposition, weight mapping, the dialect (incl. `M0`/`n`
-round-trip), legalization + annotation, bias removal, instruction encoding, and
-the full pipeline.
+- **Import:** `Convert.py` imports a model's StableHLO graph
+(`/tmp/initial.mlir`) and weights (`/tmp/weights.npz`) by `(model, run)` — the
+`Neural_Networks` directory is found by upward search (overridable via
+`NN_ASSEMBLER_NETWORKS_DIR` or the `nn_dir` argument); `Process_MLIR.py` then runs
+the StableHLO optimization pass (`/tmp/optimized.mlir`).
+- **Weight processing** (`Process_Weights.py`): per-tensor symmetric int8
+quantization (`S_w` from `__scales__`), dyadic `M → (M0, n)` decomposition,
+offline weight transpose (v0.5), and data-memory allocation — `0x1` reserved for
+network I/O, intermediates placed in main memory (`0x2+`) with reuse,
+weights/biases contiguous. Emits `/tmp/MEM.bin` (3-byte MEM addresses, chunked
+past 65535 words) and `/tmp/weight_map.json` (weight entries carry `M0`/`n`).
+- **MLIR lowering** (`/nn_assembler/MLIR/`): the custom *Functional TPU* dialect
+(Python — see `MLIR/README.md`), StableHLO→dialect legalization (annotates `mult`
+with `M0`/`n`; folds shape-only ops), bias removal, and the v0.5
+matmul-partitioning pass (large matmuls → one `stride` + tiled `mult`/`multip`
+over array-sized sub-blocks). Each pass writes an inspectable `/tmp/*.tpu.mlir`.
+- **Assembly + serialization** (`Assembler.py`, `Serializer.py`, `Protocol.py`):
+24-bit instruction encoding (`mult`/`multip`/`stride`/`add`; a `relu` encoder
+exists but the legalizer does not yet emit it — addressed in v0.6), `M0`/`n` in
+each MUL → `/tmp/PROGRAM.bin`, framed with `MEM.bin` into
+`/out/TRANSMISSION.bin` via FLASH/STOP.
+- **Tests:** a pytest suite in `/test/` covering quantization, dyadic
+decomposition, weight mapping/transpose, the dialect, legalization, bias removal,
+matmul partitioning, instruction encoding, and full-pipeline E2E (`Tiny_NN`,
+`Bigger_NN`).
 
 ## Architecture
 
@@ -558,3 +547,108 @@ inspectable artifact (per `Functional_TPU_ISA.md` v0.5).
   transposed-weight layout numeric check.
 - `test_serializer_and_e2e.py`: full `Bigger_NN` pipeline frames correctly
   (numeric reference on a both-tiled matmul).
+
+### v0.6 — Convolution and Pooling
+
+Implements the assembler side of v0.6 (`Functional_TPU_ISA.md` v0.6). Convolution
+lowers to on-device `im2col` + matmul, reusing the v0.5 partitioning pass to tile
+the matmul; max-pooling lowers to a `window` + `max` pair. Both windowed ops read a
+persistent window descriptor set by a `window` (WINCONFIG) instruction. Promotes
+`LeNet_5` from a numerical reference (v0.3 Step 7) to a full end-to-end assembler
+target.
+
+**Background.** A conv layer becomes `window` (geometry) → `im2col` (feature map →
+dense (C·kh·kw)×(outh·outw) column matrix) → `mult` (weight (out_ch × C·kh·kw) ·
+columns); the matmul is tiled by the existing partitioning pass. Max-pool becomes
+`window` → `max` (per-channel windowed reduction). im2col's K-axis is channel-major
+`k = c·(kh·kw) + ki·kw + kj`, which matches the PyTorch `(out,in,kh,kw)` weight
+flatten with no permutation — the weight flatten MUST match or the conv is silently
+wrong. Conv/pool outputs are CHW-planar, so each layer's output feeds the next
+layer's `im2col`/`max`/flatten with no reshape.
+
+**Prerequisite — LeNet-5 artifact regeneration.** E2E (Step 6) needs a `LeNet_5`
+artifact (`LeNet_5_Recent.{mlir,weights.npz}`) carrying v0.3 requant metadata
+(`__M__`/`__scales__`); the current one (2026-06-24) predates it. This is an
+artifact regeneration — any agent may re-run the `Neural_Networks` export per the
+Build Artifacts rule (no `Neural_Networks` code edits). If regenerating reveals that
+conv/pool-layer requant metadata needs an export code change (the path was only
+exercised on the linear nets), that is `nn-trainer` propose-only and surfaces a diff
+for the user; assembler work on Steps 1–5 proceeds regardless.
+
+**Scope note.** Adds convolution and max-pool lowering + windowed encoders + 4-D
+feature-map handling. Matmul tiling is unchanged (reused from v0.5). `stablehlo`
+attributes are supported only for the LeNet-5 subset (unit/fixed stride and
+padding, no dilation, NCHW/OIHW); unhandled ops assert rather than drop.
+
+#### Step 1 — Dialect: window / im2col / max ops
+
+Update `nn_assembler/MLIR/dialect.py`:
+
+- Add `WindowOp` (11 descriptor fields: chans, inh, inw, outh, outw, winh, winw,
+  strh, strw, padh, padw), `Im2colOp` (src/dst), and `MaxPoolOp` (src/dst).
+- Serialize/parse round-trip for each, keeping the dialect ~1:1 with the ISA.
+
+#### Step 2 — Encoders: window / im2col / max
+
+Update `Assembler.py`:
+
+- `encode_window` (W-Format, opcode 1110): pack the 11 fields at their ISA bit
+  positions.
+- `encode_im2col` (A-Format SHAPE, 1101) and `encode_max` (A-Format POOL, 1100):
+  `rs1`=src, `rd`=dest, `aux`=reserved=0.
+- Add dispatch branches in `assemble_program`.
+
+#### Step 3 — Conv Weight Processing (4-D, channel-major K)
+
+Update `Process_Weights.py`:
+
+- Flatten each conv weight `(out_ch, in_ch, kh, kw)` → matrix `(out_ch) ×
+  (in_ch·kh·kw)` with K ordered channel-major `k = c·(kh·kw)+ki·kw+kj` (matches
+  im2col; no permutation of the PyTorch layout).
+- Reuse per-tensor int8 quantization + dyadic `M0/n`; map the flattened weight to
+  memory. Orientation must match the matmul operand convention used by the FC path
+  (coordinate with the transpose-analysis stage if a transpose is implied).
+
+#### Step 4 — Conv & Pool Legalization (+ ReLU lowering, hardening)
+
+Update `nn_assembler/MLIR/legalize.py` (and `Process_MLIR.py`):
+
+- Lower `stablehlo.convolution` → `WindowOp` + `Im2colOp` + `MultOp`, computing the
+  descriptor (chans/inh/inw/outh/outw/winh/winw/strh/strw/padh/padw) from the conv
+  attributes and annotating the `MultOp` with the layer `M0/n`.
+- Lower `stablehlo.reduce_window` (max body) → `WindowOp` + `MaxPoolOp`.
+- Emit a `window` before each windowed op whose descriptor differs from the live
+  one (mirrors the v0.5 stale-`ld` handling; the window descriptor persists until
+  reset).
+- **Add ReLU lowering** — emit `ReluOp` (dialect + `encode_relu` + RTL already
+  exist but the legalizer never emits it; LeNet needs it).
+- Harden: assert on any unhandled op instead of silently dropping.
+
+#### Step 5 — Feature-Map & im2col Memory Allocation
+
+Update `Process_Weights.py` / `Assembler.py` allocation:
+
+- Allocate 3-D CHW feature-map intermediates and the im2col `(K × N)` scratch in
+  main data memory (`0x2+`) with reuse; keep `0x1` for network I/O.
+- Confirm each conv/pool output is CHW-planar so it feeds the next layer's window
+  op (and the final flatten to the FC vector) with no reshape.
+
+#### Step 6 — End-to-End: LeNet-5
+
+- Run the full pipeline on the re-exported `LeNet_5` artifact; confirm a framed
+  `/out/TRANSMISSION.bin`.
+- Verify: one `window` per conv/pool with correct geometry; `im2col` columns in
+  channel-major K order; conv matmuls tiled by the partitioning pass with correct
+  sub-block bases/leading dims; `max` per-channel outputs; ReLU emitted; CHW
+  intermediates chaining correctly; `M0/n` on every conv tile.
+
+#### Tests
+
+- `test_dialect_and_legalize.py`: window/im2col/max serialize-parse round-trip;
+  conv→(window+im2col+mult) and reduce_window→(window+max) lowering; ReLU emitted;
+  unhandled-op assert.
+- `test_assembler.py`: window/im2col/max bit-fields vs hand-derived values.
+- `test_process_weights.py`: channel-major conv-weight flatten (numeric check vs a
+  known kernel); im2col scratch + CHW intermediate allocation.
+- `test_serializer_and_e2e.py`: full LeNet-5 pipeline frames correctly (numeric
+  reference on a conv + a pool layer).
