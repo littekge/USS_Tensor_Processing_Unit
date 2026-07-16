@@ -2,6 +2,48 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-16 — v0.6 Step 3: Vector_Processor windowed addressing (im2col / max)
+
+- **Context:** v0.6 Step 3 adds windowed address generation to
+  `TPU/PROCESSING/Vector_Processor.v` per the Hardware Spec v0.6.0
+  (Vector_Processor Windowed Addressing) and ISA v0.6 (im2col / max gather
+  order, fill values). RTL + `tests/TB_Step4_VectorProcessor.v` updated. No new
+  `.v` files; no debug sections touched.
+- **`TPU/PROCESSING/Vector_Processor.v`:**
+  - Added the eleven window-descriptor inputs (`i_win_chans`/`inh`/`inw`/`outh`/
+    `outw` [12-bit]; `winh`/`winw`/`strh`/`strw`/`padh`/`padw` [4-bit]), latched
+    in IDLE at `vector_start`; added the `o_window_end` output.
+  - Added `VSRC_MEM_WIN = 3'd3` and `VDST_POOL = 3'd6`; widened the state
+    register to 5 bits; added windowed states `WIN_ADDR`/`WIN_WAIT`/`WIN_WAIT2`/
+    `WIN_FORWARD`/`WIN_WRITE`.
+  - Windowed gather: for each window element, derives the input coordinate
+    ih = oh*strh + wr - padh, iw = ow*strw + wc - padw (via non-negative bases
+    with a pad-region compare), bounds-checks against inh x inw, and substitutes
+    the fill when out of bounds — read steered to 0x0 (returns 0) for im2col,
+    minimum representable value (0x80) for max. Element count is descriptor-
+    derived (chans*winh*winw*outh*outw), not from length.
+  - `im2col` (dest VDST_MEM): iterates ch,wr,wc,oh,ow (output positions inner)
+    and writes every gathered element contiguously to dest, yielding the dense
+    (chans*winh*winw) x (outh*outw) Row-major matrix. `max` (dest VDST_POOL):
+    iterates ch,oh,ow,wr,wc (window inner), streams each element to the Pooler
+    via o_data/o_element_valid, and asserts `o_window_end` coincident with
+    `element_valid` on each window's final element.
+  - v0.5 contiguous/strided paths (MEM/SA/VB) and the requant datapath are
+    unchanged.
+- **Tests — `tests/TB_Step4_VectorProcessor.v` (16 -> 19):** new window-descriptor
+  drive registers + `o_window_end` connection, and a windowed-stream capture
+  block (element data + window_end). Test 17 = padded im2col zero-fill, dense
+  matrix written Row-major to dest ([0,0,0,4,0,0,3,0,0,2,0,0,1,0,0,0]). Test 18
+  = max window stream (4x4 map, 2x2/stride2) to the Pooler dest with window_end
+  on each window's 4th element; descriptor-derived 16-element count. Test 19 =
+  padded max min-fill (0x80) on out-of-bounds elements. Tests 3/4/15/16 (v0.5
+  contiguous/strided) unchanged.
+- **`tests/run_regression.sh`:** unchanged for Step 4 (RTL dependency list is
+  still just `Vector_Processor.v` + the testbench).
+- **Verification: PENDING** (Linux laptop — no `vsim.exe`; `run_regression.sh`
+  self-gates). On the Questa PC run `TB_Step4_VectorProcessor` (expect 19/19).
+  `main.md` v0.6 Step 3 left UNMARKED until the regression passes there.
+
 ## 2026-07-16 — v0.6 Step 2: Controller window descriptors + windowed decode
 
 - **Context:** v0.6 Step 2 adds the window descriptor registers and windowed-

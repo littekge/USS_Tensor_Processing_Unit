@@ -25,7 +25,7 @@
  * PASS / FAIL CRITERIA:
  *   Each test prints "PASS" or "FAIL" to the transcript.
  *   A final summary prints total pass/fail counts.
- *   All 16 tests should show PASS for a correct implementation.
+ *   All 19 tests should show PASS for a correct implementation.
  *
  * TEST CASES:
  *   Test 1:  After reset — o_vector_idle is HIGH immediately
@@ -49,6 +49,11 @@
  *            2x2 result into a 4-wide parent in place (row 1 lands at base+4,
  *            not base+2); leading_dimension=0 (Tests 3/4) is the contiguous
  *            v0.4 behavior.
+ *   Test 17 (v0.6): im2col gather with zero-fill on a small padded map; dense
+ *            matrix written Row-major to dest.
+ *   Test 18 (v0.6): max window stream to the Pooler destination with window_end
+ *            on each window's final element; descriptor-derived count.
+ *   Test 19 (v0.6): max window stream with min-fill (0x80) on padding.
  * -------------------------------------------------------------------------
  */
 
@@ -104,8 +109,13 @@ reg  [7:0] vp_scale;   // M0: dyadic requant multiplier (VSRC_SA_OUT tests)
 reg  [7:0] vp_shift;   // n:  dyadic requant right-shift
 reg [23:0] vp_leading_dimension;  // physical row stride (0 = contiguous)
 
+// v0.6 window descriptor drive registers (windowed tests only)
+reg [11:0] vp_win_chans, vp_win_inh, vp_win_inw, vp_win_outh, vp_win_outw;
+reg [3:0]  vp_win_winh, vp_win_winw, vp_win_strh, vp_win_strw, vp_win_padh, vp_win_padw;
+
 wire        vp_vector_idle;
 wire        vp_element_valid;
+wire        vp_window_end;
 // v0.4: single unified Data_Memory port (flat 24-bit address + 0x1 offset).
 wire [23:0] vp_dm_address;
 wire        vp_dm_wren;
@@ -130,6 +140,8 @@ localparam VDST_SA_B    = 3'd2;
 localparam VDST_ACT     = 3'd3;
 localparam VDST_ALU_A   = 3'd4;
 localparam VDST_ALU_B   = 3'd5;
+localparam VDST_POOL    = 3'd6;
+localparam VSRC_MEM_WIN = 3'd3;
 
 // ---------------------------------------------------------------------------
 // Behavioral Data_Memory model (v0.4 unified wrapper)
@@ -249,8 +261,20 @@ Vector_Processor dut (
     .i_leading_dimension  (vp_leading_dimension),
     .i_scale              (vp_scale),
     .i_shift              (vp_shift),
+    .i_win_chans          (vp_win_chans),
+    .i_win_inh            (vp_win_inh),
+    .i_win_inw            (vp_win_inw),
+    .i_win_outh           (vp_win_outh),
+    .i_win_outw           (vp_win_outw),
+    .i_win_winh           (vp_win_winh),
+    .i_win_winw           (vp_win_winw),
+    .i_win_strh           (vp_win_strh),
+    .i_win_strw           (vp_win_strw),
+    .i_win_padh           (vp_win_padh),
+    .i_win_padw           (vp_win_padw),
     .o_vector_idle        (vp_vector_idle),
     .o_element_valid      (vp_element_valid),
+    .o_window_end         (vp_window_end),
     .o_dm_address         (vp_dm_address),
     .o_dm_wren            (vp_dm_wren),
     .o_dm_data            (vp_dm_data),
@@ -307,6 +331,21 @@ always @(posedge clk) begin
     end
 end
 
+// Windowed (max) stream capture: logs the element stream to the Pooler and
+// whether o_window_end coincided with each element_valid pulse.
+integer   win_ev_count;
+reg [7:0] win_stream [0:31];
+reg       win_wend   [0:31];
+reg       capture_win;
+
+always @(posedge clk) begin
+    if (capture_win && vp_element_valid && win_ev_count < 32) begin
+        win_stream[win_ev_count] <= vp_data;
+        win_wend[win_ev_count]   <= vp_window_end;
+        win_ev_count             <= win_ev_count + 1;
+    end
+end
+
 // Helper: pulse vector_start for one cycle then wait for idle
 task vp_start_and_wait;
     input  [2:0] src;
@@ -356,6 +395,12 @@ initial begin
     vp_scale         = 8'd1;   // identity requant multiplier by default
     vp_shift         = 8'd0;   // no shift by default (non-SA-out tests ignore)
     vp_leading_dimension = 24'd0;  // contiguous by default (v0.4 behavior)
+    vp_win_chans = 12'd0; vp_win_inh = 12'd0; vp_win_inw = 12'd0;
+    vp_win_outh = 12'd0; vp_win_outw = 12'd0;
+    vp_win_winh = 4'd0; vp_win_winw = 4'd0; vp_win_strh = 4'd0;
+    vp_win_strw = 4'd0; vp_win_padh = 4'd0; vp_win_padw = 4'd0;
+    capture_win      = 0;
+    win_ev_count     = 0;
     stride_mode      = 0;
     ev_count         = 0;
     ev_ok            = 1;
@@ -671,6 +716,121 @@ initial begin
           (main_mem[4] === 8'hFF) && (main_mem[5] === 8'hFF), 16);
     stride_mode = 1'b0;
     vp_leading_dimension = 24'd0;
+
+    // -----------------------------------------------------------------------
+    // TEST 17 (v0.6): im2col gather with zero-fill (padded).
+    //   Feature map chans=1, inh=2, inw=2 = [[1,2],[3,4]] at src 0x10; window
+    //   2x2, stride 2, pad 1 -> outh=outw=2. The dense (winh*winw)=4 x
+    //   (outh*outw)=4 im2col matrix is written Row-major to dest 0x40, with
+    //   out-of-bounds (padding) elements zero-filled. Hand-computed dense
+    //   (r = window offset, c = output position; element order r-major, c-inner):
+    //     [0,0,0,4, 0,0,3,0, 0,2,0,0, 1,0,0,0]
+    // -----------------------------------------------------------------------
+    do_reset;
+    main_mem[16] = 8'd1; main_mem[17] = 8'd2;
+    main_mem[18] = 8'd3; main_mem[19] = 8'd4;
+    for (j = 64; j < 80; j = j + 1) main_mem[j] = 8'hFF;
+    vp_win_chans = 12'd1; vp_win_inh = 12'd2; vp_win_inw = 12'd2;
+    vp_win_outh  = 12'd2; vp_win_outw = 12'd2;
+    vp_win_winh = 4'd2; vp_win_winw = 4'd2; vp_win_strh = 4'd2;
+    vp_win_strw = 4'd2; vp_win_padh = 4'd1; vp_win_padw = 4'd1;
+
+    vp_start_and_wait(VSRC_MEM_WIN, VDST_MEM, 24'h000010, 24'h000040,
+                      16'd0, 4'd0, 4'd0);
+    @(posedge clk); #1;
+
+    begin : im2col_check
+        reg       ok;
+        integer   k;
+        reg [7:0] exp [0:15];
+        exp[0]=8'd0;  exp[1]=8'd0;  exp[2]=8'd0;  exp[3]=8'd4;
+        exp[4]=8'd0;  exp[5]=8'd0;  exp[6]=8'd3;  exp[7]=8'd0;
+        exp[8]=8'd0;  exp[9]=8'd2;  exp[10]=8'd0; exp[11]=8'd0;
+        exp[12]=8'd1; exp[13]=8'd0; exp[14]=8'd0; exp[15]=8'd0;
+        ok = 1'b1;
+        for (k = 0; k < 16; k = k + 1)
+            if (main_mem[64 + k] !== exp[k]) ok = 1'b0;
+        check(ok === 1'b1, 17);
+    end
+
+    // -----------------------------------------------------------------------
+    // TEST 18 (v0.6): max window stream to the Pooler destination + window_end.
+    //   Feature map chans=1, inh=4, inw=4 (values 0..15 Row-major) at src 0x20;
+    //   window 2x2, stride 2, pad 0 -> outh=outw=2, four windows of four values.
+    //   Streamed element order (window inner, wc innermost; windows in ch,oh,ow
+    //   order); window_end asserted on each window's 4th element:
+    //     0,1,4,5 | 2,3,6,7 | 8,9,12,13 | 10,11,14,15
+    // -----------------------------------------------------------------------
+    do_reset;
+    for (j = 0; j < 16; j = j + 1) main_mem[32 + j] = j;
+    vp_win_chans = 12'd1; vp_win_inh = 12'd4; vp_win_inw = 12'd4;
+    vp_win_outh  = 12'd2; vp_win_outw = 12'd2;
+    vp_win_winh = 4'd2; vp_win_winw = 4'd2; vp_win_strh = 4'd2;
+    vp_win_strw = 4'd2; vp_win_padh = 4'd0; vp_win_padw = 4'd0;
+    capture_win = 1'b1; win_ev_count = 0;
+
+    vp_start_and_wait(VSRC_MEM_WIN, VDST_POOL, 24'h000020, 24'd0,
+                      16'd0, 4'd0, 4'd0);
+    capture_win = 1'b0;
+
+    begin : max_check
+        reg       ok;
+        integer   k;
+        reg [7:0] exp [0:15];
+        exp[0]=8'd0;  exp[1]=8'd1;  exp[2]=8'd4;  exp[3]=8'd5;
+        exp[4]=8'd2;  exp[5]=8'd3;  exp[6]=8'd6;  exp[7]=8'd7;
+        exp[8]=8'd8;  exp[9]=8'd9;  exp[10]=8'd12; exp[11]=8'd13;
+        exp[12]=8'd10; exp[13]=8'd11; exp[14]=8'd14; exp[15]=8'd15;
+        ok = 1'b1;
+        if (win_ev_count !== 16) ok = 1'b0;
+        for (k = 0; k < 16; k = k + 1)
+        begin
+            if (win_stream[k] !== exp[k]) ok = 1'b0;
+            if (((k % 4) == 3) && (win_wend[k] !== 1'b1)) ok = 1'b0;
+            if (((k % 4) != 3) && (win_wend[k] !== 1'b0)) ok = 1'b0;
+        end
+        check(ok === 1'b1, 18);
+    end
+
+    // -----------------------------------------------------------------------
+    // TEST 19 (v0.6): max window stream with min-fill on padding.
+    //   Feature map chans=1, inh=2, inw=2 = [[1,2],[3,4]] at src 0x10; window
+    //   2x2, stride 2, pad 1 (same geometry as Test 17). Out-of-bounds elements
+    //   take the min representable value (0x80) so they never win the max:
+    //     80,80,80,1 | 80,80,2,80 | 80,3,80,80 | 4,80,80,80
+    //   window_end on each window's 4th element.
+    // -----------------------------------------------------------------------
+    do_reset;
+    main_mem[16] = 8'd1; main_mem[17] = 8'd2;
+    main_mem[18] = 8'd3; main_mem[19] = 8'd4;
+    vp_win_chans = 12'd1; vp_win_inh = 12'd2; vp_win_inw = 12'd2;
+    vp_win_outh  = 12'd2; vp_win_outw = 12'd2;
+    vp_win_winh = 4'd2; vp_win_winw = 4'd2; vp_win_strh = 4'd2;
+    vp_win_strw = 4'd2; vp_win_padh = 4'd1; vp_win_padw = 4'd1;
+    capture_win = 1'b1; win_ev_count = 0;
+
+    vp_start_and_wait(VSRC_MEM_WIN, VDST_POOL, 24'h000010, 24'd0,
+                      16'd0, 4'd0, 4'd0);
+    capture_win = 1'b0;
+
+    begin : maxfill_check
+        reg       ok;
+        integer   k;
+        reg [7:0] exp [0:15];
+        exp[0]=8'h80; exp[1]=8'h80; exp[2]=8'h80; exp[3]=8'd1;
+        exp[4]=8'h80; exp[5]=8'h80; exp[6]=8'd2;  exp[7]=8'h80;
+        exp[8]=8'h80; exp[9]=8'd3;  exp[10]=8'h80; exp[11]=8'h80;
+        exp[12]=8'd4; exp[13]=8'h80; exp[14]=8'h80; exp[15]=8'h80;
+        ok = 1'b1;
+        if (win_ev_count !== 16) ok = 1'b0;
+        for (k = 0; k < 16; k = k + 1)
+        begin
+            if (win_stream[k] !== exp[k]) ok = 1'b0;
+            if (((k % 4) == 3) && (win_wend[k] !== 1'b1)) ok = 1'b0;
+            if (((k % 4) != 3) && (win_wend[k] !== 1'b0)) ok = 1'b0;
+        end
+        check(ok === 1'b1, 19);
+    end
 
     // -----------------------------------------------------------------------
     // Summary
