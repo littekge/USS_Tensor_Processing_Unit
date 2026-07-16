@@ -150,6 +150,124 @@ def test_legalize_rejects_runtime_transpose():
         legalize_text(_TRANSPOSE_MLIR, weight_map)
 
 
+_CONV_POOL_MLIR = (
+    "module @m {\n"
+    '  func.func public @main(%arg0: tensor<2x1x3x3xf32> loc("states[0]"), '
+    '%arg1: tensor<2xf32> loc("states[1]"), '
+    '%arg2: tensor<1x1x5x5xf32> loc("inputs[0][0]")) '
+    "-> (tensor<1x2x1x1xf32> {jax.result_info = \"result[0]\"}) {\n"
+    "    %cst = stablehlo.constant dense<0xFF800000> : tensor<f32>\n"
+    "    %0 = stablehlo.convolution(%arg2, %arg0) dim_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1], "
+    "window = {} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : "
+    "(tensor<1x1x5x5xf32>, tensor<2x1x3x3xf32>) -> tensor<1x2x3x3xf32>\n"
+    "    %1 = stablehlo.reshape %arg1 : (tensor<2xf32>) -> tensor<1x2x1x1xf32>\n"
+    "    %2 = stablehlo.broadcast_in_dim %1, dims = [0, 1, 2, 3] : (tensor<1x2x1x1xf32>) -> tensor<1x2x3x3xf32>\n"
+    "    %3 = stablehlo.add %0, %2 : tensor<1x2x3x3xf32>\n"
+    "    %4 = call @relu(%3) : (tensor<1x2x3x3xf32>) -> tensor<1x2x3x3xf32>\n"
+    "    %5 = \"stablehlo.reduce_window\"(%4, %cst) "
+    "<{window_dimensions = array<i64: 1, 1, 2, 2>, window_strides = array<i64: 1, 1, 2, 2>}> ({\n"
+    "    ^bb0(%arg11: tensor<f32>, %arg12: tensor<f32>):\n"
+    "      %6 = stablehlo.maximum %arg11, %arg12 : tensor<f32>\n"
+    "      stablehlo.return %6 : tensor<f32>\n"
+    "    }) : (tensor<1x2x3x3xf32>, tensor<f32>) -> tensor<1x2x1x1xf32>\n"
+    "    return %5 : tensor<1x2x1x1xf32>\n"
+    "  }\n"
+    "  func.func private @relu(%arg0: tensor<1x2x3x3xf32>) -> tensor<1x2x3x3xf32> {\n"
+    "    %cst = stablehlo.constant dense<0.000000e+00> : tensor<1x2x3x3xf32>\n"
+    "    %0 = stablehlo.maximum %arg0, %cst : tensor<1x2x3x3xf32>\n"
+    "    return %0 : tensor<1x2x3x3xf32>\n"
+    "  }\n"
+    "}\n"
+)
+
+_CONV_POOL_WEIGHT_MAP = {
+    "%arg0": {"kind": "weight", "address": 2, "M0": 192, "n": 8},
+    "%arg1": {"kind": "bias", "address": 20},
+    "%arg2": {"kind": "input", "address": 1},
+}
+
+
+def test_legalize_lowers_convolution():
+    program = legalize_text(_CONV_POOL_MLIR, _CONV_POOL_WEIGHT_MAP)
+    win = program.ops[0]
+    assert isinstance(win, WindowOp)
+    # conv1: 1 in-channel, 5x5 -> 3x3, 3x3 window, unit stride, no pad.
+    assert (win.chans, win.inh, win.inw, win.outh, win.outw) == (1, 5, 5, 3, 3)
+    assert (win.winh, win.winw, win.strh, win.strw, win.padh, win.padw) == (3, 3, 1, 1, 0, 0)
+
+    im2col = program.ops[1]
+    assert isinstance(im2col, Im2colOp)
+    assert im2col.src.name == "%arg2"  # network input
+    assert im2col.out_shape == [9, 9]  # K = 1*3*3 = 9 (channel-major); N = 3*3 = 9
+
+    mult = program.ops[2]
+    assert isinstance(mult, MultOp)
+    assert mult.lhs.name == "%arg0" and mult.lhs.shape == [2, 9]  # weight (out_ch x K) is LHS
+    assert mult.rhs.name == "%0_col" and mult.rhs.shape == [9, 9]  # im2col columns are RHS
+    assert mult.out_shape == [2, 9]  # (out_ch x N), CHW-planar
+    assert (mult.M0, mult.n) == (192, 8)
+
+
+def test_legalize_lowers_reduce_window_max():
+    program = legalize_text(_CONV_POOL_MLIR, _CONV_POOL_WEIGHT_MAP)
+    windows = [op for op in program.ops if isinstance(op, WindowOp)]
+    pools = [op for op in program.ops if isinstance(op, MaxPoolOp)]
+    assert len(pools) == 1
+    pool = pools[0]
+    # pool: 2 channels, 3x3 -> 1x1, 2x2 window, stride 2.
+    pool_window = windows[1]
+    assert (pool_window.chans, pool_window.inh, pool_window.inw) == (2, 3, 3)
+    assert (pool_window.outh, pool_window.outw) == (1, 1)
+    assert (pool_window.winh, pool_window.winw, pool_window.strh, pool_window.strw) == (2, 2, 2, 2)
+    assert pool.src.name == "%4"  # the relu output
+    assert pool.out_shape == [2, 1, 1]
+
+
+def test_legalize_emits_relu():
+    program = legalize_text(_CONV_POOL_MLIR, _CONV_POOL_WEIGHT_MAP)
+    relus = [op for op in program.ops if isinstance(op, ReluOp)]
+    assert len(relus) == 1
+    assert relus[0].length == 18  # 1*2*3*3 elements
+    assert relus[0].src.name == "%3"  # bias-add result (rerouted later by bias removal)
+
+
+def test_bias_removal_reroutes_maxpool_src():
+    # A pool directly after conv+bias: the pool's src is the bias-add result, which
+    # is dropped, so the src must reroute to the conv (mult) result.
+    weight_map = {
+        "%arg0": {"kind": "weight", "address": 2, "M0": 128, "n": 8},
+        "%b": {"kind": "bias", "address": 20},
+        "%in": {"kind": "input", "address": 1},
+    }
+    program = Program(name="m")
+    program.ops.append(Im2colOp("%c", Operand("%in", []), [9, 9]))
+    program.ops.append(MultOp("%0", Operand("%arg0", [2, 9]), Operand("%c", [9, 9]), [2, 9], M0=128, n=8))
+    program.ops.append(AddOp("%1", Operand("%0", [2, 9]), Operand("%b", [2, 9]), [2, 9]))
+    program.ops.append(MaxPoolOp("%2", Operand("%1", []), [2, 1, 1]))
+    program.ops.append(ReturnOp("%2", [2, 1, 1]))
+    program.ops.append(EndOp())
+
+    remove_bias_adds(program, weight_map)
+    pool = next(op for op in program.ops if isinstance(op, MaxPoolOp))
+    assert pool.src.name == "%0"  # rerouted from the dropped bias add %1
+
+
+def test_legalize_asserts_on_unhandled_op():
+    import pytest
+
+    bad = (
+        "module @m {\n"
+        '  func.func public @main(%arg0: tensor<1x1xf32> loc("inputs[0][0]")) '
+        "-> (tensor<1x1xf32>) {\n"
+        "    %0 = stablehlo.exponential %arg0 : tensor<1x1xf32>\n"
+        "    return %0 : tensor<1x1xf32>\n"
+        "  }\n"
+        "}\n"
+    )
+    with pytest.raises(AssertionError, match="Unhandled op"):
+        legalize_text(bad, {"%arg0": {"kind": "input", "address": 1}})
+
+
 def test_stride_op_roundtrip():
     program = Program(name="m")
     program.ops.append(StrideOp(ld1=1000, ld2=100))

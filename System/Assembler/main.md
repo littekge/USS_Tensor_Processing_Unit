@@ -609,7 +609,7 @@ Update `Process_Weights.py`:
   memory. Orientation must match the matmul operand convention used by the FC path
   (coordinate with the transpose-analysis stage if a transpose is implied).
 
-#### Step 4 — Conv & Pool Legalization (+ ReLU lowering, hardening)
+#### Step 4 — Conv & Pool Legalization (+ ReLU lowering, hardening) — ✅ Complete (2026-07-16)
 
 Update `nn_assembler/MLIR/legalize.py` (and `Process_MLIR.py`):
 

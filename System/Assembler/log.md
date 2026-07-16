@@ -2,6 +2,42 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-16 — v0.6 Step 4: conv/pool legalization + ReLU + hardening
+
+- Rewrote `nn_assembler/MLIR/legalize.py` to lower the LeNet-5 subset while staying
+  backward-compatible with the linear-net path:
+  - Extracts and walks only the `@main` body via paren/brace matching
+    (`_find_functions`); classifies private ReLU helpers (`maximum(x,0)`) but does
+    not lower their bodies.
+  - `stablehlo.convolution` → `WindowOp` + `Im2colOp` + `MultOp`. Descriptor
+    computed from the conv geometry (NCHW/OIHW, `window = {}` = unit stride/no pad).
+    im2col columns are `[K, N]` with K channel-major (`K = chans*kh*kw`,
+    `N = outh*outw`); the conv weight is the matmul LHS `[out_ch, K]` (no offline
+    transpose). MultOp annotated with the layer M0/n.
+  - `stablehlo.reduce_window` (max body) → `WindowOp` + `MaxPoolOp`; multi-line op
+    collapsed to a single placeholder first (`_collapse_reduce_windows`), asserting
+    max reduction and no padding/dilation.
+  - `call @relu*` → `ReluOp` (length = flattened element count). ReLU is now
+    emitted (the encoder/dialect existed but the legalizer never produced it).
+  - `stablehlo.broadcast_in_dim` folded like reshape (only feeds the bias path).
+  - Emits a `window` only when the descriptor differs from the live one.
+  - Hardening: any unrecognized `stablehlo.*`/`call @` op in `@main` raises an
+    assert instead of being silently dropped.
+- `nn_assembler/MLIR/bias_removal.py`: reroute `Im2colOp`/`MaxPoolOp` `src` (not
+  just ReluOp) so a windowed op consuming a dropped bias-add result reroutes to the
+  surviving matmul result.
+- `Process_MLIR.py` unchanged (legalize signature unchanged).
+- Manual full-pipeline run on the real re-exported `LeNet_5_Recent` artifact
+  produced a framed `out/TRANSMISSION.bin`. Legalized dialect: 4 deduped windows,
+  2 im2col, 2 max, 5 mults (conv1/conv2/fc1-3), 4 relu; partitioned: 5 strides
+  (one per matmul), conv/fc matmuls tiled, all weights carry M0/n.
+- Files modified: `nn_assembler/MLIR/legalize.py`, `nn_assembler/MLIR/bias_removal.py`,
+  `nn_assembler/MLIR/README.md`, `test/test_dialect_and_legalize.py`, `main.md`,
+  `log.md`.
+- Tests: added conv→(window+im2col+mult), reduce_window→(window+max), ReLU-emitted,
+  unhandled-op assert, and bias-removal windowed-src reroute. 77 pass, 1 pre-existing
+  fail (Bigger_NN artifact; unrelated).
+
 ## 2026-07-16 — v0.6 Step 3: conv weight flatten (4-D, channel-major K)
 
 - `nn_assembler/Process_Weights.py`: added `flatten_conv_weight_shape` and applied

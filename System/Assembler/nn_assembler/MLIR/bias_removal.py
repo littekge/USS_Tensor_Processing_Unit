@@ -16,7 +16,7 @@ Non-bias adds (e.g. future matmul-partition partial sums) are left untouched.
 
 from __future__ import annotations
 
-from .dialect import AddOp, MultOp, Program, ReluOp, ReturnOp
+from .dialect import AddOp, Im2colOp, MaxPoolOp, MultOp, Program, ReluOp, ReturnOp
 
 
 def _is_bias(name: str, weight_map: dict) -> bool:
@@ -62,7 +62,9 @@ def remove_bias_adds(program: Program, weight_map: dict) -> Program:
             op.lhs.name = lhs_name
             op.rhs.name = rhs_name
             new_ops.append(op)
-        elif isinstance(op, ReluOp):
+        elif isinstance(op, (ReluOp, Im2colOp, MaxPoolOp)):
+            # A windowed/activation op may consume a bias-add result (e.g. a pool
+            # directly after conv+bias); reroute its source to the surviving value.
             op.src.name = replacement(op.src.name)
             new_ops.append(op)
         elif isinstance(op, ReturnOp):

@@ -21,9 +21,9 @@ TableGen/C++ MLIR dialect. Rationale:
 
 ## Files
 
-- `dialect.py` — in-memory op classes (`MultOp`, `MultipOp`, `StrideOp`, `AddOp`,
-  `ReluOp`, `EndOp`, `ReturnOp`) plus `serialize()`/`parse_program()` for the
-  textual form.
+- `dialect.py` — in-memory op classes (`MultOp`, `MultipOp`, `StrideOp`,
+  `WindowOp`, `Im2colOp`, `MaxPoolOp`, `AddOp`, `ReluOp`, `EndOp`, `ReturnOp`) plus
+  `serialize()`/`parse_program()` for the textual form.
 - `transpose_analysis.py` — post-import pass (`analyze_transposes_file()`) that
   scans `initial.mlir`, classifies each `stablehlo.transpose` as a weight
   transpose (resolved offline) or a runtime transpose (out of scope, flagged),
@@ -31,7 +31,12 @@ TableGen/C++ MLIR dialect. Rationale:
 - `legalize.py` — the StableHLO → TPU dialect pass (`legalize()`), invoked by
   `Process_MLIR.py`. Annotates each `tpu.mult` with its weight's dyadic
   requantization pair `M0`/`n` from `weight_map.json`, and folds resolved weight
-  transposes (their data was transposed offline by `Process_Weights`).
+  transposes (their data was transposed offline by `Process_Weights`). v0.6 adds
+  the LeNet-5 subset: `stablehlo.convolution` → `window`+`im2col`+`mult`,
+  `stablehlo.reduce_window` (max) → `window`+`max`, and `call @relu*` → `relu`. It
+  walks only `@main` (private ReLU helpers are classified, not lowered), emits a
+  `window` only when the descriptor changes, and asserts on any unhandled op
+  rather than silently dropping it.
 - `bias_removal.py` — TPU-dialect pass (`remove_bias_adds()`) that drops bias
   `add`s (v0.3: bias is folded into the matmul's requant multiplier) and reroutes
   their consumers to the matmul result. Non-bias adds are left untouched.
@@ -59,6 +64,29 @@ module @<name> {
   }
 }
 ```
+
+### Windowed ops (v0.6: convolution and pooling)
+
+A convolution lowers to a `window` (geometry) + `im2col` (feature map → column
+matrix) + `mult` (weight · columns); the matmul is tiled by `partition.py` like
+any other. Max pooling lowers to `window` + `max`. The `window` descriptor
+persists until the next `window`, so the legalizer emits one only when it changes.
+
+```
+    tpu.window chans = C, inh = H, inw = W, outh = OH, outw = OW,
+               winh = KH, winw = KW, strh = SH, strw = SW, padh = PH, padw = PW
+                                                 // -> ISA window (WINCONFIG / W-format)
+    %col = tpu.im2col %src -> KxN                // -> ISA im2col (SHAPE / A-format)
+                                                 //    K = C*KH*KW (channel-major),
+                                                 //    N = OH*OW
+    %res = tpu.max    %src -> CxOHxOW            // -> ISA max    (POOL / A-format)
+```
+
+`im2col`'s K-axis is channel-major (`k = c*(KH*KW) + ki*KW + kj`); the conv
+weight is flattened `(out,in,kh,kw) → (out_ch × in*kh*kw)` in the same order (no
+permutation) and used as the matmul LHS. Conv/pool outputs are CHW-planar, so
+each feeds the next layer's window op (and the final flatten to the FC vector)
+with no reshape.
 
 ### Partitioned matmuls (v0.5)
 
