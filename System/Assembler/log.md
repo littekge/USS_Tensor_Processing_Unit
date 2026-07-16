@@ -2,6 +2,23 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-16 — v0.6 Step 3: conv weight flatten (4-D, channel-major K)
+
+- `nn_assembler/Process_Weights.py`: added `flatten_conv_weight_shape` and applied
+  it so a 4-D conv kernel `(out_ch, in_ch, kh, kw)` is recorded as the 2-D matrix
+  `(out_ch) x (in_ch*kh*kw)`. The row-major flatten of the PyTorch kernel is
+  already channel-major (`k = c*(kh*kw)+ki*kw+kj`) -- the exact order `im2col`
+  gathers columns -- so it is a pure reshape with NO permutation and the physical
+  MEM bytes are unchanged (only the recorded shape becomes 2-D). Per-tensor int8
+  quantization + dyadic M0/n are reused unchanged. Conv weights are the matmul LHS
+  `[out_ch, K]` (weights need no offline transpose, unlike the FC path where the
+  weight is the RHS `Wᵀ`).
+- Files modified: `nn_assembler/Process_Weights.py`, `test/test_process_weights.py`,
+  `main.md`, `log.md`.
+- Tests: `flatten_conv_weight_shape` unit test; a channel-major numeric check on a
+  2x2x2x2 kernel (recorded shape [2,8]; MEM bytes equal the row-major channel-major
+  int8 flatten). 72 pass, 1 pre-existing fail (Bigger_NN artifact; unrelated).
+
 ## 2026-07-16 — v0.6 Step 2: window / im2col / max encoders + dispatch
 
 - `nn_assembler/Assembler.py`: added opcodes (WINDOW=1110, IM2COL/SHAPE=1101,

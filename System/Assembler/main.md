@@ -598,7 +598,7 @@ Update `Assembler.py`:
   `rs1`=src, `rd`=dest, `aux`=reserved=0.
 - Add dispatch branches in `assemble_program`.
 
-#### Step 3 — Conv Weight Processing (4-D, channel-major K)
+#### Step 3 — Conv Weight Processing (4-D, channel-major K) — ✅ Complete (2026-07-16)
 
 Update `Process_Weights.py`:
 
