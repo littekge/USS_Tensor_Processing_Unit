@@ -22,12 +22,15 @@ from pathlib import Path
 from .MLIR.dialect import (
     AddOp,
     EndOp,
+    Im2colOp,
+    MaxPoolOp,
     MultipOp,
     MultOp,
     Operand,
     ReluOp,
     ReturnOp,
     StrideOp,
+    WindowOp,
     parse_program,
 )
 from .Process_Weights import (
@@ -42,12 +45,18 @@ from .Protocol import build_program_instruction
 OPCODE_MULT = 0b1000
 OPCODE_RELU = 0b1001
 OPCODE_ADD = 0b1010
+OPCODE_MAX = 0b1100  # POOL
+OPCODE_IM2COL = 0b1101  # SHAPE
+OPCODE_WINDOW = 0b1110  # WINCONFIG
 OPCODE_STRIDE = 0b1111
 OPCODE_SYSTEM = 0b0000
 FUNCT3_DEFAULT = 0x0
 FUNCT3_MULT = 0x0
 FUNCT3_MULTIP = 0x1  # MULTIP shares the MUL layout; funct3 selects accumulate-keep.
 FUNCT3_STRIDE = 0x0
+FUNCT3_WINDOW = 0x0
+FUNCT3_IM2COL = 0x0
+FUNCT3_MAX = 0x0
 FUNCT7_END = 0x0
 
 # Systolic-array edge length. Every MUL/MULTIP tile must fit within the array, so
@@ -62,6 +71,8 @@ LD_FIELD_MAX = (1 << 24) - 1  # CONFIG im1/im2 (ld1/ld2) are 24-bit fields.
 REQUANT_FIELD_MAX = 255  # MUL M0/n fields are each 8 bits (bits 35-28 / 27-20).
 ADDRESS_FIELD_MAX = (1 << 24) - 1  # rs1/rs2/rd are 24-bit address fields (v0.4).
 RELU_LEN_MAX = (1 << 16) - 1  # ACT `len` field is 16 bits (bits 75-60).
+WINDOW_DIM_MAX = (1 << 12) - 1  # W-Format inh/inw/chans/outh/outw are 12-bit fields.
+WINDOW_WIN_MAX = (1 << 4) - 1  # W-Format winh/winw/strh/strw/padh/padw are 4-bit fields.
 
 
 def _as_2d(shape: list[int]) -> tuple[int, int]:
@@ -199,33 +210,106 @@ def encode_relu(rs1: int, rd: int, length: int) -> int:
     return (OPCODE_RELU << 124) | (rs1 << 100) | (rd << 76) | (length << 60) | FUNCT3_DEFAULT
 
 
+def encode_window(
+    chans: int,
+    inh: int,
+    inw: int,
+    outh: int,
+    outw: int,
+    winh: int,
+    winw: int,
+    strh: int,
+    strw: int,
+    padh: int,
+    padw: int,
+) -> int:
+    """Encode a WINCONFIG-format `window` instruction into its 128-bit value.
+
+    Field layout (ISA v0.6, W-Format): opcode 127-124 = 1110; inh 123-112;
+    inw 111-100; chans 99-88; outh 87-76; outw 75-64; winh 63-60; winw 59-56;
+    strh 55-52; strw 51-48; padh 47-44; padw 43-40; reserved 39-3; funct3 2-0
+    = WINDOW (0x0). The five feature-map/output dims are 12-bit; the six
+    window/stride/pad fields are 4-bit.
+    """
+    for field, value in (("inh", inh), ("inw", inw), ("chans", chans), ("outh", outh), ("outw", outw)):
+        assert 0 <= value <= WINDOW_DIM_MAX, f"window {field} {value} exceeds 12-bit field (max {WINDOW_DIM_MAX})."
+    for field, value in (("winh", winh), ("winw", winw), ("strh", strh), ("strw", strw), ("padh", padh), ("padw", padw)):
+        assert 0 <= value <= WINDOW_WIN_MAX, f"window {field} {value} exceeds 4-bit field (max {WINDOW_WIN_MAX})."
+    return (
+        (OPCODE_WINDOW << 124)
+        | (inh << 112)
+        | (inw << 100)
+        | (chans << 88)
+        | (outh << 76)
+        | (outw << 64)
+        | (winh << 60)
+        | (winw << 56)
+        | (strh << 52)
+        | (strw << 48)
+        | (padh << 44)
+        | (padw << 40)
+        | FUNCT3_WINDOW
+    )
+
+
+def _encode_shape_pool(opcode: int, funct3: int, rs1: int, rd: int) -> int:
+    """Encode an A-Format SHAPE/POOL instruction (`im2col`/`max`).
+
+    Field layout (ISA v0.6, A-Format): opcode 127-124; rs1 123-100; rd 99-76;
+    aux 75-60 = 0; reserved 59-3; funct3 2-0. `im2col`/`max` read the live window
+    descriptor, so the only variable fields are the src (`rs1`) and dest (`rd`)
+    addresses; `aux` and reserved are zero.
+    """
+    for field, addr in (("rs1", rs1), ("rd", rd)):
+        _assert_address(field, addr)
+    return (opcode << 124) | (rs1 << 100) | (rd << 76) | funct3
+
+
+def encode_im2col(rs1: int, rd: int) -> int:
+    """Encode a SHAPE-format `im2col` (opcode 1101): src `rs1`, dest `rd`, aux 0."""
+    return _encode_shape_pool(OPCODE_IM2COL, FUNCT3_IM2COL, rs1, rd)
+
+
+def encode_max(rs1: int, rd: int) -> int:
+    """Encode a POOL-format `max` (opcode 1100): src `rs1`, dest `rd`, aux 0."""
+    return _encode_shape_pool(OPCODE_MAX, FUNCT3_MAX, rs1, rd)
+
+
 def encode_end() -> int:
     """Encode a SYSTEM-format `end` instruction into its 128-bit value."""
     return (OPCODE_SYSTEM << 124) | FUNCT7_END
 
 
-def _operand_names(op: MultOp | MultipOp | AddOp | ReluOp) -> list[str]:
+def _prod(shape: list[int]) -> int:
+    """Flattened element count (memory words) of a tensor of any order."""
+    count = 1
+    for dim in shape:
+        count *= dim
+    return count
+
+
+def _operand_names(op) -> list[str]:
     """SSA names an op reads (used to reclaim dead intermediate regions)."""
-    if isinstance(op, (MultOp, MultipOp)):
+    if isinstance(op, (MultOp, MultipOp, AddOp)):
         return [op.lhs.name, op.rhs.name]
-    if isinstance(op, AddOp):
-        return [op.lhs.name, op.rhs.name]
-    return [op.src.name]
+    if isinstance(op, (ReluOp, Im2colOp, MaxPoolOp)):
+        return [op.src.name]
+    return []
 
 
-def _result_words(op: MultOp | MultipOp | AddOp | ReluOp) -> int:
+def _result_words(op) -> int:
     """Number of memory words an op's result tensor occupies.
 
-    A partitioned tile writes a sub-block of a larger parent result; the whole
-    parent must be allocated, so its `parent_out_shape` capacity is used when set.
+    A partitioned matmul tile writes a sub-block of a larger parent result; the
+    whole parent must be allocated, so its `parent_out_shape` capacity is used when
+    set. Windowed ops (im2col column matrix, pooled CHW tensor) can be higher-order,
+    so their whole flattened shape is used.
     """
     if isinstance(op, ReluOp):
         return op.length
     if isinstance(op, (MultOp, MultipOp)) and op.parent_out_shape is not None:
-        rows, cols = _as_2d(op.parent_out_shape) if len(op.parent_out_shape) > 1 else (1, op.parent_out_shape[0])
-        return rows * cols
-    rows, cols = _as_2d(op.out_shape)
-    return rows * cols
+        return _prod(op.parent_out_shape)
+    return _prod(op.out_shape)
 
 
 def assemble_program(tpu_text: str, weight_map: dict) -> list[int]:
@@ -241,7 +325,10 @@ def assemble_program(tpu_text: str, weight_map: dict) -> list[int]:
     allocator = IntermediateAllocator(first_free_address(weight_map))
     last_use: dict[str, int] = {}
     for index, op in enumerate(program.ops):
-        if isinstance(op, (MultOp, AddOp, ReluOp)):
+        # MultipOp is excluded: partitioned tiles share a result whose last read is
+        # the terminating MultOp, so counting the intervening multips would free a
+        # source region early.
+        if isinstance(op, (MultOp, AddOp, ReluOp, Im2colOp, MaxPoolOp)):
             for name in _operand_names(op):
                 last_use[name] = index
 
@@ -253,7 +340,7 @@ def assemble_program(tpu_text: str, weight_map: dict) -> list[int]:
             return intermediate_addr[name]
         return _resolve_address(name, weight_map)
 
-    def assign_result(op: MultOp | MultipOp | AddOp | ReluOp) -> int:
+    def assign_result(op) -> int:
         # The returned value is the network output: pin it to the I/O address so
         # the programmer can read it back. Allocate before freeing this op's dead
         # sources so a reused region can never alias a source still being read.
@@ -270,7 +357,7 @@ def assemble_program(tpu_text: str, weight_map: dict) -> list[int]:
         intermediate_size[op.result] = words
         return address
 
-    def release_dead_sources(op: MultOp | MultipOp | AddOp | ReluOp, index: int) -> None:
+    def release_dead_sources(op, index: int) -> None:
         for name in _operand_names(op):
             if name in intermediate_addr and last_use.get(name) == index:
                 allocator.free(intermediate_addr.pop(name), intermediate_size.pop(name))
@@ -300,6 +387,21 @@ def assemble_program(tpu_text: str, weight_map: dict) -> list[int]:
             release_dead_sources(op, index)
         elif isinstance(op, StrideOp):
             instructions.append(encode_stride(op.ld1, op.ld2))
+        elif isinstance(op, WindowOp):
+            instructions.append(
+                encode_window(
+                    op.chans, op.inh, op.inw, op.outh, op.outw,
+                    op.winh, op.winw, op.strh, op.strw, op.padh, op.padw,
+                )
+            )
+        elif isinstance(op, Im2colOp):
+            rd = assign_result(op)
+            instructions.append(encode_im2col(resolve(op.src.name), rd))
+            release_dead_sources(op, index)
+        elif isinstance(op, MaxPoolOp):
+            rd = assign_result(op)
+            instructions.append(encode_max(resolve(op.src.name), rd))
+            release_dead_sources(op, index)
         elif isinstance(op, AddOp):
             rd = assign_result(op)
             instructions.append(

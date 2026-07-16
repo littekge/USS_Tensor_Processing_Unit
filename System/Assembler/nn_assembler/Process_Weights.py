@@ -123,6 +123,20 @@ def _tensor_shape(type_body: str) -> list[int]:
     return [int(d) for d in tokens[:-1]]
 
 
+def flatten_conv_weight_shape(shape: list[int]) -> list[int]:
+    """Flatten a 4-D conv weight shape `(out_ch, in_ch, kh, kw)` to `[out_ch, K]`.
+
+    `K = in_ch * kh * kw`. The row-major flatten of a PyTorch `(out, in, kh, kw)`
+    kernel already orders K channel-major (`k = c*(kh*kw) + ki*kw + kj`), which is
+    exactly the order `im2col` gathers its columns -- so the flatten is a pure
+    reshape with NO permutation. A mismatch here would silently compute the wrong
+    convolution, so the order must not change.
+    """
+    assert len(shape) == 4, f"Expected a 4-D conv weight shape, got {shape}."
+    out_ch, in_ch, kh, kw = shape
+    return [out_ch, in_ch * kh * kw]
+
+
 def _parse_main_args(mlir_text: str) -> list[tuple[str, list[int], str]]:
     """Return [(arg_name, shape, loc_label), ...] for @main's arguments."""
     func_match = _FUNC_RE.search(mlir_text)
@@ -288,6 +302,13 @@ def Process_Weights(tmp_dir: Path | None = None) -> dict:
         if transpose is not None:
             array = np.transpose(array, transpose["perm"])
             shape = transpose["out_shape"]
+
+        # A 4-D conv kernel is a matmul operand once im2col produces the columns:
+        # store it as the 2-D matrix (out_ch) x (in_ch*kh*kw). The row-major flatten
+        # is channel-major with no permutation (see flatten_conv_weight_shape), so
+        # the physical bytes are unchanged -- only the recorded shape becomes 2-D.
+        if len(shape) == 4:
+            shape = flatten_conv_weight_shape(shape)
 
         values = array.reshape(-1)
         words = _num_words(shape)

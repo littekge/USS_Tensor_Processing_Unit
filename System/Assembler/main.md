@@ -580,7 +580,7 @@ feature-map handling. Matmul tiling is unchanged (reused from v0.5). `stablehlo`
 attributes are supported only for the LeNet-5 subset (unit/fixed stride and
 padding, no dilation, NCHW/OIHW); unhandled ops assert rather than drop.
 
-#### Step 1 — Dialect: window / im2col / max ops
+#### Step 1 — Dialect: window / im2col / max ops — ✅ Complete (2026-07-16)
 
 Update `nn_assembler/MLIR/dialect.py`:
 
@@ -588,7 +588,7 @@ Update `nn_assembler/MLIR/dialect.py`:
   strh, strw, padh, padw), `Im2colOp` (src/dst), and `MaxPoolOp` (src/dst).
 - Serialize/parse round-trip for each, keeping the dialect ~1:1 with the ISA.
 
-#### Step 2 — Encoders: window / im2col / max
+#### Step 2 — Encoders: window / im2col / max — ✅ Complete (2026-07-16)
 
 Update `Assembler.py`:
 
@@ -598,7 +598,7 @@ Update `Assembler.py`:
   `rs1`=src, `rd`=dest, `aux`=reserved=0.
 - Add dispatch branches in `assemble_program`.
 
-#### Step 3 — Conv Weight Processing (4-D, channel-major K)
+#### Step 3 — Conv Weight Processing (4-D, channel-major K) — ✅ Complete (2026-07-16)
 
 Update `Process_Weights.py`:
 
@@ -609,7 +609,7 @@ Update `Process_Weights.py`:
   memory. Orientation must match the matmul operand convention used by the FC path
   (coordinate with the transpose-analysis stage if a transpose is implied).
 
-#### Step 4 — Conv & Pool Legalization (+ ReLU lowering, hardening)
+#### Step 4 — Conv & Pool Legalization (+ ReLU lowering, hardening) — ✅ Complete (2026-07-16)
 
 Update `nn_assembler/MLIR/legalize.py` (and `Process_MLIR.py`):
 
@@ -624,7 +624,7 @@ Update `nn_assembler/MLIR/legalize.py` (and `Process_MLIR.py`):
   exist but the legalizer never emits it; LeNet needs it).
 - Harden: assert on any unhandled op instead of silently dropping.
 
-#### Step 5 — Feature-Map & im2col Memory Allocation
+#### Step 5 — Feature-Map & im2col Memory Allocation — ✅ Complete (2026-07-16)
 
 Update `Process_Weights.py` / `Assembler.py` allocation:
 
@@ -633,7 +633,7 @@ Update `Process_Weights.py` / `Assembler.py` allocation:
 - Confirm each conv/pool output is CHW-planar so it feeds the next layer's window
   op (and the final flatten to the FC vector) with no reshape.
 
-#### Step 6 — End-to-End: LeNet-5
+#### Step 6 — End-to-End: LeNet-5 — ✅ Complete (2026-07-16)
 
 - Run the full pipeline on the re-exported `LeNet_5` artifact; confirm a framed
   `/out/TRANSMISSION.bin`.

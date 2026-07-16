@@ -2,6 +2,140 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-16 — v0.6 Step 6: end-to-end LeNet-5
+
+- Drove the full pipeline (`NN_import` -> transpose analysis -> `Process_Weights`
+  -> `Process_MLIR` -> `Assemble` -> `Serialize`) on the real re-exported
+  `LeNet_5_Recent.{mlir,weights.npz}` artifact (already carries per-layer
+  `__M__`/`__scales__` for conv1/conv2/fc1-3). CLI (`python -m nn_assembler LeNet_5
+  Recent`) writes an 83015-byte framed `out/TRANSMISSION.bin` (FLASH 'U' ... STOP 'S').
+- Verified in `test/test_serializer_and_e2e.py::test_full_pipeline_lenet5_real`:
+  framed transmission; exactly 4 deduped `window`s with correct geometry
+  (conv1 1/28/28->26/26 3x3 s1; pool1 6/26/26->13/13 2x2 s2; conv2 6/13/13->11/11
+  3x3 s1; pool2 16/11/11->5/5 2x2 s2); im2col columns channel-major `[9,676]` and
+  `[54,121]` (K = chans*kh*kw); per-channel pool outputs `[6,13,13]`, `[16,5,5]`;
+  4 ReLUs; CHW intermediates chaining with no reshape (input -> conv1 im2col; relu
+  -> pool; pool -> conv2 im2col; relu -> pool2); one `stride` per matmul
+  `[(9,676),(54,121),(400,120),(120,84),(84,10)]` = `(K,N)`; conv1 tiled in K
+  (9->8+1) and N (676->84*8+4) with weight `[out_ch,K]` as LHS and im2col columns
+  as RHS, correct sub-block bases (`lhs=ki`, `rhs=ki*N+ni`, `dst=ni`) and ragged
+  edges; `M0/n` on every conv1/conv2 tile equal to the exported multiplier's dyadic
+  decomposition; FC3 output `[1,10]` tiled in N with base pinned to I/O 0x1
+  (tiles at 0x1 + {0,8}).
+- Files modified: `test/test_serializer_and_e2e.py`, `main.md`, `log.md`.
+- Tests: 79 pass (incl. new LeNet-5 E2E), 1 pre-existing fail
+  (`test_full_pipeline_bigger_nn_real`, Bigger_NN artifact metadata mismatch,
+  M0/n != (172,19)) documented since 2026-07-15 and unrelated to v0.6 — reproduces
+  identically on the v0.6 base commit.
+
+## 2026-07-16 — v0.6 Step 5: feature-map & im2col memory allocation
+
+- No new allocation code was needed: the Step 2 generalization of
+  `_result_words`/`_operand_names` to any-order tensors plus the existing
+  `IntermediateAllocator` (free-list with reuse) already place the im2col `[K, N]`
+  column scratch and the 3-D CHW conv/pool outputs in main data memory (0x2+, i.e.
+  past the weight region), reuse freed regions, and pin the network output to 0x1.
+  Confirmed on the real LeNet-5 run: im2col scratch and CHW intermediates all land
+  past the weight region (first free = 60076), the conv1 ReLU output reuses the
+  freed im2col scratch, and the final output base is 0x1. Conv/pool outputs are
+  CHW-planar by construction (conv → `[out_ch, outh*outw]`; pool → `[C, oh, ow]`),
+  so each feeds the next window op and the FC flatten with no reshape.
+- Files modified: `test/test_assembler.py`, `main.md`, `log.md`.
+- Tests: added an assemble-level test driving a conv→relu→pool→relu dialect chain,
+  asserting im2col scratch + CHW pool output in main memory, freed-region reuse,
+  and the final output at 0x1. 78 pass, 1 pre-existing fail (Bigger_NN artifact).
+
+## 2026-07-16 — v0.6 Step 4: conv/pool legalization + ReLU + hardening
+
+- Rewrote `nn_assembler/MLIR/legalize.py` to lower the LeNet-5 subset while staying
+  backward-compatible with the linear-net path:
+  - Extracts and walks only the `@main` body via paren/brace matching
+    (`_find_functions`); classifies private ReLU helpers (`maximum(x,0)`) but does
+    not lower their bodies.
+  - `stablehlo.convolution` → `WindowOp` + `Im2colOp` + `MultOp`. Descriptor
+    computed from the conv geometry (NCHW/OIHW, `window = {}` = unit stride/no pad).
+    im2col columns are `[K, N]` with K channel-major (`K = chans*kh*kw`,
+    `N = outh*outw`); the conv weight is the matmul LHS `[out_ch, K]` (no offline
+    transpose). MultOp annotated with the layer M0/n.
+  - `stablehlo.reduce_window` (max body) → `WindowOp` + `MaxPoolOp`; multi-line op
+    collapsed to a single placeholder first (`_collapse_reduce_windows`), asserting
+    max reduction and no padding/dilation.
+  - `call @relu*` → `ReluOp` (length = flattened element count). ReLU is now
+    emitted (the encoder/dialect existed but the legalizer never produced it).
+  - `stablehlo.broadcast_in_dim` folded like reshape (only feeds the bias path).
+  - Emits a `window` only when the descriptor differs from the live one.
+  - Hardening: any unrecognized `stablehlo.*`/`call @` op in `@main` raises an
+    assert instead of being silently dropped.
+- `nn_assembler/MLIR/bias_removal.py`: reroute `Im2colOp`/`MaxPoolOp` `src` (not
+  just ReluOp) so a windowed op consuming a dropped bias-add result reroutes to the
+  surviving matmul result.
+- `Process_MLIR.py` unchanged (legalize signature unchanged).
+- Manual full-pipeline run on the real re-exported `LeNet_5_Recent` artifact
+  produced a framed `out/TRANSMISSION.bin`. Legalized dialect: 4 deduped windows,
+  2 im2col, 2 max, 5 mults (conv1/conv2/fc1-3), 4 relu; partitioned: 5 strides
+  (one per matmul), conv/fc matmuls tiled, all weights carry M0/n.
+- Files modified: `nn_assembler/MLIR/legalize.py`, `nn_assembler/MLIR/bias_removal.py`,
+  `nn_assembler/MLIR/README.md`, `test/test_dialect_and_legalize.py`, `main.md`,
+  `log.md`.
+- Tests: added conv→(window+im2col+mult), reduce_window→(window+max), ReLU-emitted,
+  unhandled-op assert, and bias-removal windowed-src reroute. 77 pass, 1 pre-existing
+  fail (Bigger_NN artifact; unrelated).
+
+## 2026-07-16 — v0.6 Step 3: conv weight flatten (4-D, channel-major K)
+
+- `nn_assembler/Process_Weights.py`: added `flatten_conv_weight_shape` and applied
+  it so a 4-D conv kernel `(out_ch, in_ch, kh, kw)` is recorded as the 2-D matrix
+  `(out_ch) x (in_ch*kh*kw)`. The row-major flatten of the PyTorch kernel is
+  already channel-major (`k = c*(kh*kw)+ki*kw+kj`) -- the exact order `im2col`
+  gathers columns -- so it is a pure reshape with NO permutation and the physical
+  MEM bytes are unchanged (only the recorded shape becomes 2-D). Per-tensor int8
+  quantization + dyadic M0/n are reused unchanged. Conv weights are the matmul LHS
+  `[out_ch, K]` (weights need no offline transpose, unlike the FC path where the
+  weight is the RHS `Wᵀ`).
+- Files modified: `nn_assembler/Process_Weights.py`, `test/test_process_weights.py`,
+  `main.md`, `log.md`.
+- Tests: `flatten_conv_weight_shape` unit test; a channel-major numeric check on a
+  2x2x2x2 kernel (recorded shape [2,8]; MEM bytes equal the row-major channel-major
+  int8 flatten). 72 pass, 1 pre-existing fail (Bigger_NN artifact; unrelated).
+
+## 2026-07-16 — v0.6 Step 2: window / im2col / max encoders + dispatch
+
+- `nn_assembler/Assembler.py`: added opcodes (WINDOW=1110, IM2COL/SHAPE=1101,
+  MAX/POOL=1100) and encoders. `encode_window` packs the 11 W-Format fields at
+  their ISA bit positions (inh 123-112, inw 111-100, chans 99-88, outh 87-76,
+  outw 75-64, winh 63-60, winw 59-56, strh 55-52, strw 51-48, padh 47-44, padw
+  43-40; five 12-bit, six 4-bit). `encode_im2col`/`encode_max` share an A-Format
+  helper (rs1 123-100 = src, rd 99-76 = dest, aux 75-60 = 0). Added dispatch
+  branches in `assemble_program`: WindowOp emits config (no result); Im2colOp /
+  MaxPoolOp allocate their result via the existing IntermediateAllocator and free
+  dead sources.
+- Generalized `_result_words`/`_operand_names` to any-order tensors (windowed
+  results are CHW/[K,N]) via a local `_prod`; added Im2colOp/MaxPoolOp to the
+  `last_use` liveness scan (MultipOp still excluded so tiled runs are not freed
+  early).
+- Files modified: `nn_assembler/Assembler.py`, `test/test_assembler.py`, `main.md`,
+  `log.md`.
+- Tests: added window (conv + pool geometry), im2col, and max bit-field tests. 70
+  pass, 1 pre-existing fail (`test_full_pipeline_bigger_nn_real`, Bigger_NN
+  artifact metadata; unrelated).
+
+## 2026-07-16 — v0.6 Step 1: dialect window / im2col / max ops
+
+- Added three dialect ops to `nn_assembler/MLIR/dialect.py`, each 1:1 with an ISA
+  v0.6 instruction: `WindowOp` (11 window-descriptor fields, WINCONFIG), `Im2colOp`
+  (src Operand + `[K, N]` out_shape, SHAPE), `MaxPoolOp` (src Operand + CHW
+  out_shape, POOL). Added serialize branches and parse regexes (`_WINDOW_RE`,
+  `_IM2COL_RE`, `_MAX_RE`) so each round-trips through the textual `.tpu.mlir`.
+  Textual forms: `tpu.window chans = .., inh = .., ...`; `%r = tpu.im2col %src ->
+  KxN`; `%r = tpu.max %src -> CxOHxOW`.
+- Files modified: `nn_assembler/MLIR/dialect.py`, `test/test_dialect_and_legalize.py`,
+  `main.md`, `log.md`.
+- Tests: added window/im2col/max serialize-parse round-trip tests. 66 pass, 1 fail
+  (`test_full_pipeline_bigger_nn_real`) — the failure is pre-existing (Bigger_NN
+  artifact requant-metadata mismatch, M0/n != (172,19)), independent of v0.6.
+- Run pytest with `PYTHONPATH` pointed at this worktree (the shared venv editable
+  install resolves `nn_assembler` to the main working copy).
+
 ## 2026-07-15 — Docs: correct bias-removal rationale
 
 - Fixed the `MLIR/bias_removal.py` module docstring, which wrongly stated biases

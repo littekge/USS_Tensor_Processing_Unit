@@ -8,15 +8,21 @@ results are allocated in main data memory and the final output is pinned to 0x1.
 from nn_assembler.Assembler import (
     MAX_MATMUL_SIZE,
     OPCODE_ADD,
+    OPCODE_IM2COL,
+    OPCODE_MAX,
     OPCODE_MULT,
     OPCODE_STRIDE,
+    OPCODE_WINDOW,
     assemble_program,
     encode_add,
     encode_end,
+    encode_im2col,
+    encode_max,
     encode_mult,
     encode_mult_in_place,
     encode_relu,
     encode_stride,
+    encode_window,
 )
 from nn_assembler.MLIR.dialect import MultOp, Operand, Program, ReturnOp, EndOp
 from nn_assembler.MLIR.partition import partition_program
@@ -80,6 +86,63 @@ def test_encode_relu_fields():
     assert _bits(instr, 75, 60) == 16  # len (16-bit)
     assert _bits(instr, 59, 3) == 0  # reserved
     assert _bits(instr, 2, 0) == 0  # funct3
+
+
+def test_encode_window_fields():
+    # conv1 window: chans=1, inh=inw=28, outh=outw=26, winh=winw=3, unit stride, no pad.
+    instr = encode_window(
+        chans=1, inh=28, inw=28, outh=26, outw=26,
+        winh=3, winw=3, strh=1, strw=1, padh=0, padw=0,
+    )
+    assert _is_128_bit(instr)
+    assert _bits(instr, 127, 124) == 0b1110  # opcode WINCONFIG
+    assert _bits(instr, 123, 112) == 28  # inh (12-bit)
+    assert _bits(instr, 111, 100) == 28  # inw (12-bit)
+    assert _bits(instr, 99, 88) == 1  # chans (12-bit)
+    assert _bits(instr, 87, 76) == 26  # outh (12-bit)
+    assert _bits(instr, 75, 64) == 26  # outw (12-bit)
+    assert _bits(instr, 63, 60) == 3  # winh (4-bit)
+    assert _bits(instr, 59, 56) == 3  # winw (4-bit)
+    assert _bits(instr, 55, 52) == 1  # strh (4-bit)
+    assert _bits(instr, 51, 48) == 1  # strw (4-bit)
+    assert _bits(instr, 47, 44) == 0  # padh (4-bit)
+    assert _bits(instr, 43, 40) == 0  # padw (4-bit)
+    assert _bits(instr, 39, 3) == 0  # reserved
+    assert _bits(instr, 2, 0) == 0  # funct3 WINDOW
+
+
+def test_encode_window_pool_fields():
+    # pool1 window: chans=6, in 26x26, out 13x13, 2x2 window stride 2.
+    instr = encode_window(
+        chans=6, inh=26, inw=26, outh=13, outw=13,
+        winh=2, winw=2, strh=2, strw=2, padh=0, padw=0,
+    )
+    assert _bits(instr, 99, 88) == 6  # chans
+    assert _bits(instr, 87, 76) == 13  # outh
+    assert _bits(instr, 63, 60) == 2  # winh
+    assert _bits(instr, 55, 52) == 2  # strh
+
+
+def test_encode_im2col_fields():
+    instr = encode_im2col(rs1=1, rd=20)
+    assert _is_128_bit(instr)
+    assert _bits(instr, 127, 124) == 0b1101  # opcode SHAPE
+    assert _bits(instr, 123, 100) == 1  # rs1 (src)
+    assert _bits(instr, 99, 76) == 20  # rd (dest)
+    assert _bits(instr, 75, 60) == 0  # aux
+    assert _bits(instr, 59, 3) == 0  # reserved
+    assert _bits(instr, 2, 0) == 0  # funct3 IM2COL
+
+
+def test_encode_max_fields():
+    instr = encode_max(rs1=30, rd=40)
+    assert _is_128_bit(instr)
+    assert _bits(instr, 127, 124) == 0b1100  # opcode POOL
+    assert _bits(instr, 123, 100) == 30  # rs1 (src)
+    assert _bits(instr, 99, 76) == 40  # rd (dest)
+    assert _bits(instr, 75, 60) == 0  # aux
+    assert _bits(instr, 59, 3) == 0  # reserved
+    assert _bits(instr, 2, 0) == 0  # funct3 MAX
 
 
 def test_encode_end_is_all_zero():
@@ -148,6 +211,50 @@ def test_assemble_reuses_freed_intermediate_regions():
     assert _bits(instructions[1], 59, 36) == base + 4  # %2
     assert _bits(instructions[2], 59, 36) == base  # %3 reuses %1's freed region
     assert _bits(instructions[3], 59, 36) == 1  # %4 final output -> 0x1
+
+
+def test_assemble_allocates_windowed_intermediates_in_main_memory_with_reuse():
+    # A conv (window+im2col+mult) -> relu -> pool (window+max) -> relu chain.
+    # The im2col column scratch and the CHW pool output must live in main data
+    # memory (past the weight region), freed regions must be reused, and the final
+    # output must be pinned to 0x1.
+    tpu_text = (
+        "module @m {\n"
+        "  tpu.func @main {\n"
+        "    tpu.window chans = 1, inh = 4, inw = 4, outh = 2, outw = 2, winh = 3, winw = 3, strh = 1, strw = 1, padh = 0, padw = 0\n"
+        "    %col = tpu.im2col %in -> 4x4\n"
+        "    %0 = tpu.mult %w : 2x4, %col : 4x4 -> 2x4 {M0 = 128, n = 8}\n"
+        "    %1 = tpu.relu %0 : 8 -> 8\n"
+        "    tpu.window chans = 2, inh = 2, inw = 2, outh = 2, outw = 2, winh = 1, winw = 1, strh = 1, strw = 1, padh = 0, padw = 0\n"
+        "    %2 = tpu.max %1 -> 2x2x2\n"
+        "    %3 = tpu.relu %2 : 8 -> 8\n"
+        "    tpu.return %3 : 2x2x2\n"
+        "    tpu.end\n"
+        "  }\n"
+        "}\n"
+    )
+    weight_map = {
+        "%w": {"kind": "weight", "address": 2, "num_words": 8, "M0": 128, "n": 8},
+        "%in": {"kind": "input", "address": 1, "num_words": 16},
+    }
+    instructions = assemble_program(tpu_text, weight_map)
+
+    base = 10  # first_free_address = weight end (2 + 8)
+
+    def rd_a(instr):  # A-format rd (im2col/max/relu) at bits 99-76
+        return _bits(instr, 99, 76)
+
+    # window(1101? no): order -> [window, im2col, mult, relu, window, max, relu, end]
+    im2col, mult, relu1, maxp, relu2 = (
+        instructions[1], instructions[2], instructions[3], instructions[5], instructions[6],
+    )
+    assert _bits(im2col, 127, 124) == OPCODE_IM2COL
+    assert rd_a(im2col) == base  # im2col [4x4] scratch in main memory
+    assert _bits(mult, 59, 36) == base + 16  # %0 conv output past the scratch
+    assert rd_a(relu1) == base  # relu reuses the freed im2col scratch region
+    assert _bits(maxp, 127, 124) == OPCODE_MAX
+    assert rd_a(maxp) >= base and rd_a(maxp) != 1  # CHW pool output in main memory
+    assert rd_a(relu2) == 1  # final output pinned to 0x1
 
 
 def test_encode_multip_shares_mult_layout_differs_in_funct3():

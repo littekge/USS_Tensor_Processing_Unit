@@ -16,6 +16,7 @@ from nn_assembler.Process_Weights import (
     Process_Weights,
     decompose_multiplier,
     first_free_address,
+    flatten_conv_weight_shape,
     quantize_per_tensor_int8,
 )
 from nn_assembler.Protocol import MEM
@@ -112,6 +113,55 @@ def test_mem_bin_uses_per_tensor_int8_values(tmp_path):
     assert mem[4:6] == (3).to_bytes(2, "little")  # LLEN, ULEN
     # weight +0.5 -> 127, -0.5 -> -127 (0x81); bias 0.25 -> self-scale -> 127.
     assert list(mem[6:9]) == [127, 0x81, 127]
+
+
+def test_flatten_conv_weight_shape():
+    # (out_ch, in_ch, kh, kw) -> (out_ch, in_ch*kh*kw).
+    assert flatten_conv_weight_shape([6, 1, 3, 3]) == [6, 9]
+    assert flatten_conv_weight_shape([16, 6, 3, 3]) == [16, 54]
+
+
+def _write_conv_fixture(tmp_path, M=0.75):
+    mlir = (
+        'module @m {\n'
+        '  func.func public @main(%arg0: tensor<2x2x2x2xf32> loc("states[0]"), '
+        '%arg1: tensor<1x1x3x3xf32> loc("inputs[0][0]")) -> (tensor<1x1xf32>) {\n'
+        '    return %arg1 : tensor<1x1xf32>\n'
+        '  }\n'
+        '}\n'
+    )
+    (tmp_path / "initial.mlir").write_text(mlir)
+    # A 2-out-channel, 2-in-channel, 2x2 kernel with distinct per-position values so
+    # the channel-major flatten order is observable in the quantized bytes.
+    kernel = np.arange(1, 17, dtype=np.float32).reshape(2, 2, 2, 2)  # values 1..16
+    S_w = 16.0 / 127  # absmax/127 so value 16 -> 127
+    np.savez(
+        tmp_path / "weights.npz",
+        **{
+            "conv.weight": kernel,
+            "__order__": np.array(["conv.weight"]),
+            "__M__conv.weight": np.float64(M),
+            "__scales__conv.weight": np.array([1.0, S_w, 1.0], dtype=np.float64),
+        },
+    )
+    return kernel, S_w
+
+
+def test_conv_weight_flatten_is_channel_major(tmp_path):
+    kernel, S_w = _write_conv_fixture(tmp_path)
+    weight_map = Process_Weights(tmp_path)
+
+    # Recorded shape is the 2-D matrix (out_ch) x (in_ch*kh*kw).
+    entry = weight_map["%arg0"]
+    assert entry["kind"] == "weight"
+    assert entry["shape"] == [2, 8]  # 2 out, 2*2*2 = 8
+
+    # MEM bytes must be the channel-major row-major flatten of (out,in,kh,kw):
+    # k = c*(kh*kw) + ki*kw + kj, matching im2col column order.
+    mem = (tmp_path / "MEM.bin").read_bytes()
+    data = mem[6:]  # after M + 3-byte addr + 2-byte len
+    expected = np.clip(np.round(kernel.reshape(-1) / S_w), -127, 127).astype(np.int8)
+    assert list(data) == list(expected.astype(np.uint8))
 
 
 def test_input_reserved_at_scratch_and_output_shares_it():
