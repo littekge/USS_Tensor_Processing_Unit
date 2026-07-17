@@ -12,20 +12,22 @@
 - **v0.5.1 released and tagged** (`main`, `origin`); v0.4/v0.5.0 shipped/tagged.
 - **v0.6 IMPLEMENTED, on `v0.6-workspace`** (specs at v0.6.0; RTL Questa PASS
   2026-07-16; assembler 79 pass / 1 pre-existing fail). NOT yet merged to `main`.
-- **LeNet-5 HARDWARE BRING-UP (2026-07-17) — first end-to-end FPGA run debugged.**
-  Symptom: wrong logits. Root-caused **bit-exact** with a new software interpreter
-  (see the LeNet bring-up section). Two bugs:
-  - **Bug 1 (primary, RTL) — being fixed:** `Vector_Processor.v` windowed-gather
-    (im2col/max) never implemented the `0x1`-buffer special-case addressing, so
-    conv1 read 783/784 input pixels out of weight memory → all logits wrong. Fix =
-    mirror the non-windowed `src_is_buf` logic (hold addr `0x1`, element index on
-    the offset port; OOB→`0x0`). Machine-gated: **Verification PENDING** (Questa PC).
+- **LeNet-5 WORKING ON FPGA (2026-07-17).** First end-to-end run misclassified;
+  root-caused **bit-exact** with a new software interpreter, fixed, and verified
+  on hardware. Two bugs found:
+  - **Bug 1 (primary, RTL) — FIXED & VERIFIED:** `Vector_Processor.v`
+    windowed-gather (im2col/max) never implemented the `0x1`-buffer special-case
+    addressing, so conv1 read 783/784 input pixels out of weight memory → all
+    logits wrong. Fix mirrors the non-windowed `src_is_buf` logic (hold addr
+    `0x1`, element index on the offset port; OOB→`0x0`). **Questa PASS 2026-07-17**
+    (`TB_Step4` 21/21 + full regression); re-synthesized/flashed; the minimal
+    draw-and-send demo classifies correctly on hardware.
   - **Bug 2 (secondary, assembler) — deferred:** fc3's tiled output writes logits
     8,9 to `rd=9` (=`conv1.weight[7,8]`), corrupting weights across re-runs
     (Programmer re-runs without reload). Only ±1; does not flip argmax.
-- **Next:** (1) simulate the Bug 1 fix on the Questa PC; (2) re-flash + re-test
-  LeNet; (3) Bug 2 fix (see move-instruction decision); (4) merge
-  `v0.6-workspace` → `main`.
+- **Next:** (1) merge `v0.6-workspace` → `main` (v0.6 complete + hardware-verified);
+  (2) v0.7.0 = proper comms link + demo, incl. the SHAPE-opcode `move` instruction
+  that dissolves Bug 2. Bug 2 stays a harmless ±1 until then.
 
 ## v0.6 — Convolution and Pooling (specs + implementation merged to v0.6-workspace)
 

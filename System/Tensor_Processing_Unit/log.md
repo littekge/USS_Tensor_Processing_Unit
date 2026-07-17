@@ -40,12 +40,12 @@
 - **`tests/run_regression.sh`:** TB_Step4 block unchanged — its only RTL
   dependency is `Vector_Processor.v` (still in sync with the TB "How to run"
   header); the fix added no new dependency.
-- **Verification: PENDING** (Linux laptop — no `vsim.exe` at
-  `C:\intelFPGA_lite\23.1std\questa_fse\win64\`; `run_regression.sh` self-gates).
-  On the Questa PC run `./tests/run_regression.sh 4` (expect
-  `TB_Step4_VectorProcessor` 21/21) and the full regression for no
-  cross-cutting regressions (`TB_Step8_FullSystem` in particular). This is a bug
-  fix within the completed v0.6 scope, so no `main.md` step changes.
+- **Verification: PASS** (Questa PC, 2026-07-17). `./tests/run_regression.sh 4`
+  → `TB_Step4_VectorProcessor` 21/21, and the full regression passed with no
+  cross-cutting failures (`TB_Step8_FullSystem` included). The fixed RTL was
+  re-synthesized and flashed, and the LeNet-5 draw-and-send demo classifies
+  correctly on hardware. Bug fix within the completed v0.6 scope, so no `main.md`
+  step changes.
 
 ## 2026-07-16 — v0.6 Verification: Questa Regression PASS
 
