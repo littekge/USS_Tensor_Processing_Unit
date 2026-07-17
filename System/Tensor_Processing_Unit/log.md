@@ -2,6 +2,51 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-17 — Fix: windowed gather (im2col/max) 0x1-buffer addressing
+
+- **Context / root cause:** A LeNet-5 program produced wrong logits on hardware
+  while a bit-exact ISA interpreter of the same `PROGRAM.bin` produced the
+  correct answer, so the divergence was in the RTL. Diagnosed to the windowed
+  (im2col / max) address generation in `TPU/PROCESSING/Vector_Processor.v`: the
+  windowed path baked the running element index into `o_dm_address`
+  (`win_rd_addr = mem_source_lat + idx`) and forced `o_dm_offset = 0`. For a
+  feature map staged in the architecturally isolated `0x1` buffer (the network
+  input; `INPUT_ADDRESS = 0x1`), `Data_Memory` decodes only the *exact* address
+  `0x1` to the buffer, so only the first element (offset 0) read the buffer and
+  every other element decoded to main memory. conv1's `im2col` (`rs1=0x1`, the
+  only windowed instruction in the program sourcing `0x1`) therefore read garbage
+  for all but the first pixel, corrupting the whole network and every logit. The
+  coordinator confirmed the fault bit-exact: modeling this addressing bug in the
+  software interpreter reproduces the observed hardware output
+  `[-6,2,2,7,-4,3,-6,0,...]`.
+- **Fix — `TPU/PROCESSING/Vector_Processor.v`:** In the windowed-address
+  combinational block, compute the pure element index `win_idx` and select
+  address/offset the same way the non-windowed `src_is_buf` path does:
+  out-of-bounds -> address `0x0` (offset 0); source `0x1` -> address held at
+  `0x1` with `win_idx[9:0]` on the offset (1024-word buffer / 10-bit offset,
+  conv1 max index 783 fits); any other source (addr >= `0x2`) -> flat
+  `win_in_addr_full` address with offset 0 (unchanged behavior). The `WIN_ADDR`
+  state now drives `o_dm_offset <= win_rd_offset` instead of a hardwired 0. Only
+  the windowed path changed; the systolic-array/linear paths and requant are
+  untouched. No new `.v` files; no debug sections touched.
+- **Tests — `tests/TB_Step4_VectorProcessor.v` (19 -> 21):** added Test 20
+  (im2col sourced from `rs1=0x1`: a 3x3 feature map staged at buffer offsets 0..8,
+  2x2 window stride 1, dense output checked element-by-element against the
+  channel-major expectation `[1,2,4,5, 2,3,5,6, 4,5,7,8, 5,6,8,9]`) and Test 21
+  (max stream sourced from `rs1=0x1`, same geometry, stream + `window_end`
+  checked). The behavioral `Data_Memory` model already mirrors the real decode
+  (only exact `0x1` -> buffer indexed by the offset port), so the pre-fix RTL
+  fails both new tests (only element 0 correct) and the post-fix RTL passes.
+- **`tests/run_regression.sh`:** TB_Step4 block unchanged — its only RTL
+  dependency is `Vector_Processor.v` (still in sync with the TB "How to run"
+  header); the fix added no new dependency.
+- **Verification: PENDING** (Linux laptop — no `vsim.exe` at
+  `C:\intelFPGA_lite\23.1std\questa_fse\win64\`; `run_regression.sh` self-gates).
+  On the Questa PC run `./tests/run_regression.sh 4` (expect
+  `TB_Step4_VectorProcessor` 21/21) and the full regression for no
+  cross-cutting regressions (`TB_Step8_FullSystem` in particular). This is a bug
+  fix within the completed v0.6 scope, so no `main.md` step changes.
+
 ## 2026-07-16 — v0.6 Verification: Questa Regression PASS
 
 - **Verification: PASS.** The full regression was run on the Questa PC and passed

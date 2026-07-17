@@ -284,8 +284,10 @@ wire win_is_mem  = (vect_dest_lat == VDST_MEM);    // im2col
 // out of bounds when it lies in the pad region (base < pad) or past the map.
 reg [31:0] ih_base, iw_base, ih, iw;
 reg        vert_in, horz_in, win_oob;
+reg [39:0] win_idx;            // pure element index within the source tensor
 reg [39:0] win_in_addr_full;
 reg [23:0] win_rd_addr;
+reg [9:0]  win_rd_offset;      // 0x1-buffer offset for a windowed read
 reg [7:0]  win_data;
 always @(*)
 begin
@@ -296,13 +298,34 @@ begin
     win_oob = !(vert_in && horz_in);
     ih      = ih_base - padh_lat;
     iw      = iw_base - padw_lat;
-    // Row-major feature map: src + channel*(inh*inw) + ih*inw + iw.
-    win_in_addr_full = mem_source_lat + (ch_cnt * (inh_lat * inw_lat))
-                                      + (ih * inw_lat) + iw;
-    // Out-of-bounds reads are steered to the hardwired 0x0 register (returns 0);
-    // the min-representable fill for max is substituted on the data path below.
-    win_rd_addr = win_oob ? 24'd0 : win_in_addr_full[23:0];
-    win_data    = win_oob ? (win_is_pool ? 8'h80 : 8'd0) : i_dm_q;
+    // Row-major feature-map element index: channel*(inh*inw) + ih*inw + iw.
+    win_idx          = (ch_cnt * (inh_lat * inw_lat)) + (ih * inw_lat) + iw;
+    win_in_addr_full = mem_source_lat + win_idx;
+    // Address / offset select for the windowed read. Out-of-bounds takes
+    // precedence and steers to the hardwired 0x0 register (returns 0; the
+    // min-representable fill for max is substituted on the data path below).
+    // A feature map staged in the architecturally isolated 0x1 buffer must hold
+    // the flat address at 0x1 and carry the element index on the offset port,
+    // exactly as the non-windowed src_is_buf path does; only the exact address
+    // 0x1 decodes to the buffer, so baking the index into the address would
+    // wrongly route every element past the first into main memory. Every other
+    // source (addr >= 0x2) walks the flat address with the offset unused.
+    if (win_oob)
+    begin
+        win_rd_addr   = 24'd0;
+        win_rd_offset = 10'd0;
+    end
+    else if (src_is_buf)
+    begin
+        win_rd_addr   = 24'd1;
+        win_rd_offset = win_idx[9:0];
+    end
+    else
+    begin
+        win_rd_addr   = win_in_addr_full[23:0];
+        win_rd_offset = 10'd0;
+    end
+    win_data = win_oob ? (win_is_pool ? 8'h80 : 8'd0) : i_dm_q;
 end
 
 // Final element of the current window (max asserts window_end here) and final
@@ -633,10 +656,11 @@ begin
 
             WIN_ADDR:
             begin
-                // Drive the windowed read address (0x0 when out of bounds).
-                // Feature maps live in main memory, so the 0x1 offset is unused.
+                // Drive the windowed read address (0x0 when out of bounds). A
+                // feature map staged at 0x1 holds the address at 0x1 and walks
+                // the buffer via the offset; main-memory sources use offset 0.
                 o_dm_address <= win_rd_addr;
-                o_dm_offset  <= 10'd0;
+                o_dm_offset  <= win_rd_offset;
             end
 
             WIN_WAIT:;   // windowed read latency cycle 1

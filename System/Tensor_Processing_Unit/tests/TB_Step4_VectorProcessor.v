@@ -25,7 +25,7 @@
  * PASS / FAIL CRITERIA:
  *   Each test prints "PASS" or "FAIL" to the transcript.
  *   A final summary prints total pass/fail counts.
- *   All 19 tests should show PASS for a correct implementation.
+ *   All 21 tests should show PASS for a correct implementation.
  *
  * TEST CASES:
  *   Test 1:  After reset — o_vector_idle is HIGH immediately
@@ -54,6 +54,15 @@
  *   Test 18 (v0.6): max window stream to the Pooler destination with window_end
  *            on each window's final element; descriptor-derived count.
  *   Test 19 (v0.6): max window stream with min-fill (0x80) on padding.
+ *   Test 20 (v0.6 fix): im2col gather sourced from the 0x1 staging buffer
+ *            (rs1=0x1). A 3x3 feature map staged at buffer offsets 0..8 is
+ *            expanded (2x2 window, stride 1). The windowed path must hold the
+ *            flat address at 0x1 and walk the buffer via the offset (exactly as
+ *            the non-windowed 0x1 path in Tests 8/9); the pre-fix RTL baked the
+ *            index into the address, so only offset 0 read the buffer and every
+ *            other element wrongly decoded to main memory.
+ *   Test 21 (v0.6 fix): max window stream sourced from the 0x1 buffer (rs1=0x1);
+ *            same 0x1-buffer walk on the pooling path.
  * -------------------------------------------------------------------------
  */
 
@@ -830,6 +839,84 @@ initial begin
             if (((k % 4) != 3) && (win_wend[k] !== 1'b0)) ok = 1'b0;
         end
         check(ok === 1'b1, 19);
+    end
+
+    // -----------------------------------------------------------------------
+    // TEST 20 (v0.6 fix): im2col gather sourced from the 0x1 staging buffer.
+    //   A 1-channel 3x3 feature map is staged in the 0x1 buffer at offsets 0..8
+    //   ([[1,2,3],[4,5,6],[7,8,9]]); window 2x2, stride 1, pad 0 -> outh=outw=2.
+    //   The dense (winh*winw)=4 x (outh*outw)=4 im2col matrix is written
+    //   Row-major to main-memory dest 0x40. Because the source is 0x1, the
+    //   windowed read must hold the address at 0x1 and index the buffer via the
+    //   offset; a flat-address walk (pre-fix) would read main memory for every
+    //   element past the first. Hand-computed dense (row k = wr*winw+wc,
+    //   column p = oy*outw+ox; k-major, p-inner):
+    //     [1,2,4,5, 2,3,5,6, 4,5,7,8, 5,6,8,9]
+    // -----------------------------------------------------------------------
+    do_reset;
+    for (j = 0; j < 9; j = j + 1) buf_mem[j] = j + 1;   // 1..9 at offsets 0..8
+    for (j = 64; j < 80; j = j + 1) main_mem[j] = 8'hFF;
+    vp_win_chans = 12'd1; vp_win_inh = 12'd3; vp_win_inw = 12'd3;
+    vp_win_outh  = 12'd2; vp_win_outw = 12'd2;
+    vp_win_winh = 4'd2; vp_win_winw = 4'd2; vp_win_strh = 4'd1;
+    vp_win_strw = 4'd1; vp_win_padh = 4'd0; vp_win_padw = 4'd0;
+
+    vp_start_and_wait(VSRC_MEM_WIN, VDST_MEM, 24'h000001, 24'h000040,
+                      16'd0, 4'd0, 4'd0);
+    @(posedge clk); #1;
+
+    begin : im2col_buf_check
+        reg       ok;
+        integer   k;
+        reg [7:0] exp [0:15];
+        exp[0]=8'd1;  exp[1]=8'd2;  exp[2]=8'd4;  exp[3]=8'd5;
+        exp[4]=8'd2;  exp[5]=8'd3;  exp[6]=8'd5;  exp[7]=8'd6;
+        exp[8]=8'd4;  exp[9]=8'd5;  exp[10]=8'd7; exp[11]=8'd8;
+        exp[12]=8'd5; exp[13]=8'd6; exp[14]=8'd8; exp[15]=8'd9;
+        ok = 1'b1;
+        for (k = 0; k < 16; k = k + 1)
+            if (main_mem[64 + k] !== exp[k]) ok = 1'b0;
+        check(ok === 1'b1, 20);
+    end
+
+    // -----------------------------------------------------------------------
+    // TEST 21 (v0.6 fix): max window stream sourced from the 0x1 buffer.
+    //   Same 3x3 feature map staged in the 0x1 buffer at offsets 0..8; window
+    //   2x2, stride 1, pad 0 -> four windows of four values streamed to the
+    //   Pooler destination, window_end on each window's 4th element. Streamed
+    //   order (window inner wc innermost; windows in ch,oh,ow order):
+    //     1,2,4,5 | 2,3,5,6 | 4,5,7,8 | 5,6,8,9
+    //   Verifies the 0x1-buffer walk on the pooling (max) path.
+    // -----------------------------------------------------------------------
+    do_reset;
+    for (j = 0; j < 9; j = j + 1) buf_mem[j] = j + 1;
+    vp_win_chans = 12'd1; vp_win_inh = 12'd3; vp_win_inw = 12'd3;
+    vp_win_outh  = 12'd2; vp_win_outw = 12'd2;
+    vp_win_winh = 4'd2; vp_win_winw = 4'd2; vp_win_strh = 4'd1;
+    vp_win_strw = 4'd1; vp_win_padh = 4'd0; vp_win_padw = 4'd0;
+    capture_win = 1'b1; win_ev_count = 0;
+
+    vp_start_and_wait(VSRC_MEM_WIN, VDST_POOL, 24'h000001, 24'd0,
+                      16'd0, 4'd0, 4'd0);
+    capture_win = 1'b0;
+
+    begin : max_buf_check
+        reg       ok;
+        integer   k;
+        reg [7:0] exp [0:15];
+        exp[0]=8'd1;  exp[1]=8'd2;  exp[2]=8'd4;  exp[3]=8'd5;
+        exp[4]=8'd2;  exp[5]=8'd3;  exp[6]=8'd5;  exp[7]=8'd6;
+        exp[8]=8'd4;  exp[9]=8'd5;  exp[10]=8'd7; exp[11]=8'd8;
+        exp[12]=8'd5; exp[13]=8'd6; exp[14]=8'd8; exp[15]=8'd9;
+        ok = 1'b1;
+        if (win_ev_count !== 16) ok = 1'b0;
+        for (k = 0; k < 16; k = k + 1)
+        begin
+            if (win_stream[k] !== exp[k]) ok = 1'b0;
+            if (((k % 4) == 3) && (win_wend[k] !== 1'b1)) ok = 1'b0;
+            if (((k % 4) != 3) && (win_wend[k] !== 1'b0)) ok = 1'b0;
+        end
+        check(ok === 1'b1, 21);
     end
 
     // -----------------------------------------------------------------------
