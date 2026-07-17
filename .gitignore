@@ -8,3 +8,6 @@ __pycache__/
 # both dirs are recreated via mkdir(exist_ok=True))
 System/Assembler/tmp/
 System/Assembler/out/
+
+# Interactive demo: per-run input blob staged by System/LeNet-5_Test.py
+System/LeNet-5_Test_input.bin
