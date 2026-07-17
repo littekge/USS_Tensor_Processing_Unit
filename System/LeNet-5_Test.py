@@ -46,6 +46,8 @@ _LENET_DIR = _HERE / "Neural_Networks" / "LeNet_5"
 _NPZ_PATH = _LENET_DIR / "LeNet_5_Recent.weights.npz"
 _DATASET_ROOT = _LENET_DIR / "dataset.e"
 _TX_PATH = _HERE / "LeNet-5_Test_input.bin"  # saved alongside for inspection
+_PREVIEW_PATH = _HERE / "LeNet-5_Test_preview.png"  # the 28x28 the network sees
+PREVIEW_SCALE = 10  # upscale the tiny preview so pixels are visible
 
 # Same normalization as training (Neural_Networks/Start.py). Quantizing anything
 # else would put the image on a different scale than S_in was measured against.
@@ -100,11 +102,19 @@ def build_input_transmission(image_bytes: bytes) -> bytes:
     return bytes([INPUT_HEADER]) + build_mem_block(INPUT_ADDRESS, image_bytes) + bytes([STOP])
 
 
+def save_preview(gray28: np.ndarray) -> None:
+    """Save the exact 28x28 the network receives (white digit on black), upscaled."""
+    Image.fromarray(gray28, mode="L").resize(
+        (GRID * PREVIEW_SCALE, GRID * PREVIEW_SCALE), Image.NEAREST).save(_PREVIEW_PATH)
+
+
 def send_image(gray28: np.ndarray, s_in: float) -> None:
-    """Quantize, frame, stage the .bin alongside this script, and stream to the FPGA."""
+    """Save a preview, quantize, frame, stage the .bin, and stream to the FPGA."""
+    save_preview(gray28)
     transmission = build_input_transmission(quantize(gray28, s_in))
     _TX_PATH.write_bytes(transmission)
-    print(f"Wrote {_TX_PATH.name} ({len(transmission)} bytes); streaming...")
+    print(f"Saved {_PREVIEW_PATH.name}; wrote {_TX_PATH.name} "
+          f"({len(transmission)} bytes); streaming...")
     send_2_arduino(_TX_PATH)
 
 
@@ -194,7 +204,7 @@ class DrawDemo:
             return
         kind, detail = self._result[0]
         self.send_btn.config(state="normal")
-        self.status.set("Sent. Read the argmax on the VGA output."
+        self.status.set(f"Sent (preview: {_PREVIEW_PATH.name}). Read the argmax on the VGA."
                         if kind == "ok" else f"Send failed: {detail}")
 
 
