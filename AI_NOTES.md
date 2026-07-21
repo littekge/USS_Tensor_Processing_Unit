@@ -7,78 +7,50 @@
 > CLAUDE.md files, not here — this file holds decision history (with reasons),
 > in-flight state, and machine notes.
 
-## Current State (2026-07-17)
+## Current State (2026-07-21)
 
-- **v0.5.1 released and tagged** (`main`, `origin`); v0.4/v0.5.0 shipped/tagged.
-- **v0.6 IMPLEMENTED, on `v0.6-workspace`** (specs at v0.6.0; RTL Questa PASS
-  2026-07-16; assembler 79 pass / 1 pre-existing fail). NOT yet merged to `main`.
-- **LeNet-5 WORKING ON FPGA (2026-07-17).** First end-to-end run misclassified;
-  root-caused **bit-exact** with a new software interpreter, fixed, and verified
-  on hardware. Two bugs found:
-  - **Bug 1 (primary, RTL) — FIXED & VERIFIED:** `Vector_Processor.v`
-    windowed-gather (im2col/max) never implemented the `0x1`-buffer special-case
-    addressing, so conv1 read 783/784 input pixels out of weight memory → all
-    logits wrong. Fix mirrors the non-windowed `src_is_buf` logic (hold addr
-    `0x1`, element index on the offset port; OOB→`0x0`). **Questa PASS 2026-07-17**
-    (`TB_Step4` 21/21 + full regression); re-synthesized/flashed; the minimal
-    draw-and-send demo classifies correctly on hardware.
-  - **Bug 2 (secondary, assembler) — deferred:** fc3's tiled output writes logits
-    8,9 to `rd=9` (=`conv1.weight[7,8]`), corrupting weights across re-runs
-    (Programmer re-runs without reload). Only ±1; does not flip argmax.
-- **Next:** (1) merge `v0.6-workspace` → `main` (v0.6 complete + hardware-verified);
-  (2) v0.7.0 = proper comms link + demo, incl. the SHAPE-opcode `move` instruction
-  that dissolves Bug 2. Bug 2 stays a harmless ±1 until then.
+- **v0.6.0 RELEASED & tagged** on `main`/`origin` (GitHub prerelease "Convolution
+  and Pooling" published 2026-07-21); `v0.6-workspace` merged to `main` and
+  deleted (locally + origin). All prior versions shipped/tagged. Tree clean.
+- **LeNet-5 WORKING ON FPGA** — first full conv net on the platform, classifies
+  correctly. Bring-up found two bugs:
+  - **Bug 1 (RTL) — FIXED & VERIFIED (shipped in v0.6.0):** `Vector_Processor.v`
+    windowed gather (im2col/max) never special-cased the isolated `0x1` I/O
+    buffer, so conv1 read input pixels out of weight memory → all logits wrong.
+    Fixed to mirror the non-windowed `src_is_buf` path (hold addr `0x1`, element
+    index on the offset port; OOB→`0x0`). Questa PASS + hardware-confirmed.
+  - **Bug 2 (assembler) — STILL DEFERRED to v0.7:** fc3's tiled output writes
+    logits 8,9 to `rd=9` (=`conv1.weight[7,8]`), corrupting weights across re-runs
+    (Programmer re-runs without reload). Only ±1; never flips argmax.
+- **Next: v0.7.0** = proper comms link + demo, incl. the SHAPE-opcode `move`
+  instruction that dissolves Bug 2 (see Standing Decisions). Starting on a fresh
+  agent from a clean `main`.
 
-## v0.6 — Convolution and Pooling (specs + implementation merged to v0.6-workspace)
+## v0.6 carry-forwards for v0.7 (specs are the source of truth for the rest)
 
-The specs are the source of truth now; only downstream-critical carry-forwards
-are kept here.
-
-- **What shipped:** `im2col` (Type SHAPE, A-Format, opcode 1101) and `max`-pool
-  (Type POOL, A-Format, 1100), both reading a persistent **window descriptor**
-  set by `window` (Type WINCONFIG, new W-Format, 1110 — 11 fields
-  chans/inh/inw/outh/outw/winh/winw/strh/strw/padh/padw). A-Format now hosts
-  ACT/SHAPE/POOL (`opcode|rs1|rd|aux|reserved|funct3`); old CONFIG→LDCONFIG. HW
-  Spec adds the **Pooler** (streaming reducer peer to ALU/Activator; folds one
-  value/clock, emits on a Vector_Processor `window_end` strobe), windowed
-  addressing + fills in the Vector_Processor, and the descriptor registers +
-  windowed decode in the Controller.
-- **CRITICAL for the assembler — im2col K-axis is channel-major**
-  `k = c·(winh·winw) + ki·winw + kj` (in-ch → win-row → win-col), matching
-  PyTorch `(out,in,kh,kw)` weight flatten with NO permutation. Assembler
-  weight-flatten MUST match — a mismatch is a silent wrong conv, not a crash.
-- **Feature-map layout:** generalized Row-Major, channels outermost (CHW-planar);
-  the order>2 rule is generalized; arithmetic ops still ≤2-D.
-- **Fills:** im2col out-of-bounds → 0 (hardwired 0x0); max out-of-bounds → minimum
-  representable (never wins). Windowed ops are int8-preserving (no requant), write
-  contiguously (no `ld`), `aux`=reserved=0.
-- **SETTLED — not v0.6 items:** Message Protocol complete (only remaining protocol
-  work is *code* for the INPUT header 0x49; external mode = external *input*,
-  output via VGA); bias adds intentionally dropped (LeNet <1%); ReLU-only
-  activation. See Standing Decisions + memory.
-
-### LeNet-5 hardware bring-up — tooling and findings (2026-07-17)
+v0.7 = comms link + demo, so the LeNet-5 bring-up plumbing is what matters here:
 
 - **No input-embed in the assembler:** the network input is a runtime `@main` arg
-  (`inputs[0][0]`), mapped to `0x1` but emitted with ZERO bytes. Weights ship in
-  `MEM.bin` (0x2+); the image reaches `0x1` ONLY via the Message-Protocol INPUT
-  header (`0x49`), which the Programmer already supports (external mode; preserves
-  the resident program, runs on STOP). `System/LeNet-5_Test.py` streams a known
-  MNIST digit (quantized with conv1 `S_in=__scales__[conv1.weight][0]`) via
-  INPUT/MEM(0x1)/STOP using `Send_2_Arduino`.
-- **New golden/verify tooling — `System/Assembler/Interpreter/`:** `Emulator.py`
-  (golden layer-level int8 LeNet model) and `Interpreter.py` (bit-exact executor
-  of the actual `PROGRAM.bin` against a modeled ISA memory: `0x0`=zero,
-  `0x1`=isolated 1024-word buffer, `>=0x2` flat main). Both reuse the assembler's
-  quant helpers so they can't drift. They localized BOTH bugs with no hardware and
-  are the reference for the Questa regression.
-- **Exonerated:** network, quantization, calibration, bias-removal, requant math,
-  im2col K-order, accumulator/tiling — all correct (golden argmax = true label).
-  The failure was purely RTL windowed addressing (Bug 1) + assembler output-tiling
-  (Bug 2). See memory `lenet5-hardware-bringup-rtl-windowed-0x1-bug`.
+  mapped to `0x1` but emitted with ZERO bytes. Weights ship in `MEM.bin` (0x2+);
+  the image reaches `0x1` ONLY via the Message-Protocol INPUT header (`0x49`).
+  The Programmer already supports it (external mode; preserves the resident
+  program, runs on STOP). `System/LeNet-5_Test.py` streams a quantized MNIST digit
+  via INPUT/MEM(0x1)/STOP. **Only remaining protocol work is *code* for the INPUT
+  header** (external mode = external *input*; output shown on VGA, no readback).
+- **Golden/verify tooling — `System/Assembler/Interpreter/`:** `Emulator.py`
+  (golden layer-level int8 LeNet) + `Interpreter.py` (bit-exact `PROGRAM.bin`
+  executor over a modeled ISA memory: `0x0`=zero, `0x1`=isolated 1024-word buffer,
+  `>=0x2` flat main). Both reuse the assembler's quant helpers so they can't
+  drift; they localized both bugs with no hardware.
 
 ## Shipped history (compressed — full detail in memory)
 
+- **v0.6.0** (tagged on `main`/`origin`; GitHub prerelease) — on-device
+  convolution + pooling: `window`/`im2col`/`max` instructions (W/A-Format), a
+  streaming Pooler, windowed addressing in Controller/Vector_Processor, and
+  assembler conv/pool lowering + channel-major conv-weight flatten. Questa PASS;
+  LeNet-5 hardware-verified. Memory:
+  `lenet5-hardware-bringup-rtl-windowed-0x1-bug`.
 - **v0.5.1** (tagged on `origin`) — SPI_Slave rewritten as a synchronous
   oversampling receiver; fixed large-model flashing (root cause: 5V→3.3V
   resistive divider feeding soft edges into raw async SCK-clock/CS-reset pins).
@@ -90,11 +62,11 @@ are kept here.
 
 ## Roadmap — end goal LeNet-5
 
-- v0.5 partitioning reached the FC/GEMM path. **v0.6 = on-device `im2col` (conv)
-  + `max`-pool** — specs done, RTL/assembler implementation pending (feature maps
-  are runtime, not compile-time reshapes). Shared future gap: a general
-  gather/scatter data-movement primitive (im2col, pooling, row-parallel
-  reassembly). Detail in memory (`lenet5-end-goal-roadmap`).
+- **LeNet-5 end goal REACHED on hardware (v0.6.0).** v0.5 gave the FC/GEMM path;
+  v0.6 added on-device `im2col` (conv) + `max`-pool. Remaining polish is v0.7.0:
+  proper comms link + demo + the `move` instruction (dissolves Bug 2). Longer-term
+  generalization: a unified gather/scatter data-movement primitive. Detail in
+  memory (`lenet5-end-goal-roadmap`).
 
 ## Standing Decisions (dated, with reasons)
 
