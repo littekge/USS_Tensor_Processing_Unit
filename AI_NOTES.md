@@ -114,16 +114,11 @@ v0.7 = comms link + demo, so the LeNet-5 bring-up plumbing is what matters here:
 
 ## Deferred Work
 
-- **Spec fixes from proofreader pilot (user applies by hand):** 5 logic errors,
-  3 cross-doc, ~15 spelling/grammar + MD013 line-length. Full report in the
-  2026-07-07 session on the main Windows PC.
-- Open spec questions: requant clamp bounds ([-128,127] vs [-127,127]); legality
-  of shift = 0; legal command codes inside INPUT transmissions; IDLE priority vs
-  pop-order ambiguity.
-- README "AI Usage" section describes superseded unilateral main.md/CLAUDE.md
-  management for the Assembler — user rewords.
-- `tests/run_regression.sh` + TPU CLAUDE.md mention OneDrive-synced Desktop
-  scratch — stale since the `~/Git` move; update when next touched.
+- `tests/run_regression.sh` + TPU `CLAUDE.md` still frame sim-scratch placement
+  around the OneDrive-synced Desktop (pre-`~/Git`-move rationale); the refs
+  physically remain. Low-priority wording cleanup — reword generically (keep
+  scratch off the synced tree; `SIM_WORK` override) when those files are next
+  touched. `log.md` entries are dated history — leave them.
 
 ## Machine Notes
 

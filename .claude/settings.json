@@ -64,5 +64,17 @@
   },
   "worktree": {
     "baseRef": "head"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"AI_NOTES.md maintenance: its Deferred Work and Standing Decisions sections accumulate append-only and go stale, because release updates refresh only Current State. At a natural stopping point this session, re-verify each Deferred Work item against the actual repo/specs and prune or reword anything resolved. Do not just append.\"}}'"
+          }
+        ]
+      }
+    ]
   }
 }
