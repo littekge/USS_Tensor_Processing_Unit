@@ -19,12 +19,18 @@
     buffer, so conv1 read input pixels out of weight memory → all logits wrong.
     Fixed to mirror the non-windowed `src_is_buf` path (hold addr `0x1`, element
     index on the offset port; OOB→`0x0`). Questa PASS + hardware-confirmed.
-  - **Bug 2 (assembler) — STILL DEFERRED to v0.7:** fc3's tiled output writes
-    logits 8,9 to `rd=9` (=`conv1.weight[7,8]`), corrupting weights across re-runs
-    (Programmer re-runs without reload). Only ±1; never flips argmax.
-- **Next: v0.7.0** = proper comms link + demo, incl. the SHAPE-opcode `move`
-  instruction that dissolves Bug 2 (see Standing Decisions). Starting on a fresh
-  agent from a clean `main`.
+  - **Bug 2 (assembler) — fix now SPEC'D (v0.7 `move`), lowering pending:** fc3's
+    tiled output writes logits 8,9 to `rd=9` (=`conv1.weight[7,8]`), corrupting
+    weights across re-runs (Programmer re-runs without reload). Only ±1; never
+    flips argmax. Retired once the assembler lowers `move` into the fc3 tail.
+- **v0.7.0 IN PROGRESS** = proper comms link + demo. **ISA phase DONE & pushed**
+  (`7a564ac`, ISA v0.7.0): the SHAPE-opcode `move` instruction (opcode 1101 /
+  funct3 0x1, A-Format) is defined — dissolves Bug 2 by copying a computed result
+  into the `0x1` I/O buffer for readout. Same commit fixed the requant `shift=0`
+  UB (rounding bias `(1 << shift) >> 1` in ISA **and** HW spec; RTL
+  `Vector_Processor.v:256` + golden `Interpreter.py`/`Emulator.py` already guarded
+  it — verified this session, no code change). Remaining v0.7 work: assembler
+  `move` lowering (retires Bug 2), INPUT-header (`0x49`) code, and the demo.
 
 ## v0.6 carry-forwards for v0.7 (specs are the source of truth for the rest)
 
