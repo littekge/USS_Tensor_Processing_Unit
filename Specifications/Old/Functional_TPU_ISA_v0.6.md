@@ -3,7 +3,7 @@
 > **Purpose:** This document contains the *Functional TPU* instruction set
 > architecture specification.
 >
-> **Version: 0.7.0**
+> **Version: 0.6.0**
 
 ## Memory
 
@@ -208,7 +208,7 @@ and multiplies it by a matrix of dimensions *dim21* x *dim22* located at address
 *src2*, storing the result starting from address *dest* in Row-Major order
 (addressed per the leading dimensions described above). Before storage, each
 resultant value is requantized according to the following equation: result =
-clamp((*scale* * x + ((1 << *shift*) >> 1)) >> *shift*) (Note: clamp() denotes
+clamp((scale * x + (1 << (*shift* - 1))) >> shift) (Note: clamp() denotes
 saturation to XLEN min/max). After writeback, the accumulator is cleared.
 Reserved bits are set to 0. Note that the dim fields limit each operand to at
 most 15x15 elements per instruction; larger matrices are computed by issuing
@@ -310,7 +310,6 @@ Reserved bits are set to 0.
 | 4 | 24 | 24 | 16 | 57 | 3 |
 | opcode | rs1 | rd | aux | reserved | funct3 |
 | SHAPE | src1 | dest | 0 | 0 | IM2COL |
-| SHAPE | src1 | dest | len | 0 | MOVE |
 
 #### im2col
 
@@ -325,14 +324,6 @@ then window row, then window column). The columns are written to *dest* as a
 (*chans* x *winh* x *winw*) x (*outh* x *outw*) matrix in Row-Major order.
 Window elements that fall outside the feature map (due to *padh* or *padw*)
 contribute a value of 0. *aux* and reserved bits are set to 0.
-
-#### move
-
-The *move* instruction moves *len* contiguous values starting from address
-*src1* and stores them contiguously at address *dest*. *move* can relocate up to
-65535 elements. Move operations that exceed 65535 elements require multiple
-*move* instructions. Note that *move* is dimension-agnostic; it moves raw data
-between memory locations.
 
 ### Pooling Instructions
 
@@ -392,7 +383,6 @@ This section defines the concrete binary layouts for all instructions in the
 | stride | LDCONFIG | C-Format | 1111 | 0x0 |
 | window | WINCONFIG | W-Format | 1110 | 0x0 |
 | im2col | SHAPE | A-Format | 1101 | 0x0 |
-| move | SHAPE | A-Format | 1101 | 0x1 |
 | max | POOL | A-Format | 1100 | 0x0 |
 | Instruction | Type | Format | opcode | funct7 |
 | --- | --- | --- | --- | --- |

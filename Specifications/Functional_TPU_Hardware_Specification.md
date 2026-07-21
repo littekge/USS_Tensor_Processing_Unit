@@ -676,8 +676,8 @@ to access an invalid memory address, and a WRITE_ERROR state if it attempts to
 write to a read-only memory address.
 - **Requantization:** When reading from the systolic array outputs, the
 Vector_Processor module requantizes the output value before writing to its
-destination using the equation result = clamp((*scale* * x + (1 << (*shift* -
-1))) >> *shift*) (**Note:** clamp() denotes saturation to XLEN min/max). See
+destination using the equation result = clamp((*scale* * x + ((1 << *shift*) >>
+1)) >> *shift*)(**Note:** clamp() denotes saturation to XLEN min/max). See
 *Functional TPU ISA* for more details.
 
 ### Activator

@@ -3,6 +3,16 @@
 > Append a new entry every time a change is made. Newest entries at the top.
 >
 
+## 2026-07-16 — Functional TPU ISA v0.7 (Move Instruction)
+
+- **Added a *move* instruction.**
+- *move* relocates a number of elements from one memory address to another.
+- Added Instruction Set Listing and SHAPE-table rows for *move* (SHAPE,
+  1101/0x1), sharing the A-Format/opcode with *im2col*.
+- Updated the *mult* instruction description to use result =
+clamp((*scale* * x + ((1 << *shift*) >> 1)) >> *shift*) for requantization ->
+removes the *shift*=0 issue.
+
 ## 2026-07-16 — Functional TPU ISA v0.6 (Convolution & Pooling)
 
 - **Added on-device convolution (im2col) and max-pooling instructions.**
