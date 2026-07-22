@@ -2,6 +2,38 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-22 — Demo top-level: hardware argmax + percentage VGA view
+
+- **What:** Authored `demo/demo.v` — a presentation top-level (top-level entity
+  `demo`) used in place of `Tensor_Processing_Unit.v` for the LeNet-5 demo. It
+  keeps full peripheral parity (SPI-over-GPIO, `SW[9]` mode select, device-mode
+  `SW[7:0]`/`~KEY[1]` input, HEX seven-seg, LEDR error codes) and swaps the raw-hex
+  `debug.v` VGA dump for a ranked-percentage result view.
+- **Behavior:** collects the 10 class outputs (`EXT_OUTPUT_COUNT`, streamed in
+  digit order 0→9), clamps negatives to zero, selection-sorts the classes
+  most→least likely, normalizes to one-decimal-place percentages, and renders
+  `LeNet-5 Prediction` + ten `<digit>  <pp.p>%` lines to the ASCII VGA buffer.
+- **Design points (why):**
+  - Armed by the `o_end_reached` strobe (fires once per inference, just before the
+    outputs stream) and re-armed in HOLD, so repeated inferences re-render cleanly.
+  - `i_device_ready` tied HIGH — the result view has no downstream backpressure and
+    the TPU only streams long after any prior render completes.
+  - Normalization uses repeated-subtraction division (multi-cycle) rather than a
+    single-cycle `/` by a variable divisor, to stay within timing; the VGA buffer
+    only needs the result eventually. Constant-divisor `/10`, `%10` (display digit
+    split) remain combinational, matching existing RTL usage.
+  - All-non-positive scores (sum 0) → every class shown as `0.0%` (division skipped).
+- **Reuse:** instantiates the unmodified `TPU` (compute) and
+  `ascii_master_controller` (VGA); font ROM is a full 128-char set (lowercase
+  confirmed) so the mixed-case header renders. `three_decimal_vals_w_neg` still
+  drives HEX in device mode.
+- **Files created:** `demo/demo.v`.
+- **Tests:** none — per decision this is a hardware/presentation artifact, not a
+  build-plan step; `main.md` unchanged. Not simulated (design reviewed by hand;
+  this machine has no Questa). **Verification: HARDWARE-ONLY** (validate on the
+  DE1-SoC by flashing LeNet-5, switching to external mode, and confirming the
+  ranked percentages on VGA).
+
 ## 2026-07-22 — v0.7 Verification: Questa Regression PASS
 
 - **Verification: PASS** (Questa PC, 2026-07-22). The full regression was run on the
