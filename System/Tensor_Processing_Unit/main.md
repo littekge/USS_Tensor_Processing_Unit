@@ -680,3 +680,77 @@ Update `TPU.v`.
 - Run the full regression on the Questa PC and record results in `log.md`.
 - On non-Questa machines record `Verification: PENDING` (naming the testbenches)
   and leave the v0.6 steps unmarked until the regression passes on the Questa PC.
+
+### v0.7 — Output Staging (`move` Instruction)
+
+Implements the `move` instruction per `Functional_TPU_ISA.md` v0.7 and
+`Functional_TPU_Hardware_Specification.md` v0.7. `move` (SHAPE type, A-Format,
+opcode `1101` / funct3 `0x1`) is a dimension-agnostic contiguous copy of `len`
+elements from `src1` to `dest`. It shares the SHAPE opcode with `im2col`,
+distinguished by funct3. Its purpose on the platform is output staging: the
+assembler computes the network result in main memory as a full tensor, then
+`move`s it into the isolated `0x1` I/O buffer for readback — retiring the
+LeNet-5 "Bug 2" in which tiled writes pinned to `0x1` spilled into weight memory.
+
+**Scope note.** Compute-side control-path and datapath only; the v0.4 memory
+subsystem and the systolic array are untouched. No new `.v` files; debug sections
+untouched. Verification is Questa-gated.
+
+**Reuse.** `move` inherits existing infrastructure: `OP_IM2COL` (`1101`) already
+decodes as a single-VP (VP_A) op that writes its result to memory during Execute
+and skips Writeback, so the funct3 split is the only control change; the
+`Vector_Processor` already has contiguous read/write addressing and isolated-`0x1`
+buffer offset logic. The one genuinely new piece is a device-memory→device-memory
+single-pass copy datapath (existing `VSRC_MEM` reads feed functional units or the
+systolic array, never a direct memory write).
+
+#### Step 1 — Controller: SHAPE funct3 Split + `move` Routing
+
+Update `Controller.v`.
+
+- Branch on `instr_funct3` within the SHAPE opcode (`OP_IM2COL`, `1101`): funct3
+  `0x0` = `im2col` (windowed, unchanged), funct3 `0x1` = `move`.
+- For `move`: drive vector source `VSRC_MEM` and destination `VDST_MEM`, set the
+  element count from the A-Format `aux` field (bits `75:60`), source = `rs1`,
+  destination = the SHAPE `dest` field (bits `99:76`). No window descriptor and no
+  functional unit are engaged; the existing `OP_IM2COL` Writeback-skip already
+  applies.
+- Update `tests/TB_Step3_Controller.v`: funct3 `0x1` decodes to the contiguous
+  copy routing (`VSRC_MEM`/`VDST_MEM`, length from `aux`, no windowed mode); the
+  funct3 `0x0` `im2col` path is unaffected.
+
+#### Step 2 — Vector_Processor: Contiguous Memory-to-Memory Copy
+
+Update `Vector_Processor.v`.
+
+- Add a contiguous copy path for `VSRC_MEM` + `VDST_MEM`: after the existing
+  two-cycle device-memory read (`MEM_ADDR`→`MEM_WAIT`→`MEM_WAIT2`→`MEM_FORWARD`),
+  write the held datum to destination memory in a new copy-write state; iterate
+  `i_length` times using the existing linear element counter.
+- Honor the architecturally isolated `0x1` buffer on the **destination** (drive the
+  buffer offset port when the dest base is `0x1`) — the output-staging write targets
+  `0x1`. Handle an isolated-buffer **source** symmetrically. Reuse the existing
+  contiguous addressing and buffer-offset logic; only the read→write coupling is new.
+- Update `tests/TB_Step4_VectorProcessor.v`: contiguous copy main→main and
+  main→`0x1` (the staging case); confirm the v0.5 contiguous/strided and v0.6
+  windowed paths are unaffected.
+
+#### Step 3 — TPU Top-Level Integration + Full-System
+
+Update `TPU.v`.
+
+- Expected **unchanged**: `move` reuses VP_A, device-memory port `a`, and the
+  existing source/destination/length/address control nets (no new ports). If
+  Steps 1–2 introduce a new control net, wire it to the vector processors here.
+- Update `tests/TB_Step8_FullSystem.v`: a program that computes a result into main
+  memory, issues `move` to copy it into the `0x1` buffer, and reads it back —
+  exercising the output-staging path end-to-end and confirming main memory (weights)
+  is untouched by the staged write.
+
+#### Step 4 — Regression
+
+- Update `tests/run_regression.sh` for the changed testbenches
+  (`TB_Step3_Controller`, `TB_Step4_VectorProcessor`, `TB_Step8_FullSystem`).
+- Run the full regression on the Questa PC and record results in `log.md`.
+- On non-Questa machines record `Verification: PENDING` (naming the testbenches)
+  and leave the v0.7 steps unmarked until the regression passes on the Questa PC.
