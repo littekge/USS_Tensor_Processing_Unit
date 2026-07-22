@@ -24,7 +24,7 @@
  * PASS / FAIL CRITERIA:
  *   Each test prints "PASS" or "FAIL" to the transcript.
  *   A final summary prints total pass/fail counts.
- *   All 17 tests should show PASS for a correct implementation.
+ *   All 18 tests should show PASS for a correct implementation.
  *
  * TEST CASES:
  *   Test 1: After reset — controller_idle HIGH, clear LOW
@@ -55,6 +55,11 @@
  *            pooler function MAX.
  *   Test 17 (v0.6): max writeback decode — VSRC_VEC_BUF -> VDST_MEM at dest,
  *            length = chans*outh*outw (24 for the preceding window).
+ *   Test 18 (v0.7): move decode — SHAPE opcode funct3 0x1 routes VSRC_MEM ->
+ *            VDST_MEM (contiguous copy) with source = rs1, dest = SHAPE dest,
+ *            length = aux; pooler NO-OP; no windowed source; skips writeback
+ *            (exactly one vector_start_a pulse). The funct3 0x0 im2col path is
+ *            unaffected (Test 15).
  * -------------------------------------------------------------------------
  */
 
@@ -308,6 +313,16 @@ function [127:0] make_max;
     make_max = {OP_MAX, src1, dest, 16'd0, 57'd0, 3'd0};
 endfunction
 
+// Build a move instruction (ISA v0.7 SHAPE A-format): shares OP_IM2COL with
+// im2col, distinguished by funct3 0x1. aux (bits 75:60) carries len.
+// opcode[127:124] | src1[123:100] | dest[99:76] | aux[75:60] | reserved | funct3.
+localparam [2:0] F3_MOVE = 3'h1;
+function [127:0] make_move;
+    input [23:0] src1, dest;
+    input [15:0] len;
+    make_move = {OP_IM2COL, src1, dest, len, 57'd0, F3_MOVE};
+endfunction
+
 // ---------------------------------------------------------------------------
 // Task: send one instruction to controller and wait for it to finish
 // (simulates a complete Feeder-style handshake; VPs and SA are kept idle)
@@ -375,6 +390,9 @@ reg       im2col_route_ok, im2col_saw_wb_src;
 reg       max_exec_ok, max_wb_ok;
 reg [2:0] cap_im2col_pool, cap_max_pool_exec;
 reg [15:0] cap_max_wb_len;
+reg       move_route_ok, move_saw_wb_src, move_saw_win;
+reg [2:0] cap_move_pool;
+reg [15:0] cap_move_len;
 
 initial
 begin
@@ -919,6 +937,47 @@ begin
         vector_idle_a = 1'b1; // let it proceed through both phases
     end
     check((max_wb_ok === 1'b1) && (cap_max_wb_len === 16'd24), 17);
+
+    // -----------------------------------------------------------------------
+    // Test 18 (v0.7): move decode — SHAPE opcode (OP_IM2COL) with funct3 0x1
+    // routes a contiguous copy VSRC_MEM -> VDST_MEM, source = rs1, dest = SHAPE
+    // dest, length = aux; pooler NO-OP; never engages the windowed source; and
+    // skips writeback (exactly one vector_start_a pulse, no SA/vector-buffer
+    // read decode). Distinct from im2col (funct3 0x0, Test 15) on the same
+    // opcode.
+    // -----------------------------------------------------------------------
+    do_reset;
+    vector_idle_a = 1'b0; vector_idle_b = 1'b1; systolic_array_idle = 1'b1;
+    instruction     = make_move(24'h000500, 24'h000001, 16'd12);
+    move_route_ok   = 1'b0;
+    move_saw_wb_src = 1'b0;
+    move_saw_win    = 1'b0;
+    cap_move_pool   = FUNCT_MAX; // seed wrong; must become NOOP
+    cap_move_len    = 16'd0;
+    vsa_count       = 0;
+
+    @(posedge clk); #1; controller_start = 1'b1;
+    @(posedge clk); #1; controller_start = 1'b0;
+    @(posedge clk); #1; // CLEAR
+    @(posedge clk); #1; // EXEC_VP_START — sample execute decode
+    if ((vect_source_a === VSRC_MEM) && (vect_dest_a === VDST_MEM) &&
+        (mem_source_address_a === 24'h000500) &&
+        (mem_dest_address_a === 24'h000001))
+        move_route_ok = 1'b1;
+    cap_move_pool = pooler_funct;
+    cap_move_len  = length_a;
+    vector_idle_a = 1'b1; // release
+    while (!controller_idle)
+    begin
+        @(posedge clk); #1;
+        if (vect_source_a === VSRC_SA_OUT || vect_source_a === VSRC_VEC_BUF)
+            move_saw_wb_src = 1'b1;
+        if (vect_source_a === VSRC_MEM_WIN)
+            move_saw_win = 1'b1;
+    end
+    check((move_route_ok === 1'b1) && (cap_move_pool === FUNCT_NOOP) &&
+          (cap_move_len === 16'd12) && (move_saw_wb_src === 1'b0) &&
+          (move_saw_win === 1'b0) && (vsa_count === 1), 18);
 
     // -----------------------------------------------------------------------
     // Summary

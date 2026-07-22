@@ -56,7 +56,7 @@
  * -------------------------------------------------------------------------
  * PASS / FAIL CRITERIA:
  *   Each test prints "PASS" or "FAIL". A final summary prints pass/fail counts.
- *   All 15 tests should show PASS for a correct implementation.
+ *   All 16 tests should show PASS for a correct implementation.
  *
  * TEST CASES:
  *   Test 1: Device-mode FLASH completes — program/tpu_rst return HIGH after STOP.
@@ -99,6 +99,12 @@
  *   Test 15 (v0.6): Max pooling. A 4x4 feature map (1..16) is max-pooled with a
  *           2x2 window, stride 2, giving [6,8,14,16] via the windowed vector-
  *           processor -> Pooler -> vector-buffer -> writeback path.
+ *   Test 16 (v0.7): Output staging via move. A mult computes a 2x2 result into
+ *           main memory (@0x0A = [1,2,3,4]); a move then copies it (len 4) into
+ *           the isolated 0x1 I/O buffer for readback. The staged copy is read
+ *           back from the buffer, and the flashed weights and the source result
+ *           in main memory are confirmed untouched by the staged write (retires
+ *           LeNet-5 "Bug 2").
  * -------------------------------------------------------------------------
  */
 
@@ -364,6 +370,17 @@ module TB_Step8_FullSystem;
         input [23:0] src1, dest;
         begin
             mk_max = {4'b1100, src1, dest, 16'd0, 57'd0, 3'd0};
+        end
+    endfunction
+
+    // move builder (ISA v0.7 SHAPE A-format): shares opcode 1101 with im2col,
+    // distinguished by funct3 0x1; aux (bits 75:60) carries the element count.
+    //   opcode 1101 | src1[123:100] | dest[99:76] | len[75:60] | reserved | 0x1.
+    function [127:0] mk_move;
+        input [23:0] src1, dest;
+        input [15:0] len;
+        begin
+            mk_move = {4'b1101, src1, dest, len, 57'd0, 3'h1};
         end
     endfunction
 
@@ -867,6 +884,50 @@ module TB_Step8_FullSystem;
         check((shadow_main[48] === 8'd6)  && (shadow_main[49] === 8'd8) &&
               (shadow_main[50] === 8'd14) && (shadow_main[51] === 8'd16),
               "max pooling (window + max) = [6,8,14,16]");
+
+        // ===================================================================
+        // Test 16 (v0.7): output staging via move.
+        //   A mult computes C(2x2) = rs1 * rs2 into main memory @0x0A:
+        //     rs1 @0x000002 = [[16,0],[0,16]]   -> flat 2..5  (identity*16)
+        //     rs2 @0x000006 = [[16,32],[48,64]] -> flat 6..9
+        //     rd  @0x00000A                       -> flat 10..13 = [1,2,3,4]
+        //   A move then copies those 4 elements (len 4) from 0x0A into the
+        //   isolated 0x1 I/O buffer for readback. The staged copy must appear in
+        //   the 0x1 buffer (shadow_buf[0..3] = [1,2,3,4]) while the flashed
+        //   weights (main mem @0x02 = 16) and the source result (@0x0A) remain
+        //   untouched by the staged write — the move targets the buffer only and
+        //   never spills into main/weight memory (retires LeNet-5 "Bug 2").
+        // ===================================================================
+        $display("Test 16: output staging via move (compute -> 0x1 -> readback)");
+        rst = 0; repeat (4) @(posedge clk); rst = 1; repeat (4) @(posedge clk);
+        mode_select = 1'b0;
+        for (si = 0; si < 1024; si = si + 1) begin
+            shadow_main[si] = 8'hEE;
+            shadow_buf[si]  = 8'hEE;
+        end
+        spi_ss = 0;
+        send_spi_byte(FLASH_CODE);
+        send_mem4(24'h000002, 8'd16, 8'd0,  8'd0,  8'd16); // rs1 identity*16
+        send_mem4(24'h000006, 8'd16, 8'd32, 8'd48, 8'd64); // rs2
+        send_program(mk_mul(24'h000002, 4'd2, 4'd2, 24'h000006, 4'd2, 4'd2, 24'h00000A));
+        send_program(mk_move(24'h00000A, 24'h000001, 16'd4)); // stage result -> 0x1
+        send_program(128'd0); // end
+        send_spi_byte(STOP_CODE);
+        spi_ss = 1;
+        wait_feeder_done(400000);
+        repeat (120) @(posedge clk);
+        $display("  staged 0x1 buf[0..3] = %0d %0d %0d %0d  (expect 1 2 3 4)",
+                 $signed(shadow_buf[0]), $signed(shadow_buf[1]),
+                 $signed(shadow_buf[2]), $signed(shadow_buf[3]));
+        $display("  source result mem[10..13] = %0d %0d %0d %0d  (expect 1 2 3 4)",
+                 $signed(shadow_main[10]), $signed(shadow_main[11]),
+                 $signed(shadow_main[12]), $signed(shadow_main[13]));
+        check((shadow_buf[0] === 8'd1) && (shadow_buf[1] === 8'd2) &&
+              (shadow_buf[2] === 8'd3) && (shadow_buf[3] === 8'd4) &&
+              (shadow_main[10] === 8'd1) && (shadow_main[11] === 8'd2) &&
+              (shadow_main[12] === 8'd3) && (shadow_main[13] === 8'd4) &&
+              (shadow_main[2] === 8'd16),
+              "move stages result into 0x1 buffer; main/weight memory untouched");
 
         // ===================================================================
         // Summary

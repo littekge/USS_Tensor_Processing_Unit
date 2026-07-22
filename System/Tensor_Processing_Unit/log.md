@@ -2,6 +2,78 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-22 — v0.7 Output Staging: `move` instruction (Steps 1-4)
+
+- **Context:** v0.7 implements the `move` instruction per `main.md` v0.7 (Output
+  Staging) and ISA/Hardware Spec v0.7. `move` (SHAPE type, A-Format, opcode
+  `1101`, funct3 `0x1`) is a dimension-agnostic contiguous copy of `len`
+  elements `src1`->`dest`; it shares the SHAPE opcode with `im2col`
+  (funct3 `0x0`), distinguished by funct3. Platform purpose: output staging —
+  compute a full-tensor result in main memory, then `move` it into the isolated
+  `0x1` I/O buffer for readback, retiring the LeNet-5 "Bug 2" tiled-write spill.
+  Compute-side control/datapath only; the v0.4 memory subsystem and systolic
+  array are untouched. No new `.v` files; no debug sections touched.
+
+- **Step 1 — `TPU/CONTROL/Controller.v`:** Added SHAPE funct3 params
+  (`FUNCT3_IM2COL` 0x0, `FUNCT3_MOVE` 0x1) and the A-format `shape_aux`
+  (bits 75:60) alias. The `OP_IM2COL` decode case now branches on
+  `instr_funct3`: funct3 0x0 keeps the windowed `im2col` routing
+  (`VSRC_MEM_WIN`->`VDST_MEM`, descriptor-derived count); funct3 0x1 (`move`)
+  drives `VSRC_MEM`->`VDST_MEM`, source = `rs1`, dest = SHAPE dest (bits 99:76),
+  `o_length_a` = `shape_aux`. No window descriptor / functional unit engaged.
+  The existing `single_vp_op` (VP_A only) and the `EXEC_VP_WAIT`->`IDLE`
+  Writeback-skip for `OP_IM2COL` already cover `move` unchanged — the funct3
+  split is the only control change.
+
+- **Step 2 — `TPU/PROCESSING/Vector_Processor.v`:** Added a device-memory ->
+  device-memory single-pass copy path for `VSRC_MEM` + `VDST_MEM`. New state
+  `MEM_CP_WRITE` (5'd20) and a `mem_cp_data` hold register. After the existing
+  two-cycle read (`MEM_ADDR`->`MEM_WAIT`->`MEM_WAIT2`->`MEM_FORWARD`),
+  `MEM_FORWARD` now latches the read datum for `VDST_MEM` (without advancing
+  `elem_cnt`) and transitions to `MEM_CP_WRITE`, which writes the held datum via
+  the existing contiguous `wr_addr`/`wr_offset` logic and then increments
+  `elem_cnt`; `linear_last` (from `i_length`) terminates the loop. The
+  isolated `0x1` buffer is honored on the destination (`dst_is_buf` -> address
+  held at `0x1`, index on `o_dm_offset`) and symmetrically on the source
+  (`src_is_buf`), reusing the existing buffer-offset logic. Only the read->write
+  coupling is new; v0.5 contiguous/strided and v0.6 windowed paths are untouched.
+
+- **Step 3 — `TPU/TPU.v`: UNCHANGED.** `move` reuses VP_A, device-memory port
+  `a`, and the existing source/dest/length/address nets; Steps 1-2 introduced no
+  new control net, so no top-level rewiring was required.
+
+- **Tests updated:**
+  - `tests/TB_Step3_Controller.v` (17 -> 18): added `make_move` builder
+    (funct3 0x1) and Test 18 — `move` decodes `VSRC_MEM`->`VDST_MEM`,
+    source = rs1, dest = SHAPE dest, length = aux, pooler NO-OP, no windowed
+    source, skips writeback (exactly one `vector_start_a` pulse). The funct3 0x0
+    `im2col` path (Test 15) is unaffected.
+  - `tests/TB_Step4_VectorProcessor.v` (21 -> 23): Test 22 = contiguous copy
+    main->main (4 elements, source region intact); Test 23 = output staging
+    main->`0x1` (dest walks the buffer offset) with a main-memory weight
+    sentinel confirmed untouched. v0.5/v0.6 paths (Tests 1-21) unchanged.
+  - `tests/TB_Step8_FullSystem.v` (15 -> 16): added `mk_move` builder and
+    Test 16 — a mult computes `[1,2,3,4]` into main memory @0x0A, a `move`
+    copies it (len 4) into the `0x1` buffer; the staged copy is read back from
+    the buffer shadow while the flashed weights (@0x02) and the source result
+    (@0x0A) in main memory are confirmed untouched by the staged write.
+- **`tests/run_regression.sh`: unchanged.** No testbench changed its RTL
+  dependency LIST — TB_Step3 -> `Controller.v`, TB_Step4 -> `Vector_Processor.v`,
+  TB_Step8 -> full hierarchy (already includes every needed source). `move` adds
+  no new `.v` file, so each block's source list stays in sync with its TB "How to
+  run" header.
+
+- **Verification: PENDING** (Linux laptop — no `vsim.exe` at
+  `C:\intelFPGA_lite\23.1std\questa_fse\win64\`; `run_regression.sh` self-gates,
+  nothing simulated). On the Questa PC run `./tests/run_regression.sh 3 4 8`;
+  expected:
+  - `TB_Step3_Controller` 18/18 (new Test 18 = move decode).
+  - `TB_Step4_VectorProcessor` 23/23 (new Tests 22/23 = move copy + staging).
+  - `TB_Step8_FullSystem` 16/16 (new Test 16 = end-to-end output staging).
+  - plus the unchanged Step1/2/5/6/7/pool/spi benches for regressions
+  (pass = each `Results:` line with 0 FAIL and no `Test N: FAIL`).
+  The v0.7 `main.md` Steps 1-4 are left UNMARKED until that run confirms.
+
 ## 2026-07-17 — Fix: windowed gather (im2col/max) 0x1-buffer addressing
 
 - **Context / root cause:** A LeNet-5 program produced wrong logits on hardware
