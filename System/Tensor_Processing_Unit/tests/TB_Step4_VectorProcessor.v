@@ -25,7 +25,7 @@
  * PASS / FAIL CRITERIA:
  *   Each test prints "PASS" or "FAIL" to the transcript.
  *   A final summary prints total pass/fail counts.
- *   All 21 tests should show PASS for a correct implementation.
+ *   All 23 tests should show PASS for a correct implementation.
  *
  * TEST CASES:
  *   Test 1:  After reset — o_vector_idle is HIGH immediately
@@ -63,6 +63,13 @@
  *            other element wrongly decoded to main memory.
  *   Test 21 (v0.6 fix): max window stream sourced from the 0x1 buffer (rs1=0x1);
  *            same 0x1-buffer walk on the pooling path.
+ *   Test 22 (v0.7): move — contiguous device-memory copy main->main of `len`
+ *            elements (VSRC_MEM -> VDST_MEM), verified element-by-element; the
+ *            source region is left intact.
+ *   Test 23 (v0.7): move output staging main->0x1 — copies a result tensor from
+ *            main memory into the isolated 0x1 I/O buffer (dest walks the buffer
+ *            offset), and confirms main memory outside the source (a weight
+ *            sentinel) is untouched by the staged write.
  * -------------------------------------------------------------------------
  */
 
@@ -918,6 +925,48 @@ initial begin
         end
         check(ok === 1'b1, 21);
     end
+
+    // -----------------------------------------------------------------------
+    // TEST 22 (v0.7): move — contiguous device-memory copy main->main.
+    //   Source main_mem[2..5] = 0x51,0x52,0x53,0x54; copy 4 elements to dest
+    //   base 0x10 (main_mem[16..19]). The copy path reads each element then
+    //   writes it (VSRC_MEM -> VDST_MEM); the source region stays intact.
+    // -----------------------------------------------------------------------
+    do_reset;
+    main_mem[2] = 8'h51; main_mem[3] = 8'h52;
+    main_mem[4] = 8'h53; main_mem[5] = 8'h54;
+    main_mem[16] = 8'hFF; main_mem[17] = 8'hFF;
+    main_mem[18] = 8'hFF; main_mem[19] = 8'hFF;
+
+    vp_start_and_wait(VSRC_MEM, VDST_MEM, 24'h000002, 24'h000010, 16'd4, 4'd0, 4'd0);
+    @(posedge clk); #1; // let the final memory write propagate
+
+    check((main_mem[16] === 8'h51) && (main_mem[17] === 8'h52) &&
+          (main_mem[18] === 8'h53) && (main_mem[19] === 8'h54) &&
+          (main_mem[2]  === 8'h51) && (main_mem[5]  === 8'h54), 22);
+
+    // -----------------------------------------------------------------------
+    // TEST 23 (v0.7): move output staging main->0x1.
+    //   A result tensor at main_mem[2..5] = 0x61..0x64 is moved into the
+    //   isolated 0x1 I/O buffer (dest 0x0001) for readback; the dest walks the
+    //   buffer offset (buf_mem[0..3]). A weight sentinel elsewhere in main
+    //   memory (main_mem[100]) must be untouched by the staged write, proving
+    //   the copy targets the buffer and does not spill into main memory
+    //   (retires LeNet-5 "Bug 2").
+    // -----------------------------------------------------------------------
+    do_reset;
+    main_mem[2] = 8'h61; main_mem[3] = 8'h62;
+    main_mem[4] = 8'h63; main_mem[5] = 8'h64;
+    main_mem[100] = 8'hA5;  // weight sentinel — must survive the staged write
+    buf_mem[0] = 8'hFF; buf_mem[1] = 8'hFF;
+    buf_mem[2] = 8'hFF; buf_mem[3] = 8'hFF;
+
+    vp_start_and_wait(VSRC_MEM, VDST_MEM, 24'h000002, 24'h000001, 16'd4, 4'd0, 4'd0);
+    @(posedge clk); #1;
+
+    check((buf_mem[0] === 8'h61) && (buf_mem[1] === 8'h62) &&
+          (buf_mem[2] === 8'h63) && (buf_mem[3] === 8'h64) &&
+          (main_mem[100] === 8'hA5), 23);
 
     // -----------------------------------------------------------------------
     // Summary

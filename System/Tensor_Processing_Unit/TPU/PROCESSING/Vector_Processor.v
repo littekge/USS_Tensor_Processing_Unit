@@ -137,7 +137,8 @@ parameter [4:0]
     WIN_WAIT     = 5'd16,  // Windowed read latency cycle 1
     WIN_WAIT2    = 5'd17,  // Windowed read latency cycle 2
     WIN_FORWARD  = 5'd18,  // Windowed read valid; route to Pooler or hold for write
-    WIN_WRITE    = 5'd19;  // im2col: write the gathered element to dest memory
+    WIN_WRITE    = 5'd19,  // im2col: write the gathered element to dest memory
+    MEM_CP_WRITE = 5'd20;  // move: write the held datum to dest memory (copy)
 
 // Source encoding (must match Controller.v)
 parameter [2:0]
@@ -191,6 +192,10 @@ reg [3:0]  wr_cnt, wc_cnt;
 // im2col holds the gathered datum for one cycle between the read (WIN_FORWARD)
 // and the memory write (WIN_WRITE).
 reg [7:0]  win_wr_data;
+
+// move holds the datum read from source memory for one cycle between the read
+// (MEM_FORWARD) and the destination write (MEM_CP_WRITE).
+reg [7:0]  mem_cp_data;
 
 // Physical row stride for sub-block addressing: defaults to the matrix's own
 // width (dim1_lat) when the leading dimension is 0 (contiguous), otherwise the
@@ -390,9 +395,17 @@ begin
                 NS = sa_a_last ? DONE_STATE : MEM_ADDR;
             else if (vect_dest_lat == VDST_SA_B)
                 NS = sa_b_last ? DONE_STATE : MEM_ADDR;
+            else if (vect_dest_lat == VDST_MEM)
+                // move: the datum just read is written to dest memory next cycle.
+                NS = MEM_CP_WRITE;
             else
                 NS = linear_last ? DONE_STATE : MEM_ADDR;
         end
+        MEM_CP_WRITE:
+            // move: after writing the copied element, loop back for the next
+            // element or finish. linear_last still reflects the current elem_cnt
+            // (it increments in this state via a non-blocking assignment).
+            NS = linear_last ? DONE_STATE : MEM_ADDR;
         VB_RDREQ:
             NS = VB_WAIT;
         VB_WAIT:
@@ -470,6 +483,8 @@ begin
         ow_cnt           <= 12'd0;
         wr_cnt           <= 4'd0;
         wc_cnt           <= 4'd0;
+        win_wr_data      <= 8'd0;
+        mem_cp_data      <= 8'd0;
         o_window_end     <= 1'b0;
         o_dm_address     <= 24'd0;
         o_dm_wren        <= 1'b0;
@@ -600,12 +615,40 @@ begin
                         end
                     end
 
+                    VDST_MEM:
+                    begin
+                        // move: hold the source datum for the copy write next
+                        // cycle (MEM_CP_WRITE). elem_cnt is NOT advanced here so
+                        // the write reuses the same element index; it advances
+                        // after the write instead.
+                        mem_cp_data <= i_dm_q;
+                    end
+
                     default:; // Other destinations not valid with VSRC_MEM→write
                 endcase
 
-                // For linear (non-SA) ops, increment elem_cnt
-                if (vect_dest_lat != VDST_SA_A && vect_dest_lat != VDST_SA_B)
+                // For linear streaming ops (Activator / ALU) increment elem_cnt
+                // here. Move (VDST_MEM) increments after its copy write instead,
+                // and the SA loads track elem_cnt within their own branches.
+                if (vect_dest_lat != VDST_SA_A &&
+                    vect_dest_lat != VDST_SA_B &&
+                    vect_dest_lat != VDST_MEM)
                     elem_cnt <= elem_cnt + 16'd1;
+            end
+
+            MEM_CP_WRITE:
+            begin
+                // move: write the datum read in MEM_FORWARD to the destination.
+                // wr_addr/wr_offset use the same contiguous addressing as the
+                // vector-buffer writeback path: for a 0x1 destination the flat
+                // address is held at 0x1 and the element index rides o_dm_offset
+                // (output staging into the isolated I/O buffer); any other dest
+                // walks the flat address with offset 0.
+                o_dm_address <= wr_addr;
+                o_dm_offset  <= wr_offset;
+                o_dm_data    <= mem_cp_data;
+                o_dm_wren    <= 1'b1;
+                elem_cnt     <= elem_cnt + 16'd1;
             end
 
             VB_RDREQ:

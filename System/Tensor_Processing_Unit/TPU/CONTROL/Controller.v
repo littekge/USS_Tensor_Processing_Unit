@@ -126,6 +126,12 @@ parameter [2:0]
     FUNCT3_MULT   = 3'h0,   // clears the accumulator after writeback
     FUNCT3_MULTIP = 3'h1;   // leaves the accumulator to keep accumulating
 
+// funct3 sub-codes for the SHAPE opcode (per ISA Instruction Set Listing).
+// im2col and move share opcode OP_IM2COL and are distinguished by funct3.
+parameter [2:0]
+    FUNCT3_IM2COL = 3'h0,   // windowed feature-map gather
+    FUNCT3_MOVE   = 3'h1;   // contiguous device-memory copy (output staging)
+
 // Vector source encoding passed to Vector_Processor
 parameter [2:0]
     VSRC_MEM     = 3'd0,   // Device memory
@@ -199,6 +205,10 @@ wire [3:0]  win_padw  = i_instruction[43:40];
 // SHAPE / POOL (A-format) field aliases for im2col / max: src1 = instr_rs1
 // (bits 123-100, shared alias), dest at bits 99-76.
 wire [23:0] shape_rd = instr_latch[99:76];
+
+// SHAPE A-format aux field (bits 75-60): the move element count (len). Unused
+// by im2col (its element count is descriptor-derived), reserved to 0 there.
+wire [15:0] shape_aux = instr_latch[75:60];
 
 // Writeback element count for max: chans * outh * outw pooled results are
 // streamed to the vector buffer during Execute and copied to dest in Writeback.
@@ -523,14 +533,32 @@ begin
 
         OP_IM2COL:
         begin
-            // im2col has only an Execute phase: VP_A gathers the windowed
-            // feature map at src1 and writes the dense im2col matrix directly to
-            // dest. The window descriptor (routed via the o_win_* outputs) sets
-            // the element count and iteration order, so length/dim are unused.
-            o_vect_source_a        = VSRC_MEM_WIN;
-            o_vect_dest_a          = VDST_MEM;
-            o_mem_source_address_a = instr_rs1;
-            o_mem_dest_address_a   = shape_rd;
+            // SHAPE opcode: im2col (funct3 0x0) and move (funct3 0x1) share the
+            // opcode and are distinguished by funct3. Both write their result to
+            // memory during Execute and skip Writeback (handled in EXEC_VP_WAIT).
+            if (instr_funct3 == FUNCT3_MOVE)
+            begin
+                // move: contiguous device-memory copy of `aux` (len) elements
+                // from src1 to dest. No window descriptor and no functional unit
+                // are engaged; the Vector_Processor performs the read->write copy.
+                o_vect_source_a        = VSRC_MEM;
+                o_vect_dest_a          = VDST_MEM;
+                o_mem_source_address_a = instr_rs1;
+                o_mem_dest_address_a   = shape_rd;
+                o_length_a             = shape_aux;
+            end
+            else
+            begin
+                // im2col has only an Execute phase: VP_A gathers the windowed
+                // feature map at src1 and writes the dense im2col matrix directly
+                // to dest. The window descriptor (routed via the o_win_* outputs)
+                // sets the element count and iteration order, so length/dim are
+                // unused.
+                o_vect_source_a        = VSRC_MEM_WIN;
+                o_vect_dest_a          = VDST_MEM;
+                o_mem_source_address_a = instr_rs1;
+                o_mem_dest_address_a   = shape_rd;
+            end
         end
 
         OP_MAX:
