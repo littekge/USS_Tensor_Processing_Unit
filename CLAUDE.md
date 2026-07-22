@@ -5,16 +5,6 @@
 > you are working in. Section-level rules win on conflicts within their own
 > section.
 
-Also read `AI_NOTES.md` (repo root) at the start of every session: it carries
-portable decision history, in-flight state, and machine notes across the
-user's computers. Binding rules live here and in section `CLAUDE.md` files;
-the journal only adds context. The main session keeps it updated and pruned
-(~3k-token cap); entries that harden into rules graduate into a `CLAUDE.md`
-via the user's approval gate. Keep `AI_NOTES.md` in sync with Claude's
-persistent memory: when a memory entry records or revises a cross-session
-decision, reflect it in `AI_NOTES.md` so the two agree (memory is local to
-each machine; the journal travels with the repo).
-
 ## Section Map
 
 | Path | Domain / Toolchain | Section CLAUDE.md | Owning Agent | Agent Edit Policy |
@@ -120,8 +110,8 @@ These apply in every section, in addition to section-level rules.
 
 ### Comment Rules
 
-- **Rule 1 — Names explain *what***: choose clear, descriptive names; a good
+- **Rule 1 — Names explain _what_**: choose clear, descriptive names; a good
   name needs no comment.
-- **Rule 2 — Code explains *how***: readable code, not comments restating it.
-- **Rule 3 — Comments explain *why***: comment only where the reason behind a
+- **Rule 2 — Code explains _how_**: readable code, not comments restating it.
+- **Rule 3 — Comments explain _why_**: comment only where the reason behind a
   decision is not obvious from the code.
