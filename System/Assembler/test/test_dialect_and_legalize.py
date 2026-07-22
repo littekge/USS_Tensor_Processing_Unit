@@ -8,6 +8,7 @@ from nn_assembler.MLIR.dialect import (
     EndOp,
     Im2colOp,
     MaxPoolOp,
+    MoveOp,
     MultipOp,
     MultOp,
     Operand,
@@ -370,6 +371,21 @@ def test_max_op_roundtrip():
     op = reparsed.ops[0]
     assert isinstance(op, MaxPoolOp)
     assert op.result == "%p" and op.src.name == "%4" and op.out_shape == [6, 13, 13]
+    assert serialize(reparsed) == text
+
+
+def test_move_op_roundtrip():
+    program = Program(name="m")
+    program.ops.append(MoveOp(Operand("%out", [1, 10])))
+    program.ops.append(ReturnOp("%out", [1, 10]))
+    program.ops.append(EndOp())
+
+    text = serialize(program)
+    assert "tpu.move %out -> @io : 1x10" in text
+    reparsed = parse_program(text)
+    op = reparsed.ops[0]
+    assert isinstance(op, MoveOp)
+    assert op.src.name == "%out" and op.src.shape == [1, 10]
     assert serialize(reparsed) == text
 
 

@@ -40,10 +40,15 @@ TableGen/C++ MLIR dialect. Rationale:
 - `bias_removal.py` — TPU-dialect pass (`remove_bias_adds()`) that drops bias
   `add`s (v0.3: bias is folded into the matmul's requant multiplier) and reroutes
   their consumers to the matmul result. Non-bias adds are left untouched.
-- `partition.py` — final dialect→dialect pass (`partition_program()`, v0.5) that
+- `partition.py` — dialect→dialect pass (`partition_program()`, v0.5) that
   tiles any matmul exceeding `MAX_MATMUL_SIZE` into array-sized `mult`/`multip`
   runs preceded by a `stride`, addressing sub-blocks in place via leading
   dimensions. Matmuls that already fit pass through unchanged.
+- `stage_output.py` — final dialect→dialect pass (`stage_output()`, v0.7) that
+  inserts a `tpu.move %out -> @io` before the `tpu.return` terminator, staging the
+  network output (written to main memory like any intermediate) into the reserved
+  I/O address `0x1` for readback. Retires LeNet-5 "Bug 2" (tiled output previously
+  spilled past `0x1` into weight memory).
 
 ## Dialect grammar
 
@@ -59,6 +64,9 @@ module @<name> {
                                                 //    are the dyadic requant pair
     %res = tpu.add  %a : RxC, %b : RxC -> RxC   // -> ISA add   (ELEM format)
     %res = tpu.relu %a : N -> N                 // -> ISA relu  (ACT format)
+    tpu.move %res -> @io : RxC                    // -> ISA move  (SHAPE / A-format,
+                                                 //    funct3 MOVE); stages the output
+                                                 //    into I/O 0x1 (v0.7)
     tpu.return %res : RxC                        // marks the program output
     tpu.end                                      // -> ISA end   (SYSTEM format)
   }

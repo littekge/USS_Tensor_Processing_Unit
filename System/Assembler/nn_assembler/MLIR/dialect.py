@@ -162,6 +162,21 @@ class MaxPoolOp:
 
 
 @dataclass
+class MoveOp:
+    """Contiguous data move -> ISA `move` (SHAPE / A-Format, funct3 = MOVE 0x1).
+
+    Stages a computed tensor into the reserved I/O address so the programmer can
+    read the network output back (v0.7 output-staging pass). The destination is a
+    fixed symbolic I/O location (`@io`, resolved to 0x1 by the assembler), never a
+    physical address in the IR; `len` is inferred from the source tensor's shape
+    (`src.shape`), so no explicit length attribute is carried. `move` is
+    dimension-agnostic -- it copies raw contiguous words.
+    """
+
+    src: Operand
+
+
+@dataclass
 class AddOp:
     """Elementwise add -> ISA `add` (ELEM format)."""
 
@@ -272,6 +287,8 @@ def _serialize_op(op) -> str:
         )
     if isinstance(op, MaxPoolOp):
         return f"{op.result} = tpu.max {op.src.name} -> {shape_to_str(op.out_shape)}"
+    if isinstance(op, MoveOp):
+        return f"tpu.move {op.src.name} -> @io : {shape_to_str(op.src.shape)}"
     if isinstance(op, AddOp):
         return (
             f"{op.result} = tpu.add {op.lhs.name} : {shape_to_str(op.lhs.shape)}, "
@@ -302,6 +319,7 @@ _WINDOW_RE = re.compile(
 )
 _IM2COL_RE = re.compile(rf"({_SSA})\s*=\s*tpu\.im2col\s+({_SSA})\s*->\s*({_SHAPE})")
 _MAX_RE = re.compile(rf"({_SSA})\s*=\s*tpu\.max\s+({_SSA})\s*->\s*({_SHAPE})")
+_MOVE_RE = re.compile(rf"tpu\.move\s+({_SSA})\s*->\s*@io\s*:\s*({_SHAPE})")
 _ATTR_RE = re.compile(r"(\w+)\s*=\s*(-?\d+)")
 _ADD_RE = re.compile(
     rf"({_SSA})\s*=\s*tpu\.add\s+({_SSA})\s*:\s*({_SHAPE})\s*,\s*"
@@ -379,6 +397,11 @@ def _parse_op(line: str):
     if m:
         res, src, out = m.groups()
         return MaxPoolOp(res, Operand(src, []), parse_shape(out))
+
+    m = _MOVE_RE.match(line)
+    if m:
+        src, shape = m.groups()
+        return MoveOp(Operand(src, parse_shape(shape)))
 
     m = _ADD_RE.match(line)
     if m:

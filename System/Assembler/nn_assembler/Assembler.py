@@ -1,17 +1,20 @@
 """Second half of lowering step 3 (Steps 6-7): the assembler.
 
 Translates the final *Functional TPU* dialect
-(`/tmp/optimized.partitioned.tpu.mlir`, the bias-removed and matmul-partitioned
-IR) into `Functional_TPU_ISA.md` machine code, then exports it in the Message
-Protocol PROGRAM format (`/tmp/PROGRAM.bin`). Each `tpu.mult`/`tpu.multip`
-carries the dyadic requantization pair `M0`/`n` set during legalization; a
-partitioned matmul is a `stride` followed by array-sized `mult`/`multip` tiles.
+(`/tmp/optimized.staged.tpu.mlir`, the bias-removed, matmul-partitioned, and
+output-staged IR) into `Functional_TPU_ISA.md` machine code, then exports it in
+the Message Protocol PROGRAM format (`/tmp/PROGRAM.bin`). Each
+`tpu.mult`/`tpu.multip` carries the dyadic requantization pair `M0`/`n` set
+during legalization; a partitioned matmul is a `stride` followed by array-sized
+`mult`/`multip` tiles.
 
 Address resolution uses `/tmp/weight_map.json`: mapped weights resolve to their
-assigned addresses. The network input occupies the reserved I/O address 0x1, and
-the network's final output is written back to 0x1 so the programmer can read it.
-Every other intermediate result is allocated in main data memory (0x2+) by an
-`IntermediateAllocator`, with freed regions reused across the linear op sequence.
+assigned addresses. The network input occupies the reserved I/O address 0x1.
+Every op result -- including the network's final output -- is allocated in main
+data memory (0x2+) by an `IntermediateAllocator`, with freed regions reused
+across the linear op sequence. A final `tpu.move` stages the output into 0x1 so
+the programmer can read it back (v0.7 output staging); this keeps tiled output
+writes contiguous in main memory instead of spilling past 0x1 into weights.
 """
 
 from __future__ import annotations
@@ -24,6 +27,7 @@ from .MLIR.dialect import (
     EndOp,
     Im2colOp,
     MaxPoolOp,
+    MoveOp,
     MultipOp,
     MultOp,
     Operand,
@@ -34,7 +38,6 @@ from .MLIR.dialect import (
     parse_program,
 )
 from .Process_Weights import (
-    FINAL_OUTPUT_ADDRESS,
     INPUT_ADDRESS,
     IntermediateAllocator,
     first_free_address,
@@ -56,6 +59,7 @@ FUNCT3_MULTIP = 0x1  # MULTIP shares the MUL layout; funct3 selects accumulate-k
 FUNCT3_STRIDE = 0x0
 FUNCT3_WINDOW = 0x0
 FUNCT3_IM2COL = 0x0
+FUNCT3_MOVE = 0x1  # `move` shares the SHAPE opcode (1101) with `im2col` (funct3 0x0).
 FUNCT3_MAX = 0x0
 FUNCT7_END = 0x0
 
@@ -71,6 +75,7 @@ LD_FIELD_MAX = (1 << 24) - 1  # CONFIG im1/im2 (ld1/ld2) are 24-bit fields.
 REQUANT_FIELD_MAX = 255  # MUL M0/n fields are each 8 bits (bits 35-28 / 27-20).
 ADDRESS_FIELD_MAX = (1 << 24) - 1  # rs1/rs2/rd are 24-bit address fields (v0.4).
 RELU_LEN_MAX = (1 << 16) - 1  # ACT `len` field is 16 bits (bits 75-60).
+MOVE_LEN_MAX = (1 << 16) - 1  # SHAPE `move` aux (len) field is 16 bits (bits 75-60).
 WINDOW_DIM_MAX = (1 << 12) - 1  # W-Format inh/inw/chans/outh/outw are 12-bit fields.
 WINDOW_WIN_MAX = (1 << 4) - 1  # W-Format winh/winw/strh/strw/padh/padw are 4-bit fields.
 
@@ -275,6 +280,26 @@ def encode_max(rs1: int, rd: int) -> int:
     return _encode_shape_pool(OPCODE_MAX, FUNCT3_MAX, rs1, rd)
 
 
+def encode_move(rs1: int, rd: int, length: int) -> int:
+    """Encode a SHAPE-format `move` instruction into its 128-bit value (ISA v0.7).
+
+    Field layout (A-Format): opcode 127-124 = 1101 (SHAPE, shared with `im2col`);
+    rs1 123-100 = src; rd 99-76 = dest; aux 75-60 = len; reserved 59-3; funct3 2-0
+    = MOVE (0x1). Mirrors `encode_im2col` but carries a non-zero `aux` (the element
+    count) and selects the MOVE function. A single `move` relocates up to 65535
+    contiguous words (the 16-bit `aux` field).
+    """
+    for field, addr in (("rs1", rs1), ("rd", rd)):
+        _assert_address(field, addr)
+    assert 0 <= length <= MOVE_LEN_MAX, (
+        f"move length {length} exceeds the 16-bit aux field (max {MOVE_LEN_MAX}); "
+        "multi-move chunking is out of scope for v0.7."
+    )
+    return (
+        (OPCODE_IM2COL << 124) | (rs1 << 100) | (rd << 76) | (length << 60) | FUNCT3_MOVE
+    )
+
+
 def encode_end() -> int:
     """Encode a SYSTEM-format `end` instruction into its 128-bit value."""
     return (OPCODE_SYSTEM << 124) | FUNCT7_END
@@ -292,7 +317,7 @@ def _operand_names(op) -> list[str]:
     """SSA names an op reads (used to reclaim dead intermediate regions)."""
     if isinstance(op, (MultOp, MultipOp, AddOp)):
         return [op.lhs.name, op.rhs.name]
-    if isinstance(op, (ReluOp, Im2colOp, MaxPoolOp)):
+    if isinstance(op, (ReluOp, Im2colOp, MaxPoolOp, MoveOp)):
         return [op.src.name]
     return []
 
@@ -315,20 +340,22 @@ def _result_words(op) -> int:
 def assemble_program(tpu_text: str, weight_map: dict) -> list[int]:
     """Assemble TPU dialect text into a list of 128-bit machine instructions.
 
-    Intermediate results are placed in main data memory past the weight region
-    and their regions are reused once dead; the value returned by `tpu.return`
-    is written to the reserved I/O address 0x1 for readback.
+    Intermediate results (including the network output) are placed in main data
+    memory past the weight region and their regions are reused once dead. The
+    network output is staged into the reserved I/O address 0x1 by an explicit
+    `tpu.move` (v0.7 output staging); the assembler no longer pins the returned
+    value to 0x1, so tiled output writes stay contiguous and never alias weights.
     """
     program = parse_program(tpu_text)
-    returned = next((op.value for op in program.ops if isinstance(op, ReturnOp)), None)
 
     allocator = IntermediateAllocator(first_free_address(weight_map))
     last_use: dict[str, int] = {}
     for index, op in enumerate(program.ops):
         # MultipOp is excluded: partitioned tiles share a result whose last read is
         # the terminating MultOp, so counting the intervening multips would free a
-        # source region early.
-        if isinstance(op, (MultOp, AddOp, ReluOp, Im2colOp, MaxPoolOp)):
+        # source region early. MoveOp is included so the staged output region stays
+        # live until the move reads it.
+        if isinstance(op, (MultOp, AddOp, ReluOp, Im2colOp, MaxPoolOp, MoveOp)):
             for name in _operand_names(op):
                 last_use[name] = index
 
@@ -341,14 +368,12 @@ def assemble_program(tpu_text: str, weight_map: dict) -> list[int]:
         return _resolve_address(name, weight_map)
 
     def assign_result(op) -> int:
-        # The returned value is the network output: pin it to the I/O address so
-        # the programmer can read it back. Allocate before freeing this op's dead
-        # sources so a reused region can never alias a source still being read.
-        # A partitioned matmul emits several tiles that share one result name; the
-        # parent region is allocated once (on the first tile) and reused by later
-        # tiles addressing it at their own sub-block offsets.
-        if op.result == returned:
-            return FINAL_OUTPUT_ADDRESS
+        # Every op result -- including the network output -- lands in main data
+        # memory; the output is later staged into 0x1 by a MoveOp. Allocate before
+        # freeing this op's dead sources so a reused region can never alias a source
+        # still being read. A partitioned matmul emits several tiles that share one
+        # result name; the parent region is allocated once (on the first tile) and
+        # reused by later tiles addressing it at their own sub-block offsets.
         if op.result in intermediate_addr:
             return intermediate_addr[op.result]
         words = _result_words(op)
@@ -412,11 +437,18 @@ def assemble_program(tpu_text: str, weight_map: dict) -> list[int]:
             rd = assign_result(op)
             instructions.append(encode_relu(resolve(op.src.name), rd, op.length))
             release_dead_sources(op, index)
+        elif isinstance(op, MoveOp):
+            # Stage the network output into the reserved I/O address for readback.
+            # The source resolves to its main-memory base; dest is fixed at 0x1.
+            instructions.append(
+                encode_move(resolve(op.src.name), INPUT_ADDRESS, _prod(op.src.shape))
+            )
+            release_dead_sources(op, index)
         elif isinstance(op, EndOp):
             instructions.append(encode_end())
         elif isinstance(op, ReturnOp):
-            # The result already resides at 0x1; return marks the program output
-            # but emits no instruction.
+            # The output has already been staged into 0x1 by the preceding MoveOp;
+            # return marks the program output but emits no instruction.
             continue
         else:
             raise AssertionError(f"Assembler cannot handle op: {op!r}")
@@ -429,9 +461,10 @@ def Assemble(tmp_dir: Path | None = None) -> list[int]:
     if tmp_dir is None:
         tmp_dir = Path(__file__).parent.parent / "tmp"
 
-    # Assemble the partitioned dialect: it is the final IR (bias adds dropped,
-    # oversized matmuls tiled into array-sized mult/multip runs with strides).
-    tpu_path = tmp_dir / "optimized.partitioned.tpu.mlir"
+    # Assemble the staged dialect: it is the final IR (bias adds dropped, oversized
+    # matmuls tiled into array-sized mult/multip runs with strides, and the network
+    # output followed by a `move` that stages it into the I/O address 0x1).
+    tpu_path = tmp_dir / "optimized.staged.tpu.mlir"
     weight_map_path = tmp_dir / "weight_map.json"
     assert tpu_path.is_file(), f"Missing {tpu_path}"
     assert weight_map_path.is_file(), f"Missing {weight_map_path}"
