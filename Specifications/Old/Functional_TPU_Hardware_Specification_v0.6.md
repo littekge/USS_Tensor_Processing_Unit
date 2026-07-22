@@ -3,7 +3,7 @@
 > **Purpose:** This document outlines the Functional TPU hardware specification,
 > including module instantiation hierarchy and functional descriptions of modules.
 >
-> **Version:** 0.7.0
+> **Version:** 0.6.0
 >
 > **ISA:** `Functional_TPU_ISA.md`
 > **Message Protocol:** `Functional_TPU_Message_Protocol.md`
@@ -551,7 +551,7 @@ the Pooler for *max*.
     (Execute)
     - Wait for the systolic array to finish execute operations. (Execute)
   - If the decoded instruction writes its result directly to memory during
-  Execute (*im2col*, *move*), skip the Writeback phase.
+  Execute (*im2col*), skip the Writeback phase.
   - Set writeback control signals for Vector_Processors. (Writeback)
   - Assert the vector processors' *vector_start* signals HIGH for one clock cycle.
   (Writeback)
@@ -677,7 +677,7 @@ write to a read-only memory address.
 - **Requantization:** When reading from the systolic array outputs, the
 Vector_Processor module requantizes the output value before writing to its
 destination using the equation result = clamp((*scale* * x + ((1 << *shift*) >>
-1)) >> *shift*) (**Note:** clamp() denotes saturation to XLEN min/max). See
+1)) >> *shift*)(**Note:** clamp() denotes saturation to XLEN min/max). See
 *Functional TPU ISA* for more details.
 
 ### Activator

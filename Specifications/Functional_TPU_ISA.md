@@ -29,7 +29,8 @@ stride is *H* x *W*, the row stride is *W*, and the element stride is 1; a
 0x2 + 18 = 0x14 and its second channel begins at 0x2 + 9 = 0xB. MUL-, ELEM-,
 and ACT-type instructions operate on operands of at most two dimensions;
 higher-order tensors are addressed only by the windowed instructions (*im2col*
-and *max*), per the window descriptor.
+and *max*), per the window descriptor. Pure data movement operations (e.g.
+*move* instruction) are dimension-agnostic.
 
 ### Reserved Addresses
 
@@ -332,7 +333,7 @@ The *move* instruction moves *len* contiguous values starting from address
 *src1* and stores them contiguously at address *dest*. *move* can relocate up to
 65535 elements. Move operations that exceed 65535 elements require multiple
 *move* instructions. Note that *move* is dimension-agnostic; it moves raw data
-between memory locations.
+between memory locations. Reserved bits are set to 0.
 
 ### Pooling Instructions
 

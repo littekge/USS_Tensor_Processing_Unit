@@ -2,6 +2,12 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-22 — Functional TPU Hardware Specification v0.7.0 — Move Instruction
+
+- **Minor spec update** to integrate the *move* instruction from the ISA v0.7.0.
+- Added *move* to the list for memory-only instructions in the controller module
+description.
+
 ## 2026-07-16 — Functional TPU Hardware Specification v0.6.0 — Convolution and Pooling
 
 - **Added the hardware for convolution (via *im2col*) and max pooling**, in
