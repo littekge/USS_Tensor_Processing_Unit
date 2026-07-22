@@ -1,0 +1,7 @@
+# Runtime artifacts written by LeNet5_Demo.py
+LeNet5_Demo_input.bin
+LeNet5_Demo_preview.png
+
+# Python
+__pycache__/
+.pytest_cache/
