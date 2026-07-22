@@ -89,12 +89,14 @@ has 4 stages:
     2. Append START and STOP function codes to create a full transmission.
     3. Save the completed binary to `/out/TRANSMISSION.bin`.
 
-## Current State — Built Through v0.6
+## Current State — Built Through v0.7
 
-The assembler pipeline is **complete through v0.6**: the full flow runs
-end-to-end and produces `/out/TRANSMISSION.bin`, and LeNet-5 (convolution +
-max-pool, lowered via `window`/`im2col`/`max`) is now a full end-to-end target.
-Per-version history is the Build Plan below, with details in `log.md`.
+The assembler pipeline is **complete through v0.7**: the full flow runs
+end-to-end and produces `/out/TRANSMISSION.bin`, LeNet-5 (convolution +
+max-pool, lowered via `window`/`im2col`/`max`) is a full end-to-end target, and
+the network output is written to main memory then staged into the reserved I/O
+address `0x1` with a single `move` (retiring LeNet-5 bring-up "Bug 2"). Per-version
+history is the Build Plan below, with details in `log.md`.
 
 The project is an installable Python package named **`nn_assembler`** (the
 `nn_assembler/` directory is the package). After a one-time editable install
@@ -678,7 +680,7 @@ data-movement primitive (the roadmap's gather/scatter generalization is out of
 scope). `len` is asserted `<= 65535`; multi-move chunking is deferred (output
 vectors are tiny).
 
-#### Step 1 — Dialect: `MoveOp`
+#### Step 1 — Dialect: `MoveOp` — ✅ Complete (2026-07-22)
 
 Update `nn_assembler/MLIR/dialect.py`:
 
@@ -688,7 +690,7 @@ Update `nn_assembler/MLIR/dialect.py`:
 - Serialize/parse round-trip (`tpu.move %src -> @io : <shape>`), keeping the
   dialect ~1:1 with the `move` instruction.
 
-#### Step 2 — Encoder: `encode_move`
+#### Step 2 — Encoder: `encode_move` — ✅ Complete (2026-07-22)
 
 Update `Assembler.py`:
 
@@ -697,7 +699,7 @@ Update `Assembler.py`:
 - Assert `len <= 65535` (the `aux` field width).
 - Add a dispatch branch for `MoveOp` in `assemble_program`.
 
-#### Step 3 — Output-Staging Pass
+#### Step 3 — Output-Staging Pass — ✅ Complete (2026-07-22)
 
 Add `nn_assembler/MLIR/stage_output.py` (dialect-to-dialect):
 
@@ -706,7 +708,7 @@ Add `nn_assembler/MLIR/stage_output.py` (dialect-to-dialect):
 - Wire into `Process_MLIR.py` as the FINAL dialect pass (after partitioning); write
   the intermediate to `/tmp/optimized.staged.tpu.mlir`.
 
-#### Step 4 — Assembler Allocation & Liveness
+#### Step 4 — Assembler Allocation & Liveness — ✅ Complete (2026-07-22)
 
 Update `Assembler.py`:
 
@@ -718,7 +720,7 @@ Update `Assembler.py`:
 - `MoveOp` encodes with `dest = 0x1` (`INPUT_ADDRESS`); `src` resolves to the
   output's main-memory address.
 
-#### Step 5 — Golden Model: `move`
+#### Step 5 — Golden Model: `move` — ✅ Complete (2026-07-22)
 
 Update `Interpreter/Interpreter.py`:
 
@@ -728,7 +730,7 @@ Update `Interpreter/Interpreter.py`:
 - `Emulator.py` is unchanged (layer-level reference; models neither instructions nor
   addresses).
 
-#### Step 6 — End-to-End & Bug 2 Regression
+#### Step 6 — End-to-End & Bug 2 Regression — ✅ Complete (2026-07-22)
 
 - Run the full pipeline on `LeNet_5`; confirm a framed `/out/TRANSMISSION.bin` and an
   inspectable `/tmp/optimized.staged.tpu.mlir`.

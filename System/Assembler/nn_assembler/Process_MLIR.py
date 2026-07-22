@@ -11,7 +11,12 @@ Runs the MLIR passes in sequence:
   4. Matmul partitioning (`/tmp/optimized.nobias.tpu.mlir` ->
      `/tmp/optimized.partitioned.tpu.mlir`), tiling oversized matmuls into
      array-sized `mult`/`multip` runs with a leading `stride`. Defined in
-     `MLIR/partition.py`; this is the final dialect the assembler consumes.
+     `MLIR/partition.py`.
+  5. Output staging (`/tmp/optimized.partitioned.tpu.mlir` ->
+     `/tmp/optimized.staged.tpu.mlir`), inserting a `tpu.move %out -> @io` before
+     the terminator so the network output is copied into the I/O address 0x1 for
+     readback. Defined in `MLIR/stage_output.py`; this is the final dialect the
+     assembler consumes.
 """
 
 from __future__ import annotations
@@ -25,6 +30,7 @@ from .MLIR.bias_removal import remove_bias_adds
 from .MLIR.dialect import serialize
 from .MLIR.legalize import legalize
 from .MLIR.partition import partition_program
+from .MLIR.stage_output import stage_output
 
 
 def Process_MLIR(tmp_dir: Path | None = None) -> None:
@@ -37,6 +43,7 @@ def Process_MLIR(tmp_dir: Path | None = None) -> None:
     tpu_path = tmp_dir / "optimized.tpu.mlir"
     nobias_path = tmp_dir / "optimized.nobias.tpu.mlir"
     partitioned_path = tmp_dir / "optimized.partitioned.tpu.mlir"
+    staged_path = tmp_dir / "optimized.staged.tpu.mlir"
     weight_map_path = tmp_dir / "weight_map.json"
     assert initial_path.is_file(), f"Missing {initial_path}"
     assert weight_map_path.is_file(), f"Missing {weight_map_path} (run Process_Weights first)."
@@ -69,3 +76,6 @@ def Process_MLIR(tmp_dir: Path | None = None) -> None:
 
     partition_program(program, MAX_MATMUL_SIZE)
     partitioned_path.write_text(serialize(program))
+
+    stage_output(program)
+    staged_path.write_text(serialize(program))

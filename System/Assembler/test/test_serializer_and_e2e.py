@@ -117,8 +117,9 @@ def test_full_pipeline(tmp_path):
         return (value >> lo) & ((1 << (hi - lo + 1)) - 1)
 
     # Bias adds are dropped. Both matmuls are in-array (pass-through), so each is
-    # preceded by a stride(0,0) contiguous reset: 2 strides + 2 mults + end.
-    assert len(instructions) == 5
+    # preceded by a stride(0,0) contiguous reset; v0.7 stages the output with a
+    # final move: 2 strides + 2 mults + move + end.
+    assert len(instructions) == 6
     mults = [i for i in instructions if _bits(i, 127, 124) == OPCODE_MULT]
     strides = [i for i in instructions if _bits(i, 127, 124) == OPCODE_STRIDE]
     assert len(mults) == 2 and len(strides) == 2
@@ -131,8 +132,16 @@ def test_full_pipeline(tmp_path):
     assert (_bits(mults[0], 35, 28), _bits(mults[0], 27, 20)) == (192, 8)  # M=0.75
     assert (_bits(mults[1], 35, 28), _bits(mults[1], 27, 20)) == (128, 8)  # M=0.5
 
-    # The final output (second mult's result) is pinned to the I/O address 0x1.
-    assert _bits(mults[1], 59, 36) == 1
+    # The final output (second mult's result) now lands in main memory, and a
+    # single move to 0x1 (SHAPE opcode, funct3 MOVE) is the last instruction before
+    # end, staging it for readback.
+    output_addr = _bits(mults[1], 59, 36)
+    assert output_addr >= 2 and output_addr != 1
+    move = instructions[-2]
+    assert _bits(move, 127, 124) == 0b1101 and _bits(move, 2, 0) == 0x1
+    assert _bits(move, 123, 100) == output_addr  # src = output base
+    assert _bits(move, 99, 76) == 1  # dest = 0x1
+    assert instructions[-1] == 0  # end
 
     data = out_path.read_bytes()
     assert data[0] == FLASH and data[-1] == STOP
@@ -232,7 +241,14 @@ def test_full_pipeline_bigger_nn_real(tmp_path):
         for i in range(len(instructions) - 1, -1, -1)
         if _bits(instructions[i], 127, 124) == 0b1000
     )
-    assert _bits(last_mult, 59, 36) == 1  # returned result pinned to I/O address 0x1
+    # v0.7: the returned result lands in main memory; a final move stages it to 0x1.
+    output_addr = _bits(last_mult, 59, 36)
+    assert output_addr >= 2 and output_addr != 1
+    move = instructions[-2]
+    assert _bits(move, 127, 124) == 0b1101 and _bits(move, 2, 0) == 0x1  # SHAPE/MOVE
+    assert _bits(move, 123, 100) == output_addr  # src = output base
+    assert _bits(move, 99, 76) == 1  # dest = I/O address 0x1
+    assert instructions[-1] == 0  # end
 
 
 @pytest.mark.skipif(not _have_stablehlo_opt(), reason="stablehlo-opt not on PATH")
@@ -337,10 +353,117 @@ def test_full_pipeline_lenet5_real(tmp_path):
     def _bits(value, hi, lo):
         return (value >> lo) & ((1 << (hi - lo + 1)) - 1)
 
-    # --- The returned FC3 result [1x10] is pinned to the I/O address 0x1. It tiles
-    #     in N (10 -> 8 + 2), so its two output tiles write at base 0x1 + {0, 8}. ---
+    # --- Bug 2 regression: the FC3 output [1x10] tiles in N (10 -> 8 + 2). The
+    #     output now writes to CONTIGUOUS main memory (base + {0, 8}), never to the
+    #     old 0x1 + 8 = 0x9 (which spilled into weight memory), and a single move to
+    #     0x1 stages it for readback as the last instruction before end. ---
     fc3_stride = next(s for s in strides if (s.ld1, s.ld2) == (84, 10))
     fc3_tiles = _tiles_between_strides(program, fc3_stride)
     assert sorted({t.dst_offset for t in fc3_tiles}) == [0, 8]
+
+    move = instructions[-2]
+    assert _bits(move, 127, 124) == 0b1101 and _bits(move, 2, 0) == 0x1  # SHAPE/MOVE
+    assert _bits(move, 99, 76) == 1  # dest = I/O address 0x1
+    assert _bits(move, 75, 60) == 10  # len = 10 logits
+    assert instructions[-1] == 0  # end
+    output_base = _bits(move, 123, 100)  # source = output's main-memory base
+    assert output_base >= 2 and output_base != 1
+
     mult_rds = {_bits(i, 59, 36) for i in instructions if _bits(i, 127, 124) == 0b1000}
-    assert {1, 9} <= mult_rds  # base tile at 0x1, second N-tile at 0x1 + 8
+    assert {output_base, output_base + 8} <= mult_rds  # tiles contiguous in main mem
+    assert 9 not in mult_rds  # never the old 0x9 weight collision
+
+    # The staged dialect artifact is inspectable and holds exactly one move -> @io.
+    staged = (tmp_path / "optimized.staged.tpu.mlir").read_text()
+    assert staged.count("tpu.move") == 1 and "-> @io" in staged
+
+
+def _load_interpreter():
+    """Import the out-of-package Interpreter module (Interpreter/Interpreter.py)."""
+    import importlib.util
+
+    interp_path = Path(__file__).resolve().parents[1] / "Interpreter" / "Interpreter.py"
+    spec = importlib.util.spec_from_file_location("_tpu_interpreter", interp_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_interpreter_executes_move_and_leaves_weights_intact():
+    """Interpreter Step 5: `move` copies src -> 0x1, honoring 0x1 isolation.
+
+    Dataset-free unit check of the move opcode: an output tensor sitting in main
+    memory alongside resident weights is staged into the isolated 0x1 buffer; the
+    weight words are never touched (Bug 2 in miniature).
+    """
+    from nn_assembler.Assembler import encode_end, encode_move
+
+    interp = _load_interpreter()
+
+    tpu = interp.TPU()
+    # Resident weights at low addresses; the network output further out in main mem.
+    weights = {2: 11, 3: 22, 4: 33, 9: 44}  # 0x9 is the old Bug-2 collision address
+    tpu.main.update(weights)
+    output_base = 100
+    output = [7, -8, 9]
+    for i, v in enumerate(output):
+        tpu.main[output_base + i] = v
+
+    program = [encode_move(rs1=output_base, rd=1, length=len(output)), encode_end()]
+    tpu.run(program)
+
+    # The output is staged into the isolated 0x1 buffer...
+    assert [tpu.io[i] for i in range(len(output))] == output
+    # ...and every resident weight word is byte-identical (never overwritten).
+    for addr, value in weights.items():
+        assert tpu.main[addr] == value
+
+
+@pytest.mark.skipif(not _have_stablehlo_opt(), reason="stablehlo-opt not on PATH")
+@pytest.mark.skipif(not _have_lenet, reason="LeNet_5_Recent artifacts not present")
+def test_lenet5_interpreter_double_run_preserves_weights(tmp_path):
+    """Bug 2 regression: re-running the program never corrupts weight memory.
+
+    Executes the emitted LeNet-5 program twice back-to-back (Programmer re-run
+    semantics) in the instruction-level interpreter. Because v0.7 writes the tiled
+    output to main memory and only stages it into the isolated 0x1 buffer with a
+    move, no store ever lands in the weight region -- so weight memory is
+    byte-identical after each run, and the argmax matches the golden model.
+    """
+    interp = _load_interpreter()
+    emulator = interp.Emulator
+
+    try:
+        npz = np.load(emulator._NPZ_PATH, allow_pickle=False)
+        _, image_int8, _label = emulator.load_mnist(0, npz)
+    except Exception as exc:  # torchvision/dataset unavailable in this environment
+        pytest.skip(f"MNIST input unavailable: {exc}")
+
+    NN_import("LeNet_5", "Recent", tmp_dir=tmp_path, nn_dir=_NETWORKS_DIR)
+    analyze_transposes_file(tmp_path)
+    Process_Weights(tmp_path)
+    Process_MLIR(tmp_path)
+    Assemble(tmp_path)
+
+    # Golden reference logits (intended int8 math).
+    qw = emulator._quantized_weights(npz)
+    pairs = emulator._requant_pairs(npz)
+    golden = [int(v) for v in emulator.forward_int8(image_int8, qw, pairs)]
+    golden_argmax = int(np.argmax(golden))
+
+    program = interp.parse_program(tmp_path / "PROGRAM.bin")
+
+    tpu = interp.TPU()
+    tpu.load_weights(tmp_path / "MEM.bin")
+    pristine_weights = dict(tpu.main)  # weight region: address -> signed int8
+    assert pristine_weights, "expected resident weights loaded from MEM.bin"
+
+    for _run in range(2):  # execute twice back-to-back
+        tpu.load_input(image_int8)
+        tpu.run(program)
+        # Every pristine weight address is byte-identical after the run.
+        for addr, value in pristine_weights.items():
+            assert tpu.main[addr] == value, f"weight at {addr:#x} corrupted after run"
+        out = [tpu.io[d] for d in range(10)]  # output read from the staged 0x1 buffer
+        assert out == golden, f"interpreter logits {out} != golden {golden}"
+        assert int(np.argmax(out)) == golden_argmax

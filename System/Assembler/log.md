@@ -2,6 +2,65 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-22 — v0.7: Output staging (`move` instruction)
+
+- Implemented the full v0.7 build plan (assembler side of ISA v0.7). Retires the
+  LeNet-5 bring-up "Bug 2": the tiled final-layer output was pinned to the isolated
+  `0x1` I/O buffer, so tiles past the first (logits 8-9 of 10) were emitted at flat
+  bases like `0x1 + 8 = 0x9`, spilling into resident weight memory and corrupting it
+  across Programmer re-runs. Fix: write the output to main memory (`0x2+`) as a full
+  tensor like any intermediate, then stage it into `0x1` with a single `move` for
+  readback. Verified against `Functional_TPU_ISA.md` v0.7 (read-only): `move` = SHAPE
+  type, A-Format, opcode `1101` (shared with `im2col`), funct3 `0x1` (MOVE); dest =
+  bits 99:76, aux(len) = bits 75:60 (16-bit, `len <= 65535`), source = rs1.
+- **Step 1 — `MLIR/dialect.py`:** added `MoveOp` (one SSA source `Operand`, fixed
+  symbolic `@io` destination; length inferred from `src.shape`, no explicit len/dst
+  attribute). Serialize/parse round-trip as `tpu.move %src -> @io : <shape>`
+  (`_MOVE_RE`).
+- **Step 2 — `Assembler.py`:** `encode_move` (A-Format SHAPE, opcode `1101`, funct3
+  `0x1` MOVE): rs1=src, rd=`0x1`, aux=len, reserved 0; mirrors `encode_im2col` with a
+  non-zero `aux`. Asserts `len <= 65535`. Added `FUNCT3_MOVE`/`MOVE_LEN_MAX` and a
+  `MoveOp` dispatch branch in `assemble_program`.
+- **Step 3 — `MLIR/stage_output.py` (new):** dialect-to-dialect pass; locates the
+  `tpu.return` terminator's value and inserts `tpu.move %out -> @io` immediately
+  before it (idempotent; no-op without a return). Wired into `Process_MLIR.py` as the
+  FINAL dialect pass (after partitioning), writing `/tmp/optimized.staged.tpu.mlir`;
+  `Assemble` now consumes that staged artifact.
+- **Step 4 — `Assembler.py` allocation/liveness:** removed the final-output `0x1` pin
+  (the `assign_result` special-case) so the returned value is allocated in main memory
+  (`0x2+`) via the normal allocator — tiled output writes stay contiguous and never
+  alias weights. `MoveOp` counted in operand/`last_use` tracking so the output region
+  stays live through the staging move; the move encodes dest=`0x1` (`INPUT_ADDRESS`),
+  src = the output's main-memory base.
+- **Step 5 — `Interpreter/Interpreter.py`:** the shared SHAPE opcode (`1101`) now
+  dispatches on funct3 — `move` (0x1) copies `len` (aux) words src->dest honoring the
+  `0x1` isolation via the existing `read`/`write`; `im2col` (0x0) unchanged. The final
+  output is read from the `0x1` buffer as populated by the executed move. `Emulator.py`
+  unchanged.
+- **Step 6 — E2E & Bug 2 regression:** CLI (`python -m nn_assembler LeNet_5 Recent`)
+  writes an 83032-byte framed `out/TRANSMISSION.bin` (FLASH 'U' ... STOP 'S'); the
+  staged dialect ends with one `tpu.move %24 -> @io : 1x10`. Decoded PROGRAM: the FC3
+  output tiles write contiguous main memory at `60160` + {0, 8} (never `0x9`), and the
+  last instruction before `end` is `move` src=`60160` -> dst=`0x1`, len=10.
+- Files created: `nn_assembler/MLIR/stage_output.py`, `test/test_stage_output.py`.
+  Files modified: `nn_assembler/MLIR/dialect.py`, `nn_assembler/Assembler.py`,
+  `nn_assembler/Process_MLIR.py`, `Interpreter/Interpreter.py`, `main.md`, `log.md`,
+  `test/test_dialect_and_legalize.py`, `test/test_assembler.py`,
+  `test/test_serializer_and_e2e.py`.
+- Tests: added `MoveOp` round-trip; `encode_move` bit-fields + shared-layout-with-im2col
+  + over-length reject; staging-pass insertion/idempotency/no-op/re-point-to-main; a
+  dataset-free interpreter `move` unit test (stages src->0x1, weights intact); updated
+  the assemble/E2E tests so the final output is no longer at `0x1`, a `move` to `0x1`
+  is emitted last, and LeNet output tiles are contiguous (no `0x9`). Added a LeNet
+  Interpreter double-run Bug-2 regression (weights byte-identical after each run,
+  argmax correct) — SKIPS here because the MNIST dataset is not downloaded on this
+  machine (see Pending). 88 pass, 1 skipped, 1 pre-existing fail
+  (`test_full_pipeline_bigger_nn_real`, Bigger_NN artifact M0/n != (172,19),
+  documented since 2026-07-15, unrelated to v0.7 — fails at the same M0/n assertion on
+  the pre-v0.7 base).
+- Run pytest with `PYTHONPATH` pointed at this worktree (the shared venv editable
+  install resolves `nn_assembler` to the main working copy).
+
 ## 2026-07-16 — v0.6 Step 6: end-to-end LeNet-5
 
 - Drove the full pipeline (`NN_import` -> transpose analysis -> `Process_Weights`

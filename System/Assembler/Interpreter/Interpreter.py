@@ -42,6 +42,7 @@ IO_BUF_WORDS = 1024  # 0x1 staging buffer depth (Programmer.v: 10-bit offset)
 OP_MULT, OP_RELU, OP_ADD = 0b1000, 0b1001, 0b1010
 OP_MAX, OP_IM2COL, OP_WINDOW, OP_STRIDE, OP_SYSTEM = 0b1100, 0b1101, 0b1110, 0b1111, 0b0000
 F3_MULTIP = 0x1
+F3_MOVE = 0x1  # `move` shares the SHAPE opcode (1101) with `im2col` (funct3 0x0).
 
 _OPNAME = {OP_MULT: "MUL", OP_RELU: "RELU", OP_ADD: "ADD", OP_MAX: "MAX",
            OP_IM2COL: "IM2COL", OP_WINDOW: "WINDOW", OP_STRIDE: "STRIDE", OP_SYSTEM: "SYS"}
@@ -179,7 +180,15 @@ class TPU:
                             _bits(x, 87, 76), _bits(x, 75, 64), _bits(x, 63, 60), _bits(x, 59, 56),
                             _bits(x, 55, 52), _bits(x, 51, 48), _bits(x, 47, 44), _bits(x, 43, 40))
             elif op == OP_IM2COL:
-                self._exec_windowed(x, is_pool=False)
+                # SHAPE opcode (1101) is shared: funct3 selects im2col (0x0) or
+                # move (0x1). move copies `len` (aux, bits 75-60) contiguous words
+                # from src to dest, honoring the 0x1 isolation via read/write.
+                if _bits(x, 2, 0) == F3_MOVE:
+                    rs1, rd, length = _bits(x, 123, 100), _bits(x, 99, 76), _bits(x, 75, 60)
+                    for i in range(length):
+                        self.write(rd, i, self.read(rs1, i))
+                else:
+                    self._exec_windowed(x, is_pool=False)
             elif op == OP_MAX:
                 self._exec_windowed(x, is_pool=True)
             elif op == OP_RELU:

@@ -18,6 +18,7 @@ from nn_assembler.Assembler import (
     encode_end,
     encode_im2col,
     encode_max,
+    encode_move,
     encode_mult,
     encode_mult_in_place,
     encode_relu,
@@ -145,17 +146,49 @@ def test_encode_max_fields():
     assert _bits(instr, 2, 0) == 0  # funct3 MAX
 
 
+def test_encode_move_fields():
+    # move shares the SHAPE opcode (1101) with im2col; funct3 MOVE (0x1) and a
+    # non-zero aux (len) distinguish it. Stages `len` words src -> dest.
+    instr = encode_move(rs1=60000, rd=1, length=10)
+    assert _is_128_bit(instr)
+    assert _bits(instr, 127, 124) == 0b1101  # opcode SHAPE
+    assert _bits(instr, 123, 100) == 60000  # rs1 (src, main memory)
+    assert _bits(instr, 99, 76) == 1  # rd (dest = I/O address 0x1)
+    assert _bits(instr, 75, 60) == 10  # aux = len
+    assert _bits(instr, 59, 3) == 0  # reserved
+    assert _bits(instr, 2, 0) == 0x1  # funct3 MOVE
+
+
+def test_encode_move_shares_layout_with_im2col_except_aux_and_funct3():
+    mv = encode_move(rs1=5, rd=1, length=0)
+    i2c = encode_im2col(rs1=5, rd=1)
+    # Identical opcode/rs1/rd; differ only in funct3 (aux 0 in both here).
+    assert _bits(mv, 127, 124) == _bits(i2c, 127, 124) == 0b1101
+    assert _bits(mv, 123, 100) == _bits(i2c, 123, 100)
+    assert _bits(mv, 99, 76) == _bits(i2c, 99, 76)
+    assert _bits(mv, 2, 0) == 0x1 and _bits(i2c, 2, 0) == 0x0
+
+
+def test_encode_move_rejects_over_length():
+    import pytest
+
+    with pytest.raises(AssertionError):
+        encode_move(rs1=2, rd=1, length=(1 << 16))
+
+
 def test_encode_end_is_all_zero():
     assert encode_end() == 0
 
 
-def test_assemble_places_intermediate_in_main_memory_and_output_at_scratch():
-    # Bias-removed dialect: two mults chained; the returned value goes to 0x1.
+def test_assemble_stages_output_to_scratch_via_move():
+    # Staged dialect (v0.7): two mults chained, then a move stages the output into
+    # 0x1. The returned value is now allocated in MAIN memory, not pinned to 0x1.
     tpu_text = (
         "module @m {\n"
         "  tpu.func @main {\n"
         "    %1 = tpu.mult %arg4 : 1x1, %arg0 : 1x4 -> 1x4 {M0 = 192, n = 8}\n"
         "    %5 = tpu.mult %1 : 1x4, %arg2 : 4x1 -> 1x1 {M0 = 200, n = 9}\n"
+        "    tpu.move %5 -> @io : 1x1\n"
         "    tpu.return %5 : 1x1\n"
         "    tpu.end\n"
         "  }\n"
@@ -167,7 +200,7 @@ def test_assemble_places_intermediate_in_main_memory_and_output_at_scratch():
         "%arg4": {"kind": "input", "address": 1, "num_words": 1},
     }
     instructions = assemble_program(tpu_text, weight_map)
-    assert len(instructions) == 3  # mult, mult, end (return emits nothing)
+    assert len(instructions) == 4  # mult, mult, move, end (return emits nothing)
 
     # first_free_address = max(2+4, 7+4) = 11, so %1 lands at 0xB.
     mult = instructions[0]
@@ -179,8 +212,18 @@ def test_assemble_places_intermediate_in_main_memory_and_output_at_scratch():
     second_mult = instructions[1]
     assert _bits(second_mult, 123, 100) == 11  # %1 intermediate read from 0xB
     assert _bits(second_mult, 91, 68) == 7  # %arg2 weight -> 0x7
-    assert _bits(second_mult, 59, 36) == 1  # %5 final output -> 0x1
-    assert instructions[2] == 0  # end
+    # The final output is NO LONGER pinned to 0x1: it lands in main memory (>= 2).
+    output_addr = _bits(second_mult, 59, 36)
+    assert output_addr >= 2 and output_addr != 1
+
+    # A single move to 0x1 is emitted last (before end), staging the output.
+    move = instructions[2]
+    assert _bits(move, 127, 124) == OPCODE_IM2COL  # SHAPE opcode (shared)
+    assert _bits(move, 2, 0) == 0x1  # funct3 MOVE
+    assert _bits(move, 123, 100) == output_addr  # src = output's main-memory base
+    assert _bits(move, 99, 76) == 1  # dest = I/O address 0x1
+    assert _bits(move, 75, 60) == 1  # len = prod([1,1])
+    assert instructions[3] == 0  # end
 
 
 def test_assemble_reuses_freed_intermediate_regions():
@@ -210,14 +253,16 @@ def test_assemble_reuses_freed_intermediate_regions():
     assert _bits(instructions[0], 59, 36) == base  # %1
     assert _bits(instructions[1], 59, 36) == base + 4  # %2
     assert _bits(instructions[2], 59, 36) == base  # %3 reuses %1's freed region
-    assert _bits(instructions[3], 59, 36) == 1  # %4 final output -> 0x1
+    # %4 (final output) now lands in main memory, no longer pinned to 0x1.
+    output_addr = _bits(instructions[3], 59, 36)
+    assert output_addr >= 2 and output_addr != 1
 
 
 def test_assemble_allocates_windowed_intermediates_in_main_memory_with_reuse():
     # A conv (window+im2col+mult) -> relu -> pool (window+max) -> relu chain.
     # The im2col column scratch and the CHW pool output must live in main data
     # memory (past the weight region), freed regions must be reused, and the final
-    # output must be pinned to 0x1.
+    # output (v0.7) now also lands in main memory (staged into 0x1 by a move).
     tpu_text = (
         "module @m {\n"
         "  tpu.func @main {\n"
@@ -254,7 +299,7 @@ def test_assemble_allocates_windowed_intermediates_in_main_memory_with_reuse():
     assert rd_a(relu1) == base  # relu reuses the freed im2col scratch region
     assert _bits(maxp, 127, 124) == OPCODE_MAX
     assert rd_a(maxp) >= base and rd_a(maxp) != 1  # CHW pool output in main memory
-    assert rd_a(relu2) == 1  # final output pinned to 0x1
+    assert rd_a(relu2) >= base and rd_a(relu2) != 1  # final output in main memory
 
 
 def test_encode_multip_shares_mult_layout_differs_in_funct3():
