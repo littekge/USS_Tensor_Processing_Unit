@@ -654,3 +654,97 @@ Update `Process_Weights.py` / `Assembler.py` allocation:
   known kernel); im2col scratch + CHW intermediate allocation.
 - `test_serializer_and_e2e.py`: full LeNet-5 pipeline frames correctly (numeric
   reference on a conv + a pool layer).
+
+### v0.7 — Output Staging (`move` Instruction)
+
+Implements the assembler side of v0.7 (`Functional_TPU_ISA.md` v0.7). Retires the
+LeNet-5 bring-up "Bug 2": the final layer's tiled output was pinned to the isolated
+`0x1` I/O buffer, so tiles past the first (e.g. logits 8-9 of LeNet's 10) were
+emitted at flat bases like `0x1 + 8 = 0x9`, spilling into resident weight memory
+and corrupting it across Programmer re-runs. The fix writes the network output to
+main memory (`0x2+`) as a full tensor like any intermediate, then stages it into
+`0x1` with a single `move` for readback.
+
+**Background.** ISA v0.7 adds `move` (SHAPE type, A-Format, opcode `1101` / funct3
+`0x1`): a dimension-agnostic contiguous copy of `len` elements from `src1` to
+`dest`. Staging is introduced as a dedicated dialect-to-dialect pass that inserts a
+`MoveOp` before the terminator; the op names a symbolic I/O destination (`@io`,
+resolved to `0x1` by the assembler) and derives its length from the source
+tensor's shape, so no physical address enters the IR.
+
+**Scope note.** Output staging only — the assembler ALWAYS writes the final result
+to main memory first, then moves it to `0x1`. `move` is not exposed as a general
+data-movement primitive (the roadmap's gather/scatter generalization is out of
+scope). `len` is asserted `<= 65535`; multi-move chunking is deferred (output
+vectors are tiny).
+
+#### Step 1 — Dialect: `MoveOp`
+
+Update `nn_assembler/MLIR/dialect.py`:
+
+- Add `MoveOp` with one SSA source operand and a fixed symbolic I/O destination
+  (`@io`); length is inferred from the source shape (no explicit `len`/`dst`
+  attribute).
+- Serialize/parse round-trip (`tpu.move %src -> @io : <shape>`), keeping the
+  dialect ~1:1 with the `move` instruction.
+
+#### Step 2 — Encoder: `encode_move`
+
+Update `Assembler.py`:
+
+- `encode_move` (A-Format SHAPE, opcode `1101`, funct3 `0x1`): `rs1`=src, `rd`=`0x1`,
+  `aux`=len, reserved 0. Mirrors `encode_im2col` with `aux=len` and funct3 `MOVE`.
+- Assert `len <= 65535` (the `aux` field width).
+- Add a dispatch branch for `MoveOp` in `assemble_program`.
+
+#### Step 3 — Output-Staging Pass
+
+Add `nn_assembler/MLIR/stage_output.py` (dialect-to-dialect):
+
+- Locate the terminator's returned value and insert `tpu.move %out -> @io`
+  immediately before it.
+- Wire into `Process_MLIR.py` as the FINAL dialect pass (after partitioning); write
+  the intermediate to `/tmp/optimized.staged.tpu.mlir`.
+
+#### Step 4 — Assembler Allocation & Liveness
+
+Update `Assembler.py`:
+
+- Remove the final-output `0x1` pin (the `assign_result` special-case): the returned
+  value is allocated in main memory (`0x2+`) via the normal allocator, so tiled
+  writes are contiguous and never alias weights.
+- Count `MoveOp` in operand / `last_use` tracking so the output region stays live
+  through the staging move.
+- `MoveOp` encodes with `dest = 0x1` (`INPUT_ADDRESS`); `src` resolves to the
+  output's main-memory address.
+
+#### Step 5 — Golden Model: `move`
+
+Update `Interpreter/Interpreter.py`:
+
+- Add the `move` opcode (`1101` / funct3 `0x1`): copy `len` words from `src` to
+  `dest`, honoring the `0x1` isolation rule. The final output is then read from the
+  `0x1` buffer as populated by the executed `move`.
+- `Emulator.py` is unchanged (layer-level reference; models neither instructions nor
+  addresses).
+
+#### Step 6 — End-to-End & Bug 2 Regression
+
+- Run the full pipeline on `LeNet_5`; confirm a framed `/out/TRANSMISSION.bin` and an
+  inspectable `/tmp/optimized.staged.tpu.mlir`.
+- Verify: the output op writes contiguous main memory (no `0x9` weight collision); a
+  single `move` to `0x1` is the last instruction before `end`.
+- Bug 2 regression (Interpreter): execute the program twice back-to-back (Programmer
+  re-run semantics); assert weight memory is byte-identical after each run and the
+  argmax is correct.
+
+#### Tests
+
+- `test_dialect_and_legalize.py`: `MoveOp` serialize/parse round-trip.
+- `test_assembler.py`: `encode_move` bit-fields vs. hand-derived; final output no
+  longer emitted at `0x1`; a `move` to `0x1` is emitted last; LeNet output tiles
+  address contiguous main memory (no `0x9` collision).
+- `test_stage_output.py` (new): the staging pass inserts one `move -> @io` before the
+  terminator and re-points the output to main memory.
+- `test_serializer_and_e2e.py`: full LeNet-5 pipeline frames correctly with the
+  staging move present; Interpreter double-run leaves weights intact (Bug 2).
