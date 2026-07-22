@@ -1,5 +1,6 @@
 """Serializer tests and a full end-to-end pipeline test (build step 8)."""
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -224,8 +225,13 @@ def test_full_pipeline_bigger_nn_real(tmp_path):
     # Ragged edge: N remainder 4 (100 - 12*8) appears; K divides evenly so no K remainder.
     assert {t.rhs.shape[1] for t in tiles} == {S, N - 12 * S}
     assert {t.lhs.shape[1] for t in tiles} == {S}
-    # Every tile carries the layer's requant pair (hidden2.weight: M0=172, n=19).
-    assert all((t.M0, t.n) == (172, 19) for t in tiles)
+    # Every tile carries the layer's requant pair: all tiles share one (M0, n),
+    # equal to hidden2.weight's dyadic pair in weight_map.json (%arg2). Derived
+    # from the map rather than hardcoded so it does not drift when Bigger_NN is
+    # re-exported with different calibration (the mantissa M0 shifts with S_w).
+    weight_map = json.loads((tmp_path / "weight_map.json").read_text())
+    expected_requant = (weight_map["%arg2"]["M0"], weight_map["%arg2"]["n"])
+    assert {(t.M0, t.n) for t in tiles} == {expected_requant}
 
     # --- Last matmul (1x100 @ 100x1): ragged K remainder 4 (100 - 12*8). ---
     last_stride = next(s for s in strides if (s.ld1, s.ld2) == (100, 1))

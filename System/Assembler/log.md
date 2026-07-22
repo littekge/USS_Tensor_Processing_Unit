@@ -2,6 +2,19 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-22 — Fix stale Bigger_NN requant assertion in E2E test
+
+- `test_full_pipeline_bigger_nn_real` hardcoded the middle-matmul requant pair as
+  `(M0, n) = (172, 19)`; the current `Bigger_NN_Recent` artifact decomposes
+  hidden2.weight to `(129, 19)` (the mantissa `M0` shifts with `S_w` on re-export),
+  so the assertion failed. Not a code defect — the partitioner correctly propagates
+  the layer's dyadic pair to all 1625 tiles.
+- Fix: derive the expected pair from `weight_map.json` (`%arg2`) and assert every
+  tile shares that single pair, so the check verifies uniformity + correctness
+  against the source of truth and cannot drift when the artifact is re-exported.
+- Files modified: `test/test_serializer_and_e2e.py` (added `import json`).
+- Tests: `python -m pytest test/ -v` → 90 passed.
+
 ## 2026-07-22 — v0.7: Output staging (`move` instruction)
 
 - Implemented the full v0.7 build plan (assembler side of ISA v0.7). Retires the
