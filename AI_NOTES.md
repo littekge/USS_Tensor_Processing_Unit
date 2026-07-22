@@ -7,11 +7,12 @@
 > CLAUDE.md files, not here — this file holds decision history (with reasons),
 > in-flight state, and machine notes.
 
-## Current State (2026-07-21)
+## Current State (2026-07-22)
 
+- **Working on `v0.7-workspace`** (branched off `main` after v0.6.0). Tree clean.
 - **v0.6.0 RELEASED & tagged** on `main`/`origin` (GitHub prerelease "Convolution
   and Pooling" published 2026-07-21); `v0.6-workspace` merged to `main` and
-  deleted (locally + origin). All prior versions shipped/tagged. Tree clean.
+  deleted (locally + origin). All prior versions shipped/tagged.
 - **LeNet-5 WORKING ON FPGA** — first full conv net on the platform, classifies
   correctly. Bring-up found two bugs:
   - **Bug 1 (RTL) — FIXED & VERIFIED (shipped in v0.6.0):** `Vector_Processor.v`
@@ -23,14 +24,21 @@
     tiled output writes logits 8,9 to `rd=9` (=`conv1.weight[7,8]`), corrupting
     weights across re-runs (Programmer re-runs without reload). Only ±1; never
     flips argmax. Retired once the assembler lowers `move` into the fc3 tail.
-- **v0.7.0 IN PROGRESS** = proper comms link + demo. **ISA phase DONE & pushed**
-  (`7a564ac`, ISA v0.7.0): the SHAPE-opcode `move` instruction (opcode 1101 /
-  funct3 0x1, A-Format) is defined — dissolves Bug 2 by copying a computed result
-  into the `0x1` I/O buffer for readout. Same commit fixed the requant `shift=0`
-  UB (rounding bias `(1 << shift) >> 1` in ISA **and** HW spec; RTL
-  `Vector_Processor.v:256` + golden `Interpreter.py`/`Emulator.py` already guarded
-  it — verified this session, no code change). Remaining v0.7 work: assembler
-  `move` lowering (retires Bug 2), INPUT-header (`0x49`) code, and the demo.
+- **v0.7.0 IN PROGRESS** = proper comms link + demo. **Spec phases DONE:**
+  - **ISA** (`7a564ac`, ISA v0.7.0): SHAPE-opcode `move` instruction (opcode 1101
+    / funct3 0x1, A-Format) defined — dissolves Bug 2 by copying a computed result
+    into the `0x1` I/O buffer for readout. Same commit fixed the requant `shift=0`
+    UB (rounding bias `(1 << shift) >> 1`; RTL `Vector_Processor.v:256` + golden
+    `Interpreter.py`/`Emulator.py` already guarded it — verified, no code change).
+  - **HW spec** (`c260587`, HW spec v0.7.0): `move` added to the Controller
+    writeback-skip clause (writes to memory in Execute, like `im2col`) + version
+    bump. Deliberately NOT described in Vector_Processor: `move` is the already-
+    listed device-mem→device-mem route, no new data-movement mechanism, and the VP
+    section documents mechanisms not instructions. Requant already correct in HW
+    spec since v0.6 (ISA was the lagging doc; v0.7 ISA edit closed the mismatch).
+    spec-proofreader ran clean on both docs.
+- Remaining v0.7 work: **assembler `move` lowering (retires Bug 2) — NEXT**,
+  INPUT-header (`0x49`) code, and the demo.
 
 ## v0.6 carry-forwards for v0.7 (specs are the source of truth for the rest)
 
@@ -120,11 +128,12 @@ v0.7 = comms link + demo, so the LeNet-5 bring-up plumbing is what matters here:
 
 ## Deferred Work
 
-- `tests/run_regression.sh` + TPU `CLAUDE.md` still frame sim-scratch placement
-  around the OneDrive-synced Desktop (pre-`~/Git`-move rationale); the refs
-  physically remain. Low-priority wording cleanup — reword generically (keep
-  scratch off the synced tree; `SIM_WORK` override) when those files are next
-  touched. `log.md` entries are dated history — leave them.
+- TPU `CLAUDE.md:75` still frames sim-scratch placement around the "OneDrive-synced
+  Desktop" (pre-`~/Git`-move rationale) — re-verified present 2026-07-22.
+  Low-priority wording cleanup (reword generically: keep scratch off the synced
+  tree) when that file is next touched; needs the CLAUDE.md approval gate.
+  The `tests/run_regression.sh` half is unverifiable — `Tests/` is agent-excluded.
+  `log.md` entries are dated history — leave them.
 
 ## Machine Notes
 
