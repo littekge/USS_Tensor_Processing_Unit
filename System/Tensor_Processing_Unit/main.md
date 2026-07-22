@@ -7,7 +7,7 @@
 ## Project Identity
 
 - **Name:** Functional TPU
-- **Version:** 0.6.0
+- **Version:** 0.7.0
 - **Target Platform:** Terasic DE1-SoC FPGA
 - **Language:** Verilog HDL 2001
 - **Development Environment:** Quartus Prime Lite Edition
@@ -81,9 +81,9 @@ array outputs, saturating to the memory datatype (`M0`/`n` mantissa width B=8)
     - **Width:** 8 bits
     - **Depth:** 256 words
 
-## Current State — Built and Verified Through v0.6.0
+## Current State — Built and Verified Through v0.7.0
 
-The TPU is implemented and Questa-verified through **v0.6.0**; the per-version
+The TPU is implemented and Questa-verified through **v0.7.0**; the per-version
 build history is the Build Plan below, with detailed results in `log.md`. Working
 capabilities:
 
@@ -106,6 +106,12 @@ reducer), both configured by the `window` descriptor — implemented and
 Questa-verified. Remaining before a live LeNet-5 image→VGA demo: the external-mode
 INPUT-header (0x49) `comms` code to feed a runtime 28×28 input, then hardware
 bring-up.
+
+**v0.7 (Output Staging):** the `move` instruction (SHAPE opcode `1101`, funct3
+`0x1`) — a `Vector_Processor` contiguous device-memory→device-memory copy that
+honors the isolated `0x1` buffer. The assembler writes the network result to main
+memory as a full tensor, then `move`s it into `0x1` for readback, retiring the
+LeNet-5 tiled-output weight-corruption bug — implemented and Questa-verified.
 
 ## Architecture
 
@@ -704,7 +710,7 @@ buffer offset logic. The one genuinely new piece is a device-memory→device-mem
 single-pass copy datapath (existing `VSRC_MEM` reads feed functional units or the
 systolic array, never a direct memory write).
 
-#### Step 1 — Controller: SHAPE funct3 Split + `move` Routing
+#### Step 1 — Controller: SHAPE funct3 Split + `move` Routing — ✅ Complete (2026-07-22)
 
 Update `Controller.v`.
 
@@ -719,7 +725,7 @@ Update `Controller.v`.
   copy routing (`VSRC_MEM`/`VDST_MEM`, length from `aux`, no windowed mode); the
   funct3 `0x0` `im2col` path is unaffected.
 
-#### Step 2 — Vector_Processor: Contiguous Memory-to-Memory Copy
+#### Step 2 — Vector_Processor: Contiguous Memory-to-Memory Copy — ✅ Complete (2026-07-22)
 
 Update `Vector_Processor.v`.
 
@@ -735,7 +741,7 @@ Update `Vector_Processor.v`.
   main→`0x1` (the staging case); confirm the v0.5 contiguous/strided and v0.6
   windowed paths are unaffected.
 
-#### Step 3 — TPU Top-Level Integration + Full-System
+#### Step 3 — TPU Top-Level Integration + Full-System — ✅ Complete (2026-07-22)
 
 Update `TPU.v`.
 
@@ -747,7 +753,7 @@ Update `TPU.v`.
   exercising the output-staging path end-to-end and confirming main memory (weights)
   is untouched by the staged write.
 
-#### Step 4 — Regression
+#### Step 4 — Regression — ✅ Complete (2026-07-22)
 
 - Update `tests/run_regression.sh` for the changed testbenches
   (`TB_Step3_Controller`, `TB_Step4_VectorProcessor`, `TB_Step8_FullSystem`).

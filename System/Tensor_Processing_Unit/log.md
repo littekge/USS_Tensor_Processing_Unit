@@ -2,6 +2,18 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-22 — v0.7 Verification: Questa Regression PASS
+
+- **Verification: PASS** (Questa PC, 2026-07-22). The full regression was run on the
+  Questa PC and passed, promoting the v0.7 build (Steps 1-4) from PENDING to
+  verified. The new `move` tests passed as expected — `TB_Step3_Controller` 18/18,
+  `TB_Step4_VectorProcessor` 23/23, `TB_Step8_FullSystem` 16/16 — alongside the
+  unchanged regression benches (Step1/2/5/6/7/pool/spi), each `Results:` line with 0
+  FAIL.
+- `main.md` v0.7 Steps 1-4 marked complete; Version bumped to 0.7.0 and Current
+  State updated to "Built and Verified Through v0.7.0".
+- Verification-only entry — no RTL changes.
+
 ## 2026-07-22 — v0.7 Output Staging: `move` instruction (Steps 1-4)
 
 - **Context:** v0.7 implements the `move` instruction per `main.md` v0.7 (Output
