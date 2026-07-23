@@ -59,3 +59,21 @@ def test_sketch_to_grid_centers_ink():
     assert grid[0].sum() == 0 and grid[demo.GRID - 1].sum() == 0   # top/bottom border
     assert grid[:, 0].sum() == 0 and grid[:, demo.GRID - 1].sum() == 0  # left/right border
     assert grid[demo.GRID // 2, demo.GRID // 2] > 0                # center has ink
+
+
+def test_sketch_to_grid_centers_by_center_of_mass():
+    # Mass-skewed shape: a heavy blob plus a thin arm reaching away from it, so
+    # the intensity center of mass sits well inside the bounding box (nowhere near
+    # its geometric center). MNIST-style centering must put the CENTER OF MASS at
+    # the field center; bbox centering would leave it visibly off-center.
+    img = demo.Image.new("L", (demo.CANVAS, demo.CANVAS), 0)
+    d = demo.ImageDraw.Draw(img)
+    d.rectangle([60, 140, 170, 250], fill=255)   # heavy blob
+    d.rectangle([170, 190, 290, 200], fill=255)  # thin far arm
+    grid = demo.sketch_to_grid(img).astype(np.float64)
+    mass = grid.sum()
+    row_idx, col_idx = np.indices(grid.shape)
+    cy = (row_idx * grid).sum() / mass
+    cx = (col_idx * grid).sum() / mass
+    center = demo.GRID / 2
+    assert abs(cy - center) <= 1.5 and abs(cx - center) <= 1.5
