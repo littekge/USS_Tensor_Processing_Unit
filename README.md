@@ -6,12 +6,27 @@ defined in Verilog HDL that runs on an FPGA. This research is endorsed and
 funded by Miami University of Ohio and conducted under the Electrical and
 Computer Engineering department in the College of Engineering and Computing.
 
-## Folder Hierarchy and Project Log
+## Folder Hierarchy
 
-This is a general overview of the project folder hierarchy and a log of what
-parts of the system have been implemented. Only relevant directories are
+This is a general overview of the project folder hierarchy. Only relevant directories are
 included; further subdirectories are specific to components of an individual
-system; this is a high-level overview of the outermost systems.
+system.
+
+.
+├── Demo/ - Demo scripts
+├── Resources/ - The resources I found most helpful for this project
+├── Specifications/ - ISA, Message Protocol, and Hardware Spec
+│   └── Old/ - Old versions of specifications for historical reference
+└── System/ - Contains all project code
+    ├── Assembler/ - Assembles a neural network from `/System/Neural_Networks/` into a transmission binary
+    └── Communication/ - Comm link between PC and FPGA via an Arduino
+        ├── Arduino_2_FPGA/ - PlatformIO Arduino project that recieves serial data from a computer and forwards it to SPI pins
+        ├── PC_2_Arduino/ - Small Python script that sends a binary file byte-by-byte to a connected Arduino via serial port
+        ├── Neural_Networks/ - Contains the PyTorch neural networks used in this project
+        └── Tensor_Processing_Unit/ - Quartus project with TPU RTL (Verilog 2001)
+            └── Demo/ - Top-level module that corresponds to `/Demo/`
+
+## Folder Hierarchy and Project Log
 
 ### Specifications
 
