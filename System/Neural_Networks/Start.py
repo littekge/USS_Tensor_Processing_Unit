@@ -72,9 +72,9 @@ def Start(model_name, run_name, train, export, run):
             model_params.MODEL = LeNet_5()
             trainSet, testSet, exportSet = Get_LeNet_5_Data()
             training_params = Operations.TRAINING_PARAMS(
-                SUBSET_SIZE=5000, 
-                NUM_EPOCHS=5, 
-                BATCH_SIZE=4, 
+                SUBSET_SIZE=60000, 
+                NUM_EPOCHS=10, 
+                BATCH_SIZE=64, 
                 LOSS_FUNCTION="CrossEntropy", 
                 CLASSIFICATION_MODE="classification" 
             )
