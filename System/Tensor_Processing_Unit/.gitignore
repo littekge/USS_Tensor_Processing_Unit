@@ -82,3 +82,19 @@ vish_stacktrace.vstf
 # compiled simulation libraries
 work/
 *_lib/
+
+# Section-level Quartus/Questa generated build artifacts (untracked so a clone
+# is source-only). The prior */... patterns above do not match these dirs at
+# this section root, so they are named explicitly here.
+# NativeLink sim scratch: rtl_work compiled lib, .vo netlist, .sft, and the
+# auto-generated run_msim .do (Windows abs paths) plus its .do.bak* backups.
+# The .mif ROMs it copies here are regenerated from the tracked masters under
+# TPU/VGA_DEBUG/VGA_CONTROLLER/{ascii_rom,ascii_master}/.
+simulation/
+*.do.bak*
+
+# Quartus programming/debug outputs (.cdf JTAG chain, .sld SLD info). Keep the
+# hand-authored SignalTap configuration (stp1.stp) tracked via negation, which
+# requires ignoring the dir contents (output_files/*) rather than the dir.
+output_files/*
+!output_files/stp1.stp

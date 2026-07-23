@@ -2,6 +2,42 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
+## 2026-07-23 — Untrack Quartus/Questa generated build artifacts
+
+- **What:** Stopped tracking regenerable Quartus/Questa outputs so a fresh
+  clone is source-only (~19 MB removed from the index). Used
+  `git rm --cached` only (working-copy files left on disk); nothing committed.
+- **Untracked (generated):**
+  - `simulation/` (entire NativeLink sim dir): `rtl_work/` compiled Questa
+    library (`_info`, `_vmake`, `_lib*.qdb/.qpg/.qtl`),
+    `Tensor_Processing_Unit.vo` (gate-level netlist), `.sft` (Questa settings),
+    the auto-generated `Tensor_Processing_Unit_run_msim_rtl_verilog.do` (carries
+    Windows `C:/Users/.../Desktop` absolute paths, rewritten every sim launch)
+    and its `.do.bak1..bak4` backups, and the two `.mif` copies Quartus places
+    here (`ASCII_Encode.mif`, `ascii_master.mif`).
+  - `output_files/Tensor_Processing_Unit.cdf` (JTAG chain description),
+    `output_files/Tensor_Processing_Unit.sld` (SLD debug info).
+- **Deliberately KEPT as source:**
+  - `TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_rom/ASCII_Encode.mif` and
+    `TPU/VGA_DEBUG/VGA_CONTROLLER/ascii_master/ascii_master.mif` — the canonical
+    hand-needed VGA font/ASCII ROM masters the RTL `init_file` points to; the
+    `simulation/questa/*.mif` were just Quartus-copied duplicates, so untracking
+    them loses nothing.
+  - `output_files/stp1.stp` — hand-authored SignalTap Logic Analyzer debug
+    configuration (user-selected probe instances), not a build product.
+  - `tests/run_regression.sh` — the hand-maintained sim/regression driver is a
+    shell script and was never in scope; only the auto-generated `.do` was
+    untracked.
+- **Ignore rules (appended to section `.gitignore`):** `simulation/`,
+  `*.do.bak*`, and `output_files/*` with a `!output_files/stp1.stp` negation
+  (dir contents ignored rather than the dir itself, so the negation takes
+  effect). Existing `# *.mif` stays commented, so the tracked ROM masters are
+  never ignored.
+- **Verified:** `git check-ignore` confirms all untracked artifacts are now
+  ignored while `output_files/stp1.stp` is not; `git ls-files` confirms the two
+  TPU-tree `.mif` masters and `stp1.stp` remain tracked. No simulation run
+  (not the Questa PC) — this change is file classification only.
+
 ## 2026-07-22 — Demo top-level: hardware argmax + percentage VGA view
 
 - **What:** Authored `demo/demo.v` — a presentation top-level (top-level entity
