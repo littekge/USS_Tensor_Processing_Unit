@@ -12,3 +12,4 @@ __pycache__/
 # both dirs are recreated via mkdir(exist_ok=True))
 System/Assembler/tmp/
 System/Assembler/out/
+*.egg-info/
