@@ -60,6 +60,20 @@ system.
         └── demo/ - Top-level module that corresponds to /Demo/
 ```
 
+## Documentation
+
+See /Specifications/ for the documents used to design and build the TPU.
+
+- **Functional_TPU_ISA.md** -> Custom instruction set used by the TPU.
+- **Functional_TPU_Message_Protocol.md** -> Protocol used to communicate with the
+TPU over an SPI/Serial connection via an Arduino (see the `Synthesis Flow`
+section for more detail).
+- **Functional_TPU_Hardware_Specification.md** -> Abstract description of each Verilog
+module built as part of the TPU.
+
+These three documents are a great starting point for building your own custom
+neural network accelerator! 
+
 ## Usage
 
 The system is a four-stage pipeline: a PyTorch network from
