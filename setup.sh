@@ -13,6 +13,13 @@ if [ ! -d "$VENV" ]; then
 fi
 source "$VENV/bin/activate"
 
+# pip unpacks wheels in $TMPDIR; torch's ~3 GB wheel overflows a tmpfs /tmp
+# (Debian 13 default: tmpfs capped at half of RAM). Use a disk-backed temp
+# dir inside the venv instead.
+export TMPDIR="$VENV/pip-tmp"
+mkdir -p "$TMPDIR"
+trap 'rm -rf "$VENV/pip-tmp"' EXIT
+
 pip install -r "$REPO_ROOT/requirements.txt"
 # editable_mode=compat writes a static path so IDEs/Pylance resolve the package
 pip install -e "$REPO_ROOT/System/Assembler" --config-settings editable_mode=compat
