@@ -1,10 +1,41 @@
 # USS_Tensor_Processing_Unit
 
 This repository contains research on the synthesis flow and hardware code
-required to accelerate a Pytorch neural network using a custom TPU architecture
+required to accelerate a PyTorch neural network using a custom TPU architecture
 defined in Verilog HDL that runs on an FPGA. This research is endorsed and
 funded by Miami University of Ohio and conducted under the Electrical and
 Computer Engineering department in the College of Engineering and Computing.
+
+## What is a TPU?
+
+A TPU (Tensor Processing Unit) is Google's proprietary name for its hardware AI
+accelerator. TPUs are designed to speed up the large tensor operations required
+to run advanced neural networks by reusing as many data values as possible. This
+reuse is made possible by a *systolic array* — an array of multiply-accumulate
+units (MACs) all wired together. Google's first-generation TPU had a 256x256 systolic
+array for a total of 65,536 multipliers!
+
+A TPU can be thought of as an extreme case of computational parallelism. The
+idea of a TPU is best understood by comparing it to other architectures:
+
+- **CPU** - dozens of powerful, extremely fast cores that can perform a
+multitude of advanced operations.
+- **GPU** - hundreds or thousands of cores specialized for graphics processing.
+- **TPU** - tens of thousands of "cores" that only perform one operation:
+multiply-accumulation.
+
+The reuse is what makes the architecture fast. In a CPU or GPU, every
+multiplication pays to move its operands out of memory or registers; in a
+systolic array, each weight and activation is loaded once and then flows from
+MAC unit to MAC unit, participating in a new multiplication at every step. The
+memory traffic — usually the true bottleneck of neural-network inference — is
+amortized across an entire row or column of the array, so the silicon spends
+its time computing instead of waiting on data.
+
+The TPU in this repository is the same idea at a smaller scale: an 8x8 systolic
+array of MACs operating on 8-bit signed integers, plus the supporting subsystems
+a real accelerator needs — on-chip memory, per-layer requantization, a custom ISA,
+and a compiler that lowers PyTorch networks onto it.
 
 ## Folder Hierarchy
 
@@ -28,8 +59,6 @@ system.
     └── Tensor_Processing_Unit/ - Quartus project with TPU RTL (Verilog 2001)
         └── demo/ - Top-level module that corresponds to /Demo/
 ```
-
-## What is a TPU?
 
 ## Usage
 
@@ -102,7 +131,7 @@ the FPGA over SPI (mode 0, 125 kHz) in lock-step with the PC.
 dividers).
 
     | Arduino Uno | DE1-SoC | Signal |
-    |---|---|---|
+    | --- | --- | --- |
     | D13 (SCK) | `GPIO_0[7]` | SPI clock |
     | D11 (MOSI) | `GPIO_0[3]` | data to FPGA |
     | D10 (SS) | `GPIO_0[1]` | chip select, active LOW |
@@ -217,14 +246,15 @@ Requires the full hardware chain plus `python3-tk` for the GUI.
 ## AI Usage
 
 This research is made possible by heavy usage of AI to write code for areas
-unrelated to the research goal and to expedite the process of writing verilog
+unrelated to the research goal and to expedite the process of writing Verilog
 code; the goal of the research is to understand how to design an AI accelerator,
-not to practice coding skills.
+not to practice coding skills. I chose to use Claude Code for the majority of
+the AI work.
 
 ### AI Usage Breakdown
 
 - **Specifications:** Written and managed by me.
-- **Assembler:** Full dark factory approach (claude writes code AND manages
+- **Assembler:** Full dark factory approach (Claude writes code AND manages
 main.md, CLAUDE.md, and log.md).
 - **Communication:** Mostly dark factory, no spec documents since design is simple.
 - **Neural_Networks:** Mostly handwritten.
