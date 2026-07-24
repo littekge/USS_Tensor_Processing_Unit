@@ -2,7 +2,17 @@
 
 > Append a new entry every time a change is made. Newest entries at the top.
 
-## 2026-07-23 — Untrack Quartus/Questa generated build artifacts
+## 2026-07-24 — demo.v Hardware Validation PASS
+
+- **Verification: PASS (hardware).** The DE1-SoC validation called for by the
+  2026-07-22 `demo/demo.v` entry (marked HARDWARE-ONLY) was performed by the
+  user: LeNet-5 flashed, external mode selected, live drawing demo run
+  end-to-end with the ranked-percentage view rendering correctly on VGA.
+  Validated with the full-MNIST retrained weights and the center-of-mass
+  input centering fix in `Demo/LeNet5_Demo.py`, with markedly improved
+  prediction accuracy.
+- Bookkeeping-only entry — no RTL changes, no outstanding verification for
+  `demo/demo.v`.
 
 - **What:** Stopped tracking regenerable Quartus/Questa outputs so a fresh
   clone is source-only (~19 MB removed from the index). Used
