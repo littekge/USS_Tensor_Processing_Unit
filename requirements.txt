@@ -14,6 +14,9 @@
 torch==2.12.0
 torchvision==0.27.0
 torchax==0.0.12
+# torchax declares no pip dependencies but requires jax at runtime
+jax==0.10.1
+jaxlib==0.10.1
 numpy==2.4.6
 pillow==12.2.0
 pyserial==3.5
