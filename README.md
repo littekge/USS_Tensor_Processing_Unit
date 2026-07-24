@@ -80,7 +80,137 @@ Quartus project.
 
 ### Synthesis Flow
 
+Steps 1–3 are one-time board setup; steps 4–5 are the iteration loop you
+repeat as you change the network.
+
+1. **Synthesize and flash the FPGA.** Open
+`System/Tensor_Processing_Unit/Tensor_Processing_Unit.qpf` in Quartus,
+compile, and program the DE1-SoC over USB-Blaster. The default top level
+(`Tensor_Processing_Unit.v`) shows a raw-hex debug view of TPU memory on the
+VGA output; for the LeNet-5 presentation view (ranked class percentages),
+set `demo/demo.v` as the top-level entity instead.
+
+2. **Flash the Arduino.** From
+`System/Communication/Arduino_2_FPGA/`, upload with PlatformIO
+(`pio run -t upload`). The firmware forwards each verified serial frame to
+the FPGA over SPI (mode 0, 125 kHz) in lock-step with the PC.
+
+3. **Wire the SPI link.** The Arduino Uno is 5 V and the DE1-SoC GPIO is
+3.3 V — level-shift every Arduino output (this project uses resistive
+dividers).
+
+    | Arduino Uno | DE1-SoC | Signal |
+    |---|---|---|
+    | D13 (SCK) | `GPIO_0[7]` | SPI clock |
+    | D11 (MOSI) | `GPIO_0[3]` | data to FPGA |
+    | D10 (SS) | `GPIO_0[1]` | chip select, active LOW |
+    | GND | GND | common ground |
+
+    MISO is not wired: results leave the TPU through the VGA display, not
+    back over SPI.
+
+4. **Train, assemble, and program.** `System/run.sh` drives the three
+software stages; each flag is independent, so run any subset:
+
+    ```bash
+    ./System/run.sh -m LeNet_5 -r Recent -t -a -p
+    ```
+
+    - `-t` trains the model and exports `<model>_<run>.mlir` +
+      `<model>_<run>.weights.npz` into `System/Neural_Networks/<model>/`
+    - `-a` assembles that export into
+      `System/Assembler/out/TRANSMISSION.bin`
+    - `-p` streams the transmission to the FPGA through the Arduino
+
+    To skip training and assembly entirely, copy a pre-built transmission
+    into place and program it:
+
+    ```bash
+    cp Benchmarks/LeNet_5_TRANSMISSION.bin System/Assembler/out/TRANSMISSION.bin
+    ./System/run.sh -p
+    ```
+
+5. **Run inference.** `KEY[0]` is reset. `SW[9]` selects the input source:
+
+    - **Device mode** (`SW[9]` LOW): set an input byte on `SW[7:0]` and pulse
+      `KEY[1]` to feed it to the network; the HEX displays echo the value.
+      Suits the single-value networks (`Tiny_NN`, `Bigger_NN`).
+    - **External mode** (`SW[9]` HIGH): the input is streamed from the PC as
+      an INPUT transmission to address `0x1` (this is what the Demo does —
+      see `/Demo`). Required for image-sized inputs like LeNet-5.
+
+    Results appear on the VGA output in both modes.
+
 ### Running Individual Subsystems
+
+Every stage reads plain artifacts from disk, and the artifacts each stage
+needs are committed — so any subsystem can be run, studied, or modified on
+its own without setting up the ones upstream of it.
+
+**Neural Networks** (PyTorch → StableHLO export)
+
+```bash
+python System/Neural_Networks/Start.py <model> <run> [-t] [-e] [-r]
+```
+
+`<model>` is `LeNet_5`, `Tiny_NN`, or `Bigger_NN`; `<run>` names the weight
+set (the committed artifacts use `Recent`). `-t` trains (MNIST downloads
+automatically on first use), `-e` exports `<model>_<run>.mlir` +
+`<model>_<run>.weights.npz` into the model's folder, `-r` evaluates on the
+test set.
+
+**Assembler** (StableHLO → TPU transmission)
+
+```bash
+nn-assemble <model> <run>       # writes System/Assembler/out/TRANSMISSION.bin
+python -m pytest System/Assembler/test/   # unit + end-to-end suite
+```
+
+Consumes the committed `.mlir`/`.npz` exports, so it runs with no training
+step. Two software models of the TPU live in `System/Assembler/Interpreter/`
+and are the fastest way to understand the integer math without hardware:
+
+```bash
+python System/Assembler/Interpreter/Emulator.py 5     # golden int8 LeNet-5
+                                                      # vs float, MNIST test[5]
+nn-assemble LeNet_5 Recent                            # then execute the real
+python System/Assembler/Interpreter/Interpreter.py 5  # binary instruction-by-
+                                                      # instruction vs golden
+```
+
+**Communication** (PC → Arduino → FPGA)
+
+```bash
+cd System/Communication/Arduino_2_FPGA && pio run -t upload   # firmware
+python System/Communication/PC_2_Arduino/Send_2_Arduino.py   # stream the
+                                                              # transmission
+```
+
+The sender streams `System/Assembler/out/TRANSMISSION.bin` — assemble one or
+copy a `/Benchmarks` file into place first. Requires the hardware chain from
+the Synthesis Flow section.
+
+**Tensor Processing Unit** (Verilog RTL)
+
+```bash
+System/Tensor_Processing_Unit/tests/run_regression.sh         # all testbenches
+System/Tensor_Processing_Unit/tests/run_regression.sh 3 4 8   # a subset
+```
+
+Synthesis uses the Quartus project (step 1 of the Synthesis Flow). The
+regression compiles each testbench into its own fresh Questa library and
+runs it in batch mode; on a machine without Questa it prints a deferral
+notice and exits without simulating (edit `QUESTA_DIR` in the script to
+match your install).
+
+**Demo** (LeNet-5 live drawing demo)
+
+```bash
+Demo/demo.sh                            # fullscreen GUI: program, draw, send
+python Demo/LeNet5_Demo.py --mnist 0    # headless: send MNIST test[0]
+```
+
+Requires the full hardware chain plus `python3-tk` for the GUI.
 
 ## AI Usage
 

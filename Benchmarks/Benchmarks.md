@@ -16,6 +16,10 @@ The static weight values are ALWAYS transmitted first. Transmissions are stored
 and read from the first byte to the last. Program instructions are from the
 *Functional TPU ISA*.
 
+> **Note:** The transmissions DO NOT have preprogrammed inputs. You will need to
+> write inputs to address 0x1 yourself in accordance with the ISA and Message
+> Protocol.
+
 ## Tiny_NN
 
 **Description:** Very small, fully linear neural network. Used as a bare-minimum benchmark.
