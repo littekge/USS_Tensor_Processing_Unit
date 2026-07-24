@@ -74,7 +74,8 @@ def Start(model_name, run_name, train, export, run):
             training_params = Operations.TRAINING_PARAMS(
                 SUBSET_SIZE=60000, 
                 NUM_EPOCHS=10, 
-                BATCH_SIZE=64, 
+                BATCH_SIZE=64,
+                LEARNING_RATE=0.01,
                 LOSS_FUNCTION="CrossEntropy", 
                 CLASSIFICATION_MODE="classification" 
             )

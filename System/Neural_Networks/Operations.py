@@ -22,7 +22,7 @@ class TRAINING_PARAMS:
     SUBSET_SIZE: int = None # size of the training subset for each epoch
     NUM_EPOCHS: int = 10 # number of epochs to train on
     BATCH_SIZE: int = 4 # number of images processed before calculating loss and updating weights
-    LEARNING_RATE: float = 0.01 # learning rate
+    LEARNING_RATE: float = 0.001 # learning rate
     MOMENTUM: float = 0.9 # momentum
     LOSS_FUNCTION: str = "MSE" # which loss function to use in training
     CLASSIFICATION_MODE: str = "regression" # type of correctness classification to use in testing
