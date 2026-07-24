@@ -1,0 +1,20 @@
+# Workspace Python dependencies — exact pins matching the verified environment
+# (Python 3.13). Recreate the environment with ./setup.sh, or manually:
+#   python3 -m venv USS_TPU.venv && source USS_TPU.venv/bin/activate
+#   pip install -r requirements.txt
+#   pip install -e System/Assembler --config-settings editable_mode=compat
+#
+# Not covered here:
+#   - tkinter (Demo GUI): system package -> sudo apt install python3-tk
+#   - stablehlo-opt (required by the Assembler stage): must be on PATH.
+#     Prebuilt (Linux x86-64, glibc >= 2.38): see the StableHLO_Binaries
+#     release on this repository; or build from
+#     https://github.com/openxla/stablehlo
+#     (not needed if you only stream the pre-built /Benchmarks transmissions)
+torch==2.12.0
+torchvision==0.27.0
+torchax==0.0.12
+numpy==2.4.6
+pillow==12.2.0
+pyserial==3.5
+pytest==9.1.1

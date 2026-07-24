@@ -1,8 +1,19 @@
-# Path to python virtual environment (REPLACE WITH YOUR PATH)
-pypath="$HOME/Git/USS_Tensor_Processing_Unit/USS_TPU.venv"
+# Pipeline driver: train/export (-t), assemble (-a), program the board (-p).
+# Paths are derived from this script's location — run it from anywhere.
+SYSTEM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+pypath="$(dirname "$SYSTEM_DIR")/USS_TPU.venv"
+
+if [ ! -d "$pypath" ]; then
+  echo "ERROR: virtual environment not found at $pypath" >&2
+  echo "Create it first: run ./setup.sh from the repository root." >&2
+  exit 1
+fi
 
 # activate venv
 source "$pypath/bin/activate"
+
+# scripts below are invoked relative to System/
+cd "$SYSTEM_DIR"
 
 while getopts ":m:r:atp" opt; do
   case $opt in
