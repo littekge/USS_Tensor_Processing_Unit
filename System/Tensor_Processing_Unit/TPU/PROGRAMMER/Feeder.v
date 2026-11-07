@@ -70,6 +70,9 @@ reg [12:0] pc;
 // State machine registers
 reg [3:0] S, NS;
 
+// Cycle counter
+(* preserve *) reg [31:0] cycles;
+
 // State machine driver
 always @ (posedge i_clk or negedge i_trst)
 begin
@@ -130,12 +133,24 @@ begin
         o_instruction      <= 128'd0;
         o_controller_start <= 1'b0;
         o_end_reached      <= 1'b0;
+		  cycles <= 32'd0;
     end
     else
     begin
         // Default: end_reached is a one-cycle strobe, deasserted unless set below
         o_end_reached <= 1'b0;
-
+		  if (S == START)
+		  begin
+				cycles <= 32'd0;
+		  end
+		  else if (S == DONE)
+		  begin
+				cycles <= cycles;
+		  end
+		  else
+		  begin
+				cycles <= cycles + 32'b1;
+		  end
         case (S)
             FETCH:
             begin
