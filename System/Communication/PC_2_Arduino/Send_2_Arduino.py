@@ -103,7 +103,7 @@ def find_arduino_port():
     for port in ports:
         description = port.description.lower()
         manufacturer = (port.manufacturer or "").lower()
-        if "arduino" in description or "arduino" in manufacturer:
+        if "arduino" in description or "arduino" in manufacturer or "usb serial" in description:
             print(f"Found Arduino on port: {port.device}")
             print(f"Description: {port.description}")
             return port.device
