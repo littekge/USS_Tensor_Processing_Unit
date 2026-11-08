@@ -159,6 +159,9 @@ parameter [2:0]
 // ---------- END PARAMETERS ---------- //
 
 // ---------- CODE ---------- //
+// Cycle counter
+reg [31:0] cycle_count;
+reg cycle_en;
 
 // Latched copy of the current instruction, stable from EXEC through writeback
 reg [127:0] instr_latch;

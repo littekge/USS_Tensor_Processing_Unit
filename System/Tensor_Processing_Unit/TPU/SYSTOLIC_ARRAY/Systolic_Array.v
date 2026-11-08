@@ -44,12 +44,13 @@ module Systolic_Array #(parameter N = 8) (
 	//systolic array output select and data
    input [3:0] i_row,
    input [3:0] i_col,
-	output wire [31:0] o_c
+	output wire [31:0] o_c,
 
 	// ---------- PARAMETERS ---------- //
 	// ---------- END PARAMETERS ---------- //
 
 	// ---------- DEBUG ---------- //
+	output wire [31:0] o_cycle_count
 	// ---------- END DEBUG ---------- //
 );
 
@@ -62,6 +63,9 @@ parameter [1:0]
 // ---------- END PARAMETERS ---------- //
 
 // ---------- CODE ---------- //
+
+//cycle count
+reg [31:0] cycle_count;
 
 genvar i;
 genvar j;
@@ -206,9 +210,11 @@ begin
 	if (i_trst == 1'b0)
 	begin
 		load_cnt <= 8'd0;
+		cycle_count <= 32'd0;
 	end
 	else
 	begin
+		cycle_count <= cycle_count + cycle_en;
 		case (S)
 			IDLE:
 			begin
@@ -276,5 +282,7 @@ assign o_systolic_array_idle = (S == START) || (S == IDLE);
 // ---------- END CODE ---------- //
 
 // ---------- DEBUG ---------- //
+assign o_cycle_count = cycle_count;
+assign cycle_en = ~o_systolic_array_idle;
 // ---------- END DEBUG ---------- //
 endmodule

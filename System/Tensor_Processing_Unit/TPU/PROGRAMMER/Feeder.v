@@ -27,12 +27,13 @@ module Feeder (
     output reg         o_controller_start,
 
     // Programmer interface
-    output reg         o_end_reached
+    output reg         o_end_reached,
 
     // ---------- PARAMETERS ---------- //
     // ---------- END PARAMETERS ---------- //
 
     // ---------- DEBUG ---------- //
+	 output wire [31:0] o_cycle_count
     // ---------- END DEBUG ---------- //
 );
 
@@ -71,7 +72,9 @@ reg [12:0] pc;
 reg [3:0] S, NS;
 
 // Cycle counter
-(* preserve *) reg [31:0] cycles;
+reg [31:0] cycle_count;
+reg cycle_en;
+assign o_cycle_count = cycle_count;
 
 // State machine driver
 always @ (posedge i_clk or negedge i_trst)
@@ -133,24 +136,14 @@ begin
         o_instruction      <= 128'd0;
         o_controller_start <= 1'b0;
         o_end_reached      <= 1'b0;
-		  cycles <= 32'd0;
+		  cycle_count <= 32'd0;
+		  cycle_en <= 1'd0;
     end
     else
     begin
         // Default: end_reached is a one-cycle strobe, deasserted unless set below
         o_end_reached <= 1'b0;
-		  if (S == START)
-		  begin
-				cycles <= 32'd0;
-		  end
-		  else if (S == DONE)
-		  begin
-				cycles <= cycles;
-		  end
-		  else
-		  begin
-				cycles <= cycles + 32'b1;
-		  end
+		  cycle_count <= cycle_count + cycle_en;
         case (S)
             FETCH:
             begin
@@ -159,6 +152,7 @@ begin
                 // address settles in WAIT_PM and the RAM output is not valid until
                 // CHECK (two cycles after the address is driven onto the bus).
                 o_pm_address <= pc;
+					 cycle_en <= 1'd1;
             end
             CHECK:
             begin
@@ -188,6 +182,10 @@ begin
                     pc <= pc + 13'd1;
                 end
             end
+				DONE:
+				begin
+					cycle_en <= 1'd0;
+				end
             default:;
         endcase
     end

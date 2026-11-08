@@ -53,8 +53,8 @@ module demo (
 	output		     [6:0]		HEX1,
 	output		     [6:0]		HEX2,
 	output		     [6:0]		HEX3,
-	//output		     [6:0]		HEX4,
-	//output		     [6:0]		HEX5,
+	output		     [6:0]		HEX4,
+	output		     [6:0]		HEX5,
 
 	//////////// IR //////////
 	// input 		          		IRDA_RXD,
@@ -188,7 +188,8 @@ TPU tpu (
 	.o_output_data_valid(output_valid),
 	.o_end_reached(end_reached),
 
-	.o_error_code(error_code)
+	.o_error_code(error_code),
+	.o_feeder_cycle_count(total_cycles)
 );
 
 // ----- Result pipeline: collect, rank, and render as percentages ----- //
@@ -517,5 +518,13 @@ begin
 		LEDS[7:0] = {5'd0, error_code};
 	end
 end
+
+// Feeder cycle count
+wire [31:0] total_cycles;
+assign HEX4 = total_cycles;
+
+// SA cycle count
+wire [31:0] active_cycles;
+assign HEX5 = total_cycles;
 // ---------- END DEBUG ---------- //
 endmodule

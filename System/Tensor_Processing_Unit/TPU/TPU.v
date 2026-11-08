@@ -33,7 +33,9 @@ module TPU (
 	 output wire		 o_end_reached,   // one-cycle pulse when an end instruction is fetched
 
     // ---------- DEBUG ---------- //
-	 output wire [2:0] o_error_code
+	 output wire [2:0] o_error_code,
+	 output wire [31:0] o_feeder_cycle_count,
+	 output wire [31:0] o_sa_cycle_count
     // ---------- END DEBUG ---------- //
 );
 
@@ -294,7 +296,8 @@ Feeder feeder (
     .i_controller_idle  (ctrl_controller_idle),
     .o_instruction      (feeder_instruction),
     .o_controller_start (feeder_controller_start),
-    .o_end_reached      (feeder_end_reached)
+    .o_end_reached      (feeder_end_reached),
+	 .o_cycle_count 		(o_feeder_cycle_count)
 );
 
 Controller ctrl (
@@ -497,7 +500,8 @@ Systolic_Array #(.N(8)) sa (
 	.i_left_wrreq           (vpb_sa_left_wrreq),
 	.i_row                  (vpa_sa_row),
 	.i_col                  (vpa_sa_col),
-	.o_c                    (sa_c)
+	.o_c                    (sa_c),
+	.o_cycle_count(o_sa_cycle_count)
 );
 
 // ---------- END CODE ---------- //
